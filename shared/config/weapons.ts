@@ -1,0 +1,111 @@
+// =============================================================
+//  Arsenal — todos os atributos são dados (balanceamento aqui).
+//  Ângulos em graus, tempos em segundos, distâncias em unidades.
+// =============================================================
+export type WeaponId = 'pistol' | 'rifle' | 'smg' | 'shotgun' | 'sniper';
+export type WeaponSlot = 0 | 1; // 0 = primária, 1 = secundária (pistola)
+
+export interface WeaponDef {
+  id: WeaponId;
+  name: string;
+  category: string;
+  slot: WeaponSlot;
+  damage: number;          // por projétil
+  headMult: number;
+  pellets: number;
+  auto: boolean;
+  rpm: number;             // disparos por minuto
+  mag: number;
+  reserve: number;         // munição reserva inicial ao pegar
+  reloadTime: number;
+  /** spread base (graus) parado no chão */
+  spread: number;
+  /** spread adicional no ar/surfando (mantido baixo de propósito: combate em velocidade) */
+  airSpread: number;
+  /** spread adicional andando no chão a toda velocidade */
+  moveSpread: number;
+  /** recuo vertical por disparo (graus) */
+  kick: number;
+  /** variação horizontal aleatória por disparo (graus) */
+  kickSide: number;
+  /** velocidade de recuperação do recuo (graus/s) */
+  recover: number;
+  /** distância a partir da qual o dano cai pela metade (efeito exponencial) */
+  falloffHalf: number;
+  range: number;
+  moveSpeedMul: number;
+  /** mira secundária (zoom) — FOV multiplicador; 0 = sem zoom */
+  zoom: number;
+  /** spread com zoom (sniper) */
+  zoomSpread?: number;
+  color: number;
+}
+
+export const WEAPONS: Record<WeaponId, WeaponDef> = {
+  pistol: {
+    id: 'pistol', name: 'VEX-9', category: 'Pistola', slot: 1,
+    damage: 26, headMult: 2.8, pellets: 1, auto: false, rpm: 380, mag: 12, reserve: 48, reloadTime: 1.4,
+    spread: 0.35, airSpread: 0.7, moveSpread: 0.4, kick: 1.4, kickSide: 0.5, recover: 9,
+    falloffHalf: 2200, range: 6000, moveSpeedMul: 1.0, zoom: 0, color: 0x6c7a94,
+  },
+  rifle: {
+    id: 'rifle', name: 'KESTREL AR', category: 'Rifle de assalto', slot: 0,
+    damage: 31, headMult: 4.0, pellets: 1, auto: true, rpm: 600, mag: 30, reserve: 90, reloadTime: 2.2,
+    spread: 0.18, airSpread: 0.9, moveSpread: 0.6, kick: 0.62, kickSide: 0.32, recover: 7,
+    falloffHalf: 5000, range: 9000, moveSpeedMul: 0.92, zoom: 0.8, color: 0x3a4255,
+  },
+  smg: {
+    id: 'smg', name: 'HORNET', category: 'SMG', slot: 0,
+    damage: 21, headMult: 2.5, pellets: 1, auto: true, rpm: 860, mag: 32, reserve: 128, reloadTime: 1.9,
+    spread: 0.55, airSpread: 0.45, moveSpread: 0.25, kick: 0.36, kickSide: 0.28, recover: 9,
+    falloffHalf: 1700, range: 5000, moveSpeedMul: 1.0, zoom: 0, color: 0x2f3442,
+  },
+  shotgun: {
+    id: 'shotgun', name: 'BREAKER-12', category: 'Shotgun', slot: 0,
+    damage: 14, headMult: 1.6, pellets: 9, auto: false, rpm: 72, mag: 6, reserve: 24, reloadTime: 2.4,
+    spread: 4.2, airSpread: 0.6, moveSpread: 0.4, kick: 3.6, kickSide: 0.8, recover: 12,
+    falloffHalf: 520, range: 2400, moveSpeedMul: 0.95, zoom: 0, color: 0x55392a,
+  },
+  sniper: {
+    id: 'sniper', name: 'LONGBOW', category: 'Sniper', slot: 0,
+    damage: 104, headMult: 3.0, pellets: 1, auto: false, rpm: 44, mag: 5, reserve: 20, reloadTime: 2.9,
+    spread: 3.0, airSpread: 2.0, moveSpread: 1.2, kick: 4.2, kickSide: 0.6, recover: 6,
+    falloffHalf: 30000, range: 16000, moveSpeedMul: 0.86, zoom: 0.28, zoomSpread: 0.02, color: 0x2b4a3a,
+  },
+};
+
+export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
+
+/** Fall-off: damage multiplier at distance d. */
+export function falloff(def: WeaponDef, d: number): number {
+  return Math.pow(0.5, d / def.falloffHalf);
+}
+
+// ---------------- Grenades & equipment ----------------
+export type NadeKind = 'he' | 'smoke' | 'impulse';
+
+export const NADES: Record<NadeKind, { name: string; fuse: number; impactDetonate: boolean; radius: number; damage: number; force: number; duration: number; color: number }> = {
+  he: { name: 'Granada explosiva', fuse: 1.6, impactDetonate: false, radius: 360, damage: 98, force: 420, duration: 0, color: 0xff5a3c },
+  smoke: { name: 'Granada de fumaça', fuse: 1.3, impactDetonate: false, radius: 300, damage: 0, force: 0, duration: 13, color: 0xcfd6e2 },
+  impulse: { name: 'Granada de impulso', fuse: 2.0, impactDetonate: true, radius: 330, damage: 0, force: 1050, duration: 0, color: 0x37e3ff },
+};
+
+export const NADE_THROW_SPEED = 950;
+export const NADE_SELF_DAMAGE = 0.5;
+
+export const ITEMS = {
+  medkitHeal: 50,
+  armorAmount: 50,
+  armorAbsorb: 0.5,       // fração do dano no corpo absorvida pelo colete
+  shieldAmount: 50,
+  shieldDuration: 12,
+  speedDuration: 6,
+  speedMul: 1.2,
+  speedAirMul: 1.25,
+  speedBoostImpulse: 180,
+  maxHp: 100,
+  maxArmor: 100,
+  pickupRadius: 70,
+  weaponPickupRadius: 110,
+  respawnTrainingSeconds: 8,
+};

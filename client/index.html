@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SURF STRIKE</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Rubik:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- ================= HUD ================= -->
+  <div id="hud" class="hidden">
+    <div id="crosshair"><i class="ch-t"></i><i class="ch-b"></i><i class="ch-l"></i><i class="ch-r"></i><i class="ch-dot"></i></div>
+    <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+    <div id="scope"><div class="scope-ring"></div></div>
+    <div id="damage-dirs"></div>
+    <div id="damage-vignette"></div>
+    <div id="ability-overlay"></div>
+
+    <div id="speed"><b id="speed-val">0</b><span>u/s</span></div>
+
+    <div id="topbar">
+      <div class="team-score blue"><span id="score-blue">0</span><div class="pips" id="pips-blue"></div></div>
+      <div id="round-clock"><div id="round-label">ROUND 1</div><div id="timer">1:30</div></div>
+      <div class="team-score red"><div class="pips" id="pips-red"></div><span id="score-red">0</span></div>
+    </div>
+
+    <div id="killfeed"></div>
+    <div id="toasts"></div>
+    <div id="banner"><div id="banner-title"></div><div id="banner-sub"></div></div>
+    <div id="prompt"></div>
+    <div id="spectate"></div>
+
+    <div id="vitals">
+      <div id="class-chip"><div id="class-icon"></div><div><div id="class-name">RUNNER</div><div id="class-role">Mobilidade</div></div></div>
+      <div class="bar-row"><div class="bar shield-bar"><div id="armor-fill"></div><div id="shield-fill"></div></div><span id="armor-val">0</span></div>
+      <div class="bar-row"><div class="bar hp-bar"><div id="hp-fill"></div><div id="hp-ghost"></div></div><span id="hp-val">100</span></div>
+    </div>
+
+    <div id="ability">
+      <div id="ability-key">Q</div>
+      <div id="ability-ring"><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="28" class="track"/><circle cx="32" cy="32" r="28" class="prog" id="ability-prog"/></svg><div id="ability-icon"></div><div id="ability-cd"></div></div>
+      <div id="ability-name">Dash Aéreo</div>
+      <div id="buffs"></div>
+    </div>
+
+    <div id="weapon-panel">
+      <div id="nades"></div>
+      <div id="weapon-name">VEX-9</div>
+      <div id="ammo"><b id="ammo-mag">12</b><span id="ammo-res">/ 48</span></div>
+      <div id="slots"></div>
+      <div id="reload-bar"><div id="reload-fill"></div></div>
+    </div>
+
+    <div id="training-help"></div>
+    <div id="scoreboard" class="hidden"></div>
+  </div>
+
+  <!-- ================= MENUS ================= -->
+  <div id="menu" class="screen">
+    <div class="menu-wrap">
+      <header class="logo">
+        <div class="logo-mark">SURF<br />STRIKE</div>
+        <p class="logo-sub">Rampas, momentum e mira. Arena flutuante sobre as nuvens.</p>
+      </header>
+      <nav class="menu-list" id="main-nav">
+        <button data-go="play" class="primary">Jogar contra bots</button>
+        <button data-go="training">Treinamento</button>
+        <button data-go="create">Criar sala</button>
+        <button data-go="join">Entrar em sala</button>
+        <button data-go="classes">Classes</button>
+        <button data-go="settings">Configurações</button>
+        <button data-go="credits">Créditos</button>
+      </nav>
+      <footer class="menu-foot" id="menu-foot">Clique na arena para capturar o mouse. Esc pausa a partida.</footer>
+    </div>
+  </div>
+
+  <div id="panel" class="screen hidden"><div class="panel-card" id="panel-body"></div></div>
+  <div id="error" class="screen hidden"><div class="panel-card"><h2>Não foi possível iniciar</h2><p id="error-msg"></p></div></div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
