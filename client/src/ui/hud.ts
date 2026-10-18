@@ -110,7 +110,7 @@ export class Hud {
     const scoped = p.zoomed && ws && ws.id === 'sniper';
     this.set('scope', 'class', scoped ? 'on' : '');
     // correndo (arma levantada) a mira some; volta quando a arma abaixa
-    this.set('crosshair', 'style', scoped || p.sprinting ? 'none' : 'block', 'display');
+    this.set('crosshair', 'style', scoped || p.weaponRaised ? 'none' : 'block', 'display');
     const air = !p.phys.onGround ? 4 : 0;
     const gap = Math.min(14, p.punchPitch * 1.2 + air + (p.zoomed ? 0 : 0));
     this.set('crosshair', 'style', `${gap.toFixed(0)}px`, '--gap');

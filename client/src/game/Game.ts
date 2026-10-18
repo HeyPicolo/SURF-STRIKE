@@ -157,6 +157,7 @@ export class Game {
         first = false;
         w.step(SIM_DT);
         this.processEvents(w.drainEvents());
+        this.footsteps(SIM_DT);
         this.acc -= SIM_DT;
         steps++;
       }
@@ -180,7 +181,7 @@ export class Game {
     // importante para o slide (toque no Ctrl) e para o slide cancel (toque no Espaço)
     inp.cmd.jump = i.held('jump') || (first && i.consume('jump'));
     inp.cmd.crouch = i.held('crouch') || (first && i.consume('crouch'));
-    inp.cmd.sprint = i.held('sprint');
+    inp.cmd.walk = i.held('walk');
     const live = i.locked || i.enabled;
     inp.fire = live && (i.mouse[0] || (first && i.consumeMouse(0)));
     inp.alt = live && (first ? i.consumeMouse(2) : false);
@@ -345,6 +346,28 @@ export class Game {
     tick();
   }
 
+  /** Passos: correndo fazem barulho (ouvido por quem está perto); caminhando (Shift) ou agachado, silêncio. */
+  private stepAcc = new Map<number, number>();
+  private footsteps(dt: number) {
+    const w = this.world!, viewer = this.viewed();
+    for (const p of w.players) {
+      const hs = Math.hypot(p.phys.vel.x, p.phys.vel.z);
+      const silent = !p.alive || p.walking || p.phys.ducked || p.slideTime > 0 || p.fly || !p.phys.onGround || hs < 120;
+      if (silent) { this.stepAcc.set(p.id, p.walking ? 0 : (this.stepAcc.get(p.id) ?? 0)); continue; }
+      let acc = (this.stepAcc.get(p.id) ?? 0) + hs * dt;
+      const stride = 105;
+      if (acc >= stride) {
+        acc -= stride;
+        if (p === viewer) this.sfx.step(0, 0.32, hs);
+        else {
+          const [pan, g] = this.spatial(p.phys.pos);
+          if (g > 0.35) this.sfx.step(pan, g * 0.55, hs);
+        }
+      }
+      this.stepAcc.set(p.id, acc);
+    }
+  }
+
   /** Stereo pan & gain for a world position relative to the viewer. */
   private spatial(pos: V3): [number, number] {
     const v = this.viewed();
@@ -407,7 +430,7 @@ export class Game {
     if (viewer.zoomed && ws && WEAPONS[ws.id].zoom > 0) { tanH *= WEAPONS[ws.id].zoom; sensMul = WEAPONS[ws.id].zoom; }
     this.input.sensMul = isMe ? sensMul : 1;
     // sprint/slide: leve abertura de FOV e inclinação da câmera no slide (sem afetar a mira)
-    const kickGoal = viewer.slideTime > 0 ? 1 : viewer.sprinting ? 0.6 : 0;
+    const kickGoal = viewer.slideTime > 0 ? 1 : viewer.sprinting ? 0.25 : 0;
     this.fovKick += (kickGoal - this.fovKick) * Math.min(1, dt * 8);
     this.slideRoll += ((viewer.slideTime > 0 ? 0.045 : 0) - this.slideRoll) * Math.min(1, dt * 10);
     if (!viewer.zoomed) tanH *= 1 + this.fovKick * 0.06;
@@ -568,7 +591,7 @@ export class Game {
     r.drawMesh(cm.torso, torso, opts);
     r.drawMesh(cm.head, child(this.tmpM2, torso, 0, 25, 0, 0, p.pitch * 0.6), opts);
     // arms aim with pitch
-    const armPitch = p.sprinting ? 0.6 : Math.PI / 2 + p.pitch; // correndo: arma levantada junto ao peito
+    const armPitch = p.weaponRaised ? 0.6 : Math.PI / 2 + p.pitch; // correndo: arma levantada junto ao peito
     const armR = child(mat4(), torso, 15, 22, -1, 0, armPitch, 0);
     r.drawMesh(cm.armR, armR, opts);
     r.drawMesh(cm.armL, child(this.tmpM2, torso, -13, 22, -1, -0.45, armPitch, 0), opts);
@@ -588,7 +611,7 @@ export class Game {
   /** Tecla F: inspeciona a arma na mão (só visual). */
   private startInspect() {
     const p = this.world?.local;
-    if (!p || !p.alive || p.sprinting || p.slideTime > 0 || p.reloadTime > 0 || p.switchTime > 0) return;
+    if (!p || !p.alive || p.weaponRaised || p.slideTime > 0 || p.reloadTime > 0 || p.switchTime > 0) return;
     const ws = p.currentWeapon();
     this.inspect = { start: this.time, slot: p.slot, weapon: ws?.id ?? 'nade' };
     this.knifeDrawStart = -10;
@@ -599,7 +622,7 @@ export class Game {
     const ins = this.inspect;
     if (ins) {
       const ws = p.currentWeapon();
-      const cancelled = p.slot !== ins.slot || (ws?.id ?? 'nade') !== ins.weapon || p.sprinting || p.slideTime > 0 || p.reloadTime > 0
+      const cancelled = p.slot !== ins.slot || (ws?.id ?? 'nade') !== ins.weapon || p.weaponRaised || p.slideTime > 0 || p.reloadTime > 0
         || this.input.mouse[0] || this.input.mouse[2] || !p.alive;
       const t = this.time - ins.start;
       const dur = isKnife ? BF_INSPECT_TIME : p.slot === SLOT_NADES ? NADE_INSPECT_TIME : GUN_INSPECT_TIME;
@@ -631,8 +654,8 @@ export class Game {
     // sprint tático: arma levantada; volta à posição de tiro durante o sprint-to-fire delay
     const isKnife = !!ws && !!WEAPONS[ws.id].melee;
     const lowerTime = isKnife ? SPRINT.sprintToFireKnife : SPRINT.sprintToFire;
-    const poseGoal = p.sprinting ? 1 : Math.min(1, p.raiseTime / lowerTime);
-    this.sprintPose += (poseGoal - this.sprintPose) * Math.min(1, dt * (p.sprinting ? 9 : 30));
+    const poseGoal = p.weaponRaised ? 1 : Math.min(1, p.raiseTime / lowerTime);
+    this.sprintPose += (poseGoal - this.sprintPose) * Math.min(1, dt * (p.weaponRaised ? 9 : 30));
     const sp = this.sprintPose * (1 - this.switchAnim);
     // armas de fogo sobem e giram para o lado; a faca só baixa e recua um pouco
     const sx = isKnife ? 1 : -3, sy = isKnife ? -3 : 2.5, sz = isKnife ? -1 : 3, syaw = isKnife ? 0.25 : 0.75, spitch = isKnife ? -0.25 : 0.55, sroll = isKnife ? 0.15 : 0.5;

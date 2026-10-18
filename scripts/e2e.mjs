@@ -120,22 +120,25 @@ check('8b. inspecionar a faca borboleta no F', !!insp && insp.weapon === 'knife'
 await page.mouse.down(); await waitSim(0.05); await page.mouse.up();
 
 
-// tactical sprint (Shift) + slide (Ctrl) + slide cancel (Space) pelo teclado
+// sprint automático (W) + caminhar (Shift) + slide (Ctrl) + slide cancel (Space) pelo teclado
 await S(() => { const w = window.__surf.game.world, p = w.local; p.phys.pos.set(14200, 2, 760); p.phys.vel.set(0, 0, 0); window.__surf.input.yaw = 0; window.__surf.input.pitch = 0; });
 await waitSim(0.2);
-await page.keyboard.down('KeyW'); await waitSim(0.5);
-const walkSpeed = await S(() => { const v = window.__surf.game.world.local.phys.vel; return Math.hypot(v.x, v.z); });
-await page.keyboard.down('ShiftLeft'); await waitSim(0.6);
+await page.keyboard.down('KeyW'); await waitSim(0.6);
 const sprint = await S(() => { const p = window.__surf.game.world.local; return { s: Math.hypot(p.phys.vel.x, p.phys.vel.z), on: p.sprinting }; });
-check('12. sprint tático no Shift (+30%)', sprint.on && sprint.s / walkSpeed > 1.25, `andando=${walkSpeed.toFixed(0)} correndo=${sprint.s.toFixed(0)}`);
+await page.keyboard.down('ShiftLeft'); await waitSim(0.6);
+const walk = await S(() => { const p = window.__surf.game.world.local; return { s: Math.hypot(p.phys.vel.x, p.phys.vel.z), on: p.sprinting, walking: p.walking }; });
+await page.keyboard.down('ControlLeft'); await waitSim(0.05);
+const walkSlide = await S(() => window.__surf.game.world.local.slideTime);
+await page.keyboard.up('ControlLeft'); await page.keyboard.up('ShiftLeft'); await waitSim(0.6);
+check('12. sprint automático e Shift caminha', sprint.on && walk.walking && !walk.on && sprint.s / walk.s > 2 && walkSlide === 0, `correndo=${sprint.s.toFixed(0)} caminhando=${walk.s.toFixed(0)} slideAoCaminhar=${walkSlide}`);
 await page.keyboard.down('ControlLeft'); await waitSim(0.05);
 const slide = await S(() => { const p = window.__surf.game.world.local; return { t: p.slideTime, s: Math.hypot(p.phys.vel.x, p.phys.vel.z), ducked: p.phys.ducked }; });
 await page.screenshot({ path: join(shots, '08-slide.png') });
 await waitSim(0.15);
 await page.keyboard.press('Space'); await waitSim(0.05);
-const cancel = await S(() => { const p = window.__surf.game.world.local; return { t: p.slideTime, stamina: p.stamina, ducked: p.phys.ducked }; });
-await page.keyboard.up('ControlLeft'); await page.keyboard.up('ShiftLeft'); await page.keyboard.up('KeyW');
-check('13. slide com Shift + Ctrl e cancel com Espaço', slide.t > 0 && slide.ducked && cancel.t === 0 && !cancel.ducked && cancel.stamina === 4, `slide=${JSON.stringify(slide)} cancel=${JSON.stringify(cancel)}`);
+const cancel = await S(() => { const p = window.__surf.game.world.local; return { t: p.slideTime, ducked: p.phys.ducked }; });
+await page.keyboard.up('ControlLeft'); await page.keyboard.up('KeyW');
+check('13. slide com Ctrl em movimento e cancel com Espaço', slide.t > 0 && slide.ducked && cancel.t === 0 && !cancel.ducked, `slide=${JSON.stringify(slide)} cancel=${JSON.stringify(cancel)}`);
 
 // ability
 await page.keyboard.press('KeyQ'); await waitSim(0.1);

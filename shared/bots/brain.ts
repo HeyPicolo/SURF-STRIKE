@@ -102,7 +102,6 @@ export class BotBrain {
     const fighting = !!this.target && this.seenTime > this.skill.reaction;
     // sem arma de fogo (só faca/taser): luta corpo a corpo
     const knifeOnly = w.firstWeaponSlot(p) === SLOT_KNIFE;
-    let sprintWish = !fighting && this.mode === 'roam' && p.phys.onGround;
     if (fighting && p.phys.onGround) {
       this.strafeTimer -= dt;
       if (this.strafeTimer <= 0) { this.strafeDir = this.rand() < 0.5 ? -1 : 1; this.strafeTimer = 0.35 + this.rand() * 0.7; }
@@ -114,7 +113,6 @@ export class BotBrain {
         // só com a faca: corre direto para o inimigo e só para de correr perto dele
         steer.forward = dist > 45 ? 1 : 0;
         steer.side = dist > 200 ? this.strafeDir * 0.35 : 0;
-        sprintWish = dist > 320;
       } else {
         steer.forward = dist > 1400 ? 1 : dist < 300 ? -0.6 : 0;
         steer.side = this.strafeDir;
@@ -162,8 +160,7 @@ export class BotBrain {
     inp.cmd.forward = fwd; inp.cmd.side = side;
     inp.cmd.yaw = this.lookYaw; inp.cmd.pitch = this.lookPitch;
     inp.cmd.jump = steer.jump; inp.cmd.crouch = false;
-    // tactical sprint when travelling on foot (it raises the weapon, so never while trading shots)
-    inp.cmd.sprint = sprintWish && fwd > 0.5;
+    inp.cmd.walk = false; // bots never walk (the sprint is automatic)
 
     // ---------- weapons ----------
     this.handleWeapons(dt, fighting);

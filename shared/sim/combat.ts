@@ -1,5 +1,5 @@
 // Cálculos de dano puros (testáveis) + modelo de spread/recuo.
-import { WEAPONS, WeaponDef, ITEMS, falloff, ACCURACY } from '../config/weapons';
+import { WEAPONS, WeaponDef, ITEMS, falloff, ACCURACY, DAMAGE } from '../config/weapons';
 import { CLASSES } from '../config/classes';
 
 export interface DamageContext {
@@ -40,7 +40,8 @@ export function computeDamage(c: DamageContext): DamageResult {
 
 /** Dano de um projétil da arma `def` à distância `dist`. */
 export function weaponHitDamage(def: WeaponDef, dist: number, head: boolean): number {
-  return def.damage * falloff(def, dist) * (head ? def.headMult : 1);
+  const mul = def.melee || def.starter ? 1 : DAMAGE.gunMul;
+  return def.damage * mul * falloff(def, dist) * (head ? def.headMult : 1);
 }
 
 export interface SpreadState { onGround: boolean; hSpeed: number; ducked: boolean; zoomed: boolean; }

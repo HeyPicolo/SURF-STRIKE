@@ -335,7 +335,7 @@ export class World {
 
     // movement
     const frozen = p.frozen || (this.match.frozen && this.config.mode !== 'training');
-    const rawCmd = frozen ? { ...inp.cmd, forward: 0, side: 0, jump: false, up: 0, sprint: false } : inp.cmd;
+    const rawCmd = frozen ? { ...inp.cmd, forward: 0, side: 0, jump: false, up: 0 } : inp.cmd;
     const cmd = this.updateSprintSlide(p, rawCmd, dt);
     const mods: MoveModifiers = {
       speedMul: p.speedMul(),
@@ -381,11 +381,13 @@ export class World {
     p.slideRecover = Math.max(0, p.slideRecover - dt);
     const hs = Math.hypot(st.vel.x, st.vel.z);
 
+    p.walking = cmd.walk && !p.fly;
+
     // ---- slide ----
     if (p.slideTime > 0) {
       p.slideTime -= dt;
       if (jumpEdge || crouchEdge) {
-        // slide cancel: levanta na hora (sem a trava de recuperação) e reseta o sprint tático
+        // slide cancel: levanta na hora (sem a trava de recuperação)
         p.slideTime = 0;
         p.crouchSuppressed = true;
         p.stamina = SPRINT.stamina; p.staminaLocked = false;
@@ -398,10 +400,10 @@ export class World {
         this.emit({ t: 'slide', pid: p.id, phase: 'end' });
       }
     } else if (
-      // slide: agachar durante o sprint, ou agachar em alta velocidade (sem sprint). Agachar logo antes
-      // de pousar também conta, para emendar o slide na queda de uma rampa.
+      // slide: agachar enquanto anda (exceto caminhando com Shift). Agachar logo antes de pousar
+      // também conta, para emendar o slide na queda de uma rampa.
       (crouchEdge || (p.crouchBuffer > 0 && cmd.crouch)) && st.onGround && p.slideCooldown <= 0 && !p.fly && !p.crouchSuppressed &&
-      ((p.sprinting && hs >= SPRINT.slideMinStartSpeed) || hs > SPRINT.autoSlideSpeed)
+      !p.walking && hs >= SPRINT.slideMinStartSpeed
     ) {
       p.crouchBuffer = 0;
       p.slideTime = SPRINT.slideTime;
@@ -415,31 +417,38 @@ export class World {
     const sliding = p.slideTime > 0;
     const crouch = sliding || (cmd.crouch && !p.crouchSuppressed);
 
-    // ---- tactical sprint ----
+    // ---- sprint (automático: sempre que se move no chão; o Shift caminha e anula o sprint) ----
     if (p.staminaLocked && p.stamina >= SPRINT.restartStamina) p.staminaLocked = false;
-    const wantsSprint = cmd.sprint && cmd.forward > 0 && !p.input.fire && !crouch && !sliding && p.slideRecover <= 0 && !p.fly;
-    const canSprint = wantsSprint && !p.staminaLocked && p.stamina > 0 && !st.ducked && (st.onGround || p.sprinting);
-    if (canSprint && !p.sprinting) { p.zoomed = false; }
+    const moving = cmd.forward !== 0 || cmd.side !== 0;
+    const wantsSprint = moving && !p.walking && !crouch && !sliding && p.slideRecover <= 0 && !p.fly
+      && (SPRINT.raiseWeapon ? !p.input.fire && cmd.forward > 0 : true);
+    const staminaOk = !SPRINT.useStamina || (!p.staminaLocked && p.stamina > 0);
+    const canSprint = wantsSprint && staminaOk && !st.ducked && (st.onGround || p.sprinting);
+    if (canSprint && !p.sprinting && SPRINT.raiseWeapon) p.zoomed = false;
     p.sprinting = canSprint;
     if (p.sprinting) {
-      if (st.onGround) p.stamina -= dt;
-      if (p.stamina <= 0) { p.stamina = 0; p.staminaLocked = true; p.sprinting = false; }
+      if (SPRINT.useStamina) {
+        if (st.onGround) p.stamina -= dt;
+        if (p.stamina <= 0) { p.stamina = 0; p.staminaLocked = true; p.sprinting = false; }
+      }
       p.sinceSprint = 0;
-      // arma levantada: ao sair do sprint, leva este tempo para poder atirar
-      const w = p.currentWeapon();
-      p.raiseTime = w && WEAPONS[w.id].melee ? SPRINT.sprintToFireKnife : SPRINT.sprintToFire;
+      if (SPRINT.raiseWeapon) {
+        // arma levantada: ao sair do sprint, leva este tempo para poder atirar
+        const w = p.currentWeapon();
+        p.raiseTime = w && WEAPONS[w.id].melee ? SPRINT.sprintToFireKnife : SPRINT.sprintToFire;
+      }
     } else {
       p.sinceSprint += dt;
       if (p.sinceSprint > SPRINT.regenDelay) p.stamina = Math.min(SPRINT.stamina, p.stamina + SPRINT.regenRate * dt);
-      p.raiseTime = Math.max(0, p.raiseTime - dt);
     }
+    if (!p.sprinting || !SPRINT.raiseWeapon) p.raiseTime = Math.max(0, p.raiseTime - dt);
 
     if (crouch === cmd.crouch) return cmd;
     return { ...cmd, crouch };
   }
 
-  /** Weapon is raised (sprinting) or still being lowered: no shooting. */
-  weaponBlocked(p: Player): boolean { return p.sprinting || p.raiseTime > SPRINT.walkToFire; }
+  /** Weapon is raised (tactical sprint) or still being lowered: no shooting. */
+  weaponBlocked(p: Player): boolean { return p.weaponRaised || p.raiseTime > SPRINT.walkToFire; }
 
   /** Caiu do mapa: volta automaticamente para a base do próprio time (parado). */
   sendToBase(p: Player) {
@@ -587,6 +596,10 @@ export class World {
         if (q === p || !q.alive || q.team === p.team) continue;
         if (q.inDuel !== p.inDuel) continue;
         hitboxes(q, this.hbHead, this.hbBody);
+        if (def.hitPadding) for (const b of [this.hbHead, this.hbBody]) {
+          b.min.x -= def.hitPadding; b.min.z -= def.hitPadding; b.max.x += def.hitPadding; b.max.z += def.hitPadding;
+          b.min.y -= def.hitPadding * 0.5; b.max.y += def.hitPadding * 0.5;
+        }
         const th2 = rayAabb(this.eye, this.dir, best, this.hbHead.min, this.hbHead.max);
         if (th2 >= 0 && th2 < best) { best = th2; victim = q; head = true; }
         const tb = rayAabb(this.eye, this.dir, best, this.hbBody.min, this.hbBody.max);
@@ -623,7 +636,7 @@ export class World {
   }
 
   // ------------------------------------------------------------------ knife
-  private meleeDirs = [[0, 0], [7, 0], [-7, 0], [0, 6], [0, -6]];
+  private meleeDirs = [[0, 0], [8, 0], [-8, 0], [0, 7], [0, -7], [14, 0], [-14, 0]];
   private melee(p: Player, heavy: boolean) {
     const def = WEAPONS.knife, m = def.melee!;
     const rateMul = 1 + (p.classId === 'predator' ? p.predatorStacks * CLASSES.predator.params.stackFireRate : 0);

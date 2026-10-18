@@ -51,7 +51,15 @@ export const PHYSICS = {
 //  Tactical Sprint e Slide
 // =============================================================
 export const SPRINT = {
-  /** Multiplicador de velocidade no chão durante o sprint tático. */
+  /** Sprint sempre ativo: basta se mover no chão (não precisa de tecla). */
+  autoSprint: true,
+  /** Sprint tático clássico: arma levantada durante o sprint (desligado com o sprint automático). */
+  raiseWeapon: false,
+  /** Stamina limitada para o sprint (desligada com o sprint automático). */
+  useStamina: false,
+  /** Caminhar (Shift): anula o sprint, fica mais lento e não faz som de passos. */
+  walkSpeedMul: 0.55,
+  /** Multiplicador de velocidade no chão durante o sprint. */
   speedMul: 1.3,
   /** Stamina oculta, em segundos de sprint contínuo. */
   stamina: 4.0,
@@ -67,7 +75,7 @@ export const SPRINT = {
   sprintToFireKnife: 0.16,
   /** Atraso de quem só estava andando (referência: praticamente imediato). */
   walkToFire: 0,
-  /** Velocidade mínima para iniciar um slide a partir do sprint. */
+  /** Velocidade mínima para iniciar um slide ao agachar em movimento. */
   slideMinStartSpeed: 200,
   /** Acima desta velocidade, agachar no chão já faz o slide (sem precisar do sprint). */
   autoSlideSpeed: 450,

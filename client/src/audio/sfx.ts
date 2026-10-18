@@ -147,6 +147,13 @@ export class Sfx {
     if (kind === 'impulse') { this.tone(d, t, 0.35, 120, 900, 0.6, 'sine'); this.noise(d, t, 0.3, 4000, 800, 1, 0.5); return; }
     this.noise(d, t, 0.9, 900, 60, 0.5, 1.4, 'lowpass'); this.tone(d, t, 0.6, 80, 28, 1.2, 'sine');
   }
+  /** Passo no chão (mais forte quanto mais rápido). */
+  step(pan = 0, gain = 0.3, speed = 250) {
+    const d = this.out(pan, gain * Math.min(1.3, 0.6 + speed / 600)); if (!d) return;
+    const t = this.ctx!.currentTime, f = 220 + Math.random() * 120;
+    this.noise(d, t, 0.05, f * 3, f, 1.2, 0.5, 'lowpass');
+    this.tone(d, t, 0.04, f * 0.5, f * 0.3, 0.35);
+  }
   jump() { const d = this.out(0, 0.15); if (!d) return; this.noise(d, this.ctx!.currentTime, 0.06, 800, 400, 1, 0.3, 'lowpass'); }
   land(speed: number) { const d = this.out(0, Math.min(0.6, speed / 1200)); if (!d) return; const t = this.ctx!.currentTime; this.noise(d, t, 0.12, 300, 80, 0.8, 1, 'lowpass'); this.tone(d, t, 0.1, 90, 50, 0.6); }
   teleport() { const d = this.out(0, 0.5); if (!d) return; const t = this.ctx!.currentTime; this.tone(d, t, 0.3, 300, 1800, 0.3, 'sine'); this.noise(d, t, 0.3, 5000, 1000, 2, 0.3); }

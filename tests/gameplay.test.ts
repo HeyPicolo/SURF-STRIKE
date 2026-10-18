@@ -1,4 +1,4 @@
-// Tactical Sprint, Slide/Slide Cancel, faca e spawns aleatórios.
+// Sprint automático, caminhar, Slide/Slide Cancel, faca e spawns aleatórios.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { World } from '../shared/sim/world';
@@ -41,7 +41,10 @@ test('knife in hand: ground speed +25%', () => {
   assert.equal(p.currentWeapon()!.id, 'knife');
   p.input.cmd.forward = 1;
   run(w, 120);
-  assert.ok(Math.abs(hs(p) - PHYSICS.maxGroundSpeed * 1.25) < 3, `speed ${hs(p)}`);
+  // o sprint automático soma ao bônus da faca
+  assert.ok(Math.abs(hs(p) - PHYSICS.maxGroundSpeed * 1.25 * SPRINT.speedMul) < 3, `speed ${hs(p)}`);
+  p.input.cmd.walk = true; run(w, 120);
+  assert.ok(Math.abs(hs(p) - PHYSICS.maxGroundSpeed * 1.25 * SPRINT.walkSpeedMul) < 3, `walk speed ${hs(p)}`);
 });
 
 test('knife bonus does not change air acceleration (surf balance)', () => {
@@ -57,58 +60,55 @@ test('knife bonus does not change air acceleration (surf balance)', () => {
   assert.ok(a.vel.equals(b.vel, 1e-6));
 });
 
-test('tactical sprint: ~30% faster, weapon raised, stamina runs out', () => {
-  const w = world(); const p = arena(w);
-  p.input.cmd.forward = 1;
-  run(w, 100);
-  const walk = hs(p);
-  p.input.cmd.sprint = true;
-  run(w, 100);
-  assert.ok(p.sprinting);
-  assert.ok(Math.abs(hs(p) / walk - SPRINT.speedMul) < 0.02, `ratio ${hs(p) / walk}`);
-  assert.ok(w.weaponBlocked(p), 'cannot attack while sprinting');
-  // keep sprinting until the hidden stamina is gone
-  let stopAt = -1, lockedAtStop = false;
-  run(w, 600, (i) => { if (stopAt < 0 && !p.sprinting) { stopAt = i; lockedAtStop = p.staminaLocked; } });
-  const total = (100 + stopAt) * SIM_DT;
-  assert.ok(stopAt > 0 && Math.abs(total - SPRINT.stamina) < 0.1, `sprinted ${total.toFixed(2)}s`);
-  assert.ok(lockedAtStop, 'exhausted');
-  assert.ok(p.sprinting, 'stamina regenerated and sprint resumed while still holding Shift');
-});
-
-test('sprint-to-fire delay is much longer than walk-to-fire', () => {
+test('sprint is always on: moving on foot is ~30% faster, no key, no stamina, weapon ready', () => {
   const w = world(); const p = arena(w);
   p.giveWeapon('rifle');
   p.input.slot = 0; w.step(SIM_DT); p.input.slot = null;
   run(w, 50);
-  // walking: shoots right away
   p.input.cmd.forward = 1;
-  run(w, 30);
+  run(w, 100);
+  assert.ok(p.sprinting, 'sprinting without any key');
+  assert.ok(!w.weaponBlocked(p), 'weapon is not raised by the sprint');
+  const sprint = hs(p);
+  assert.ok(Math.abs(sprint / (PHYSICS.maxGroundSpeed * WEAPONS.rifle.moveSpeedMul) - SPRINT.speedMul) < 0.02, `sprint speed ${sprint}`);
+  // shoots right away while sprinting
   const mag0 = p.weapons[0]!.mag;
   p.input.fire = true; w.step(SIM_DT); p.input.fire = false;
-  assert.equal(p.weapons[0]!.mag, mag0 - 1, 'walking fires immediately');
-  run(w, 30);
-  // sprinting: press fire → sprint ends, the weapon takes SPRINT.sprintToFire to come down
-  p.input.cmd.sprint = true;
-  run(w, 60);
-  assert.ok(p.sprinting);
-  const mag1 = p.weapons[0]!.mag;
-  let ticks = 0;
-  p.input.fire = true;
-  while (p.weapons[0]!.mag === mag1 && ticks < 200) { w.step(SIM_DT); ticks++; }
-  const delay = ticks * SIM_DT;
-  assert.ok(Math.abs(delay - SPRINT.sprintToFire) < 0.05, `sprint-to-fire ${delay.toFixed(2)}s`);
+  assert.equal(p.weapons[0]!.mag, mag0 - 1, 'fires while sprinting');
+  // no stamina: keeps sprinting for a long time
+  run(w, 1000);
+  assert.ok(p.sprinting, 'still sprinting after 10 s');
+  // standing still is not sprinting
+  p.input.cmd.forward = 0; run(w, 80);
+  assert.ok(!p.sprinting);
 });
 
-test('slide only from sprint, gives a speed burst, ends with a recovery lock', () => {
+test('Shift walks: cancels the sprint, slower, silent', () => {
   const w = world(); const p = arena(w);
   p.input.cmd.forward = 1;
-  run(w, 80);
-  // crouching while walking does not slide
+  run(w, 100);
+  const sprint = hs(p);
+  p.input.cmd.walk = true;
+  run(w, 100);
+  assert.ok(p.walking && !p.sprinting);
+  const walk = hs(p);
+  assert.ok(Math.abs(walk / sprint - SPRINT.walkSpeedMul / SPRINT.speedMul) < 0.03, `walk ${walk} vs sprint ${sprint}`);
+  p.input.cmd.walk = false; run(w, 100);
+  assert.ok(!p.walking && p.sprinting, 'releasing Shift sprints again');
+});
+
+test('crouching while moving slides (not while walking or standing), with a speed burst', () => {
+  const w = world(); const p = arena(w);
+  // standing still: just crouches
   p.input.cmd.crouch = true; w.step(SIM_DT);
   assert.equal(p.slideTime, 0);
   p.input.cmd.crouch = false; run(w, 30);
-  p.input.cmd.sprint = true; run(w, 60);
+  // walking (Shift): just crouches
+  p.input.cmd.forward = 1; p.input.cmd.walk = true; run(w, 80);
+  p.input.cmd.crouch = true; w.step(SIM_DT);
+  assert.equal(p.slideTime, 0, 'no slide while walking');
+  p.input.cmd.crouch = false; p.input.cmd.walk = false; run(w, 80);
+  // running (the sprint is automatic): slides
   const before = hs(p);
   p.input.cmd.crouch = true; w.step(SIM_DT);
   assert.ok(p.slideTime > 0, 'slide started');
@@ -117,28 +117,29 @@ test('slide only from sprint, gives a speed burst, ends with a recovery lock', (
   run(w, 100);
   assert.equal(p.slideTime, 0);
   assert.ok(p.slideRecover > 0 || p.phys.ducked, 'natural end: recovery lock (or still crouched)');
+  // sideways strafing also slides
+  p.input.cmd.crouch = false; p.input.cmd.forward = 0; p.input.cmd.side = 1; run(w, 100);
+  p.input.cmd.crouch = true; w.step(SIM_DT);
+  assert.ok(p.slideTime > 0, 'strafe slide');
 });
 
-test('slide cancel with jump: stands up instantly, no recovery lock, sprint reset', () => {
+test('slide cancel with jump: stands up instantly, no recovery lock', () => {
   const w = world(); const p = arena(w);
-  p.input.cmd.forward = 1; p.input.cmd.sprint = true;
-  run(w, 250); // burn some stamina
-  const staminaBefore = p.stamina;
-  assert.ok(staminaBefore < SPRINT.stamina - 1);
+  p.input.cmd.forward = 1;
+  run(w, 100);
   p.input.cmd.crouch = true; w.step(SIM_DT);
   assert.ok(p.slideTime > 0);
   run(w, 20);
   p.input.cmd.jump = true; w.step(SIM_DT); p.input.cmd.jump = false;
   assert.equal(p.slideTime, 0);
   assert.equal(p.slideRecover, 0);
-  assert.equal(p.stamina, SPRINT.stamina, 'tactical sprint reset');
   assert.ok(!p.phys.onGround, 'slide-jump keeps going');
   assert.ok(!p.phys.ducked, 'standing even with Ctrl still held');
 });
 
-test('slide cancel with crouch: stands back up and can sprint again', () => {
+test('slide cancel with crouch: stands back up and sprints again', () => {
   const w = world(); const p = arena(w);
-  p.input.cmd.forward = 1; p.input.cmd.sprint = true;
+  p.input.cmd.forward = 1;
   run(w, 60);
   p.input.cmd.crouch = true; w.step(SIM_DT);
   p.input.cmd.crouch = false; run(w, 10);
@@ -239,14 +240,14 @@ test('teleporters keep the speed and turn it with the view', () => {
   assert.ok(q.phys.vel.z < -540 && Math.abs(q.phys.vel.x) < 60, `exit velocity ${q.phys.vel.toArray().map(Math.round)}`);
 });
 
-test('crouch above 450 u/s slides without sprint (also right before landing)', () => {
+test('crouch at speed slides with no movement key held (also right before landing)', () => {
   const w = world(); const p = arena(w);
   // slow: just crouches
-  p.phys.vel.set(0, 0, -300);
+  p.phys.vel.set(0, 0, -150);
   p.input.cmd.crouch = true; w.step(SIM_DT); p.input.cmd.crouch = false;
   assert.equal(p.slideTime, 0);
   run(w, 60);
-  // fast, no sprint key: slides
+  // fast, no movement key: slides
   p.phys.pos.set(14200, 2, 760); p.phys.vel.set(0, 0, -650);
   w.step(SIM_DT);
   p.input.cmd.crouch = true; w.step(SIM_DT);
@@ -388,4 +389,52 @@ test('reloads are 45% faster', () => {
 
 test('the knife is the butterfly knife', () => {
   assert.equal(WEAPONS.knife.category, 'Faca borboleta');
+});
+
+// ---------------------------------------------------------------- v6: dano, Kestrel, hitbox da faca/taser
+import { weaponHitDamage } from '../shared/sim/combat';
+import { DAMAGE } from '../shared/config/weapons';
+
+test('guns deal more damage; knife and taser unchanged', () => {
+  assert.ok(DAMAGE.gunMul > 1);
+  for (const id of ['rifle', 'smg', 'shotgun', 'sniper', 'pistol'] as const) {
+    if (!WEAPONS[id]) continue;
+    assert.ok(Math.abs(weaponHitDamage(WEAPONS[id], 0, false) - WEAPONS[id].damage * DAMAGE.gunMul) < 1e-6, id);
+  }
+  assert.equal(weaponHitDamage(WEAPONS.knife, 0, false), WEAPONS.knife.damage);
+  assert.equal(weaponHitDamage(WEAPONS.taser, 0, false), WEAPONS.taser.damage);
+});
+
+test('Kestrel AR is tighter: half the old spread, less recoil', () => {
+  const r = WEAPONS.rifle;
+  assert.ok(r.spread <= 0.09 && r.airSpread <= 0.45 && r.moveSpread <= 0.3);
+  assert.ok(r.kick < 0.62 && r.kickSide < 0.32);
+});
+
+function offsetDuel(weapon: 'knife' | 'taser', lateral: number) {
+  const w = world(3); const p = arena(w);
+  const d = w.players.find((q) => q.isDummy)!;
+  w.bots.delete(d.id);
+  d.input.cmd = { ...d.input.cmd, side: 0, forward: 0, yaw: Math.PI };
+  d.phys.pos.set(14200, 2, 500); d.prevPos.copy(d.phys.pos); d.phys.vel.set(0, 0, 0);
+  const dist = weapon === 'knife' ? 60 : 120;
+  p.phys.pos.set(14200, 2, 500 + dist); p.prevPos.copy(p.phys.pos); p.phys.vel.set(0, 0, 0);
+  if (weapon === 'taser') { p.input.slot = 2; w.step(SIM_DT); p.input.slot = null; }
+  run(w, 60);
+  p.phys.pos.set(14200, 2, 500 + dist); p.phys.vel.set(0, 0, 0);
+  aimAt(p, new V3(14200 + lateral, 40, 500));
+  const before = d.hp + d.armor;
+  p.input.fire = true; w.step(SIM_DT); p.input.fire = false;
+  return before - (d.hp + d.armor);
+}
+
+test('knife hitbox is bigger: hits a target well off the crosshair', () => {
+  assert.ok(WEAPONS.knife.melee!.hitPadding >= 14);
+  assert.ok(offsetDuel('knife', 26) > 0, 'off-center knife hit lands');
+});
+
+test('taser hitbox is bigger: hits a target just off the crosshair', () => {
+  assert.ok((WEAPONS.taser.hitPadding ?? 0) >= 12);
+  assert.ok(offsetDuel('taser', 22) > 0, 'off-center taser hit lands');
+  assert.equal(offsetDuel('taser', 60), 0, 'still needs to aim');
 });

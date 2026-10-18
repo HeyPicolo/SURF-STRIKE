@@ -64,12 +64,18 @@ export interface WeaponDef {
   recharge?: number;
   /** Se o centro da mira acerta um inimigo até esta distância, o tiro sai sem spread. */
   preciseRange?: number;
+  /** Folga extra nas caixas de acerto dos inimigos para esta arma (taser). */
+  hitPadding?: number;
 }
 
 // Ajustes globais de balanceamento (aplicados a todas as armas)
 export const ACCURACY = {
   /** Multiplicador de todo o spread (base, no ar, andando e com zoom). 0.5 = metade do spread. */
   spreadMul: 0.5,
+};
+export const DAMAGE = {
+  /** Multiplicador de dano das armas de fogo (faca e taser não mudam). */
+  gunMul: 1.4,
 };
 export const RELOAD = {
   /** Velocidade de recarga: 1.45 = 45% mais rápida que o tempo base de cada arma. */
@@ -88,7 +94,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     falloffHalf: 1e9, range: 72,
     // andar com a faca na mão: +25% de velocidade base
     moveSpeedMul: 1.25, zoom: 0, color: 0x9aa6bd,
-    melee: { range: 72, heavyRange: 62, heavyDamage: 75, heavyHeadMult: 1.4, heavyInterval: 1.05, backstabDamage: 135, heavyBackstabDamage: 300, hitPadding: 7 },
+    melee: { range: 80, heavyRange: 70, heavyDamage: 75, heavyHeadMult: 1.4, heavyInterval: 1.05, backstabDamage: 135, heavyBackstabDamage: 300, hitPadding: 14 },
   },
   pistol: {
     id: 'pistol', name: 'VEX-9', category: 'Pistola', slot: 1,
@@ -99,7 +105,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   rifle: {
     id: 'rifle', name: 'KESTREL AR', category: 'Rifle de assalto', slot: 0,
     damage: 31, headMult: 4.0, pellets: 1, auto: true, rpm: 600, mag: 30, reserve: 90, reloadTime: 2.2,
-    spread: 0.18, airSpread: 0.9, moveSpread: 0.6, kick: 0.62, kickSide: 0.32, recover: 7,
+    // mais precisa: metade do spread anterior e recuo menor
+    spread: 0.09, airSpread: 0.45, moveSpread: 0.3, kick: 0.45, kickSide: 0.2, recover: 8,
     falloffHalf: 5000, range: 9000, moveSpeedMul: 0.92, zoom: 0.8, color: 0x3a4255,
   },
   smg: {
@@ -128,7 +135,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     damage: 500, headMult: 1, pellets: 1, auto: false, rpm: 60, mag: 1, reserve: 0, reloadTime: 0,
     spread: 0.25, airSpread: 0.35, moveSpread: 0.2, kick: 2.2, kickSide: 0.4, recover: 10,
     falloffHalf: 1e9, range: 200, moveSpeedMul: 1.0, zoom: 0, color: 0xffd23c,
-    recharge: 30,
+    recharge: 30, hitPadding: 12,
   },
 };
 

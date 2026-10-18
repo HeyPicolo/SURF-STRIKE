@@ -38,13 +38,12 @@ No menu: **Jogar contra bots** (escolha 1v1 a 5v5, dificuldade, equipe e classe)
 4. Para curvar no ar (air-strafe): segure A e gire o mouse para a esquerda (ou D + direita), suavemente.
 5. Segure Espaço para bunny hop automático (pode ser desligado em Configurações).
 
-### Sprint tático e slide
+### Sprint, caminhar e slide
 
-- **Shift** ativa o sprint tático: +30% de velocidade no chão, mas a arma fica levantada e você não atira. A stamina é oculta (cerca de 4 s de corrida contínua) e volta depois de 1 s sem correr.
-- Ao parar de correr (ou apertar o tiro), a arma leva 0,42 s para descer antes de atirar. Andando, o tiro é imediato. Com a faca, a espera é de 0,16 s.
-- **Ctrl enquanto corre** faz um slide: um impulso de velocidade agachado.
-- **Ctrl acima de 450 u/s** já faz o slide sem precisar do sprint (por exemplo, ao sair de uma rampa). Apertar Ctrl até 0,3 s antes de pousar também conta.
-- **Slide cancel**: apertar Espaço ou Ctrl de novo no meio do slide levanta na hora, sem a trava de 0,35 s do fim natural do slide, e reseta a stamina do sprint. Com Espaço, você sai pulando e mantém o embalo.
+- **O sprint é automático**: andando no chão você já corre com +30% de velocidade, sem tecla, sem stamina e com a arma pronta para atirar. Passos fazem barulho, e os outros jogadores ouvem quando você está perto.
+- **Shift** caminha: anula o sprint, fica bem mais lento e os passos ficam em silêncio.
+- **Ctrl em movimento** faz um slide: um impulso de velocidade agachado (a partir de 200 u/s, em qualquer direção). Caminhando com Shift, o Ctrl só agacha. Apertar Ctrl até 0,3 s antes de pousar também conta.
+- **Slide cancel**: apertar Espaço ou Ctrl de novo no meio do slide levanta na hora, sem a trava de 0,35 s do fim natural do slide. Com Espaço, você sai pulando e mantém o embalo.
 
 ### Controles
 
@@ -55,8 +54,8 @@ No menu: **Jogar contra bots** (escolha 1v1 a 5v5, dificuldade, equipe e classe)
 | Clique esquerdo | Atirar / golpe de faca / disparo do taser / lançar granada |
 | Clique direito | Zoom (rifle e sniper) / estocada de faca / lançamento curto de granada |
 | Espaço | Pular / bunny hop / cancelar slide |
-| Shift | Sprint tático |
-| Ctrl | Agachar / slide (durante o sprint) / cancelar slide |
+| Shift | Caminhar (sem sprint e sem som de passos) |
+| Ctrl | Agachar / slide (em movimento) / cancelar slide |
 | R | Recarregar |
 | E | Pegar arma |
 | Q | Habilidade da classe |
@@ -113,10 +112,10 @@ Cada rota foi validada por simulação: um bot sai do spawn e surfa até a área
 Todos centralizados em `shared/config/`:
 
 - `physics.ts`: gravidade 800, aceleração no chão 10, aceleração aérea 150, teto de wishspeed aéreo 30, atrito 5.2, atrito de surf 0, velocidade máxima 3500/eixo, pulo 302, raio do jogador 16, sensibilidade de movimento, 100 ticks/s.
-- `physics.ts` → `SPRINT`: velocidade do sprint, stamina, recuperação, sprint-to-fire, impulso, duração e atrito do slide, trava de recuperação.
+- `physics.ts` → `SPRINT`: sprint automático (`autoSprint`; `raiseWeapon` e `useStamina` religam o sprint tático antigo), velocidade do sprint e do caminhar, impulso, duração e atrito do slide, trava de recuperação.
 - `weapons.ts` → `ITEMS.maxHp` (150) e `ITEMS.spawnArmor` (100).
 - `weapons.ts` → `ACCURACY.spreadMul` (0,5: metade do spread de todas as armas) e `RELOAD.speedMul` (1,45: recarga 45% mais rápida).
-- `weapons.ts`: dano, multiplicador de headshot, cadência, pente, recarga, spread no chão e no ar, recuo, queda de dano, zoom; faca borboleta (golpe leve 45, estocada 75, pelas costas 135/300, alcance); granadas e itens.
+- `weapons.ts`: `DAMAGE.gunMul` (multiplicador de dano das armas de fogo, 1,4×), dano, multiplicador de headshot, cadência, pente, recarga, spread no chão e no ar, recuo, queda de dano, zoom; faca borboleta (golpe leve 45, estocada 75, pelas costas 135/300, alcance e folga do hitbox); taser (`hitPadding` do hitbox); granadas e itens.
 - `pickups.ts`: pools de itens sorteados por ponto do mapa e seus pesos.
 - Longbow: `preciseRange` (900 u) faz o tiro sem zoom ir exatamente na mira quando o alvo está perto; com zoom ela fica parada (sem balanço nem recuo visual) e continua no zoom depois do tiro.
 - `classes.ts`: cooldowns, durações e números das passivas.
@@ -155,7 +154,8 @@ O ambiente onde o projeto foi construído não tinha acesso ao registro npm nem 
 ### Funcionando
 
 - Física de surf: rampas, projeção de velocidade, air-strafe, conservação de momentum, transições entre rampas, bunny hop com auto-bhop, colisão contínua, anti-travamento, recuperação de quedas
-- Sprint tático com stamina oculta e sprint-to-fire, slide a partir do sprint, slide cancel com pulo ou agachar
+- Sprint automático, caminhar silencioso no Shift, sons de passos, slide ao agachar em movimento, slide cancel com pulo ou agachar
+- Armas de fogo com +40% de dano, Kestrel AR com metade do spread e menos recuo, hitbox maior para faca e taser
 - Faca borboleta com animação de sacar (o cabo se solta e a lâmina dá a volta) e de inspecionar (flips, giro e ponta para cima); inspeção de todas as armas no F
 - Taser de choque inicial (um disparo elimina de perto, recarga de 30 s), queda do mapa leva à base, teleportes com velocidade, slide automático acima de 450 u/s
 - Faca inicial com golpe leve, estocada e dano pelas costas; +25% de velocidade com ela na mão; bots lutam com faca até achar uma arma
@@ -175,5 +175,5 @@ O ambiente onde o projeto foi construído não tinha acesso ao registro npm nem 
 
 ## Testes
 
-- `npm test`: 61 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots).
-- `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint e slide pelo teclado, habilidade, eliminação e fim de round com placar.
+- `npm test`: 65 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots).
+- `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint automático, caminhar e slide pelo teclado, habilidade, eliminação e fim de round com placar.

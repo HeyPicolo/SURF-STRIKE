@@ -11,11 +11,11 @@ export interface MoveCmd {
   pitch: number;     // radians
   jump: boolean;     // jump held
   crouch: boolean;   // crouch held
-  sprint: boolean;   // tactical sprint held
+  walk: boolean;     // walk key held (slow, silent, no sprint)
 }
 
 export function emptyCmd(): MoveCmd {
-  return { forward: 0, side: 0, up: 0, yaw: 0, pitch: 0, jump: false, crouch: false, sprint: false };
+  return { forward: 0, side: 0, up: 0, yaw: 0, pitch: 0, jump: false, crouch: false, walk: false };
 }
 
 export interface MoveModifiers {

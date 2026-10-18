@@ -50,6 +50,8 @@ export class Player {
 
   // ---- Tactical Sprint / Slide ----
   sprinting = false;
+  /** Shift: caminhando (sem sprint, sem som de passos) */
+  walking = false;
   /** stamina oculta do sprint (segundos) */
   stamina: number = SPRINT.stamina;
   /** esgotou: só volta a correr acima de SPRINT.restartStamina */
@@ -145,7 +147,11 @@ export class Player {
     this.lastAttacker = -1;
   }
 
+  /** Arma levantada pelo sprint (só no modo de sprint tático clássico). */
+  get weaponRaised(): boolean { return this.sprinting && SPRINT.raiseWeapon; }
+
   resetMovementState() {
+    this.walking = false;
     this.sprinting = false; this.stamina = SPRINT.stamina; this.staminaLocked = false; this.sinceSprint = 99;
     this.raiseTime = 0; this.slideTime = 0; this.slideCooldown = 0; this.slideRecover = 0; this.crouchSuppressed = false; this.crouchBuffer = 0; this.teleportGlide = 0;
   }
@@ -155,7 +161,8 @@ export class Player {
     let m = 1;
     const w = this.currentWeapon();
     if (w) m *= WEAPONS[w.id].moveSpeedMul;
-    if (this.sprinting) m *= SPRINT.speedMul;
+    if (this.walking) m *= SPRINT.walkSpeedMul;
+    else if (this.sprinting) m *= SPRINT.speedMul;
     if (this.slideRecover > 0) m *= SPRINT.slideRecoverSpeedMul;
     return m;
   }

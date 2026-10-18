@@ -1,18 +1,18 @@
 // Configurações do jogador (persistidas no localStorage quando disponível).
 export type Action =
-  | 'forward' | 'back' | 'left' | 'right' | 'jump' | 'crouch' | 'sprint'
+  | 'forward' | 'back' | 'left' | 'right' | 'jump' | 'crouch' | 'walk'
   | 'reload' | 'use' | 'ability' | 'drop' | 'inspect' | 'slot1' | 'slot2' | 'slot3' | 'slot4' | 'scoreboard'
   | 'resetPos' | 'fly' | 'saveCp' | 'loadCp';
 
 export const ACTION_LABELS: Record<Action, string> = {
   forward: 'Frente', back: 'Trás', left: 'Esquerda (strafe)', right: 'Direita (strafe)', jump: 'Pular / Bunny hop',
-  crouch: 'Agachar / Slide (correndo)', sprint: 'Sprint tático', reload: 'Recarregar', use: 'Interagir / Coletar', ability: 'Habilidade da classe',
+  crouch: 'Agachar / Slide (em movimento)', walk: 'Caminhar (silencioso)', reload: 'Recarregar', use: 'Interagir / Coletar', ability: 'Habilidade da classe',
   drop: 'Soltar equipamento', inspect: 'Inspecionar arma', slot1: 'Arma primária', slot2: 'Pistola', slot3: 'Faca / taser', slot4: 'Granadas', scoreboard: 'Placar',
   resetPos: 'Treino: reiniciar posição', fly: 'Treino: voar (noclip)', saveCp: 'Treino: salvar checkpoint', loadCp: 'Treino: carregar checkpoint',
 };
 
 export const DEFAULT_KEYS: Record<Action, string> = {
-  forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', crouch: 'ControlLeft', sprint: 'ShiftLeft',
+  forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', crouch: 'ControlLeft', walk: 'ShiftLeft',
   reload: 'KeyR', use: 'KeyE', ability: 'KeyQ', drop: 'KeyG', inspect: 'KeyF', slot1: 'Digit1', slot2: 'Digit2', slot3: 'Digit3', slot4: 'Digit4',
   scoreboard: 'Tab', resetPos: 'KeyT', fly: 'KeyV', saveCp: 'KeyZ', loadCp: 'KeyX',
 };
@@ -47,16 +47,20 @@ export function loadSettings(): Settings {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const s = JSON.parse(raw);
-      const keys = { ...DEFAULT_KEYS, ...(s.keys ?? {}) };
-      if (!s.keys?.sprint) {
+      const keys = { ...DEFAULT_KEYS, ...(s.keys ?? {}) } as Record<string, string>;
+      if (keys.sprint) {
+        // migração: o sprint agora é automático e a tecla dele virou "caminhar"
+        keys.walk = keys.sprint;
+        delete keys.sprint;
+      } else if (!s.keys?.walk) {
         // migração da versão antiga: agachar saiu do Shift para o Ctrl, Shift virou sprint,
         // 3 virou faca e as granadas foram para o 4
         if (keys.crouch === 'ShiftLeft') keys.crouch = DEFAULT_KEYS.crouch;
-        keys.sprint = DEFAULT_KEYS.sprint;
+        keys.walk = DEFAULT_KEYS.walk;
         keys.slot3 = DEFAULT_KEYS.slot3;
         keys.slot4 = DEFAULT_KEYS.slot4;
       }
-      return { ...DEFAULT_SETTINGS, ...s, keys };
+      return { ...DEFAULT_SETTINGS, ...s, keys: keys as Settings['keys'] };
     }
   } catch { /* storage indisponível */ }
   return { ...DEFAULT_SETTINGS, keys: { ...DEFAULT_KEYS } };
