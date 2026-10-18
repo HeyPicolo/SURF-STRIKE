@@ -39,6 +39,8 @@ export interface Teleporter extends TriggerVolume {
 export interface JumpPad extends TriggerVolume {
   kind: 'jumppad';
   velocity: V3;
+  /** Não perde velocidade: a velocidade horizontal de quem entra é mantida (se for maior que a do pad). */
+  keepSpeed?: boolean;
   color: number;
 }
 

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { computeDamage, furyMultiplier, weaponHitDamage, computeSpread } from '../shared/sim/combat';
-import { WEAPONS } from '../shared/config/weapons';
+import { WEAPONS, ITEMS } from '../shared/config/weapons';
 import { MatchMachine } from '../shared/sim/match';
 import { World } from '../shared/sim/world';
 import { buildClouds } from '../shared/maps/clouds';
@@ -29,7 +29,7 @@ test('damage: shield absorbs fully first', () => {
 });
 
 test('damage: berserker fury scales with missing HP', () => {
-  assert.equal(furyMultiplier(100), 1);
+  assert.equal(furyMultiplier(ITEMS.maxHp), 1);
   assert.ok(Math.abs(furyMultiplier(0) - (1 + CLASSES.berserker.params.maxBonus)) < 1e-9);
   const low = computeDamage({ ...base, base: 30, attackerFury: true, attackerHp: 20 }).hpDamage;
   assert.ok(low > 30 * 1.5);
@@ -39,7 +39,7 @@ test('damage: jumper tired reduces body more than head (headshots still lethal)'
   const body = computeDamage({ ...base, base: 100, victimTired: true }).hpDamage;
   const head = computeDamage({ ...base, base: 100, victimTired: true, head: true }).hpDamage;
   assert.ok(body < head);
-  assert.ok(weaponHitDamage(WEAPONS.rifle, 500, true) * (1 - CLASSES.jumper.params.headReduction) >= 100, 'rifle headshot still one-taps a tired jumper');
+  assert.ok(weaponHitDamage(WEAPONS.sniper, 500, true) * (1 - CLASSES.jumper.params.headReduction) >= ITEMS.maxHp, 'sniper headshot still one-taps a tired jumper');
 });
 
 test('weapons: headshot multiplier, falloff and air spread', () => {

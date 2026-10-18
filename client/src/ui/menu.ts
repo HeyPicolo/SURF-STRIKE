@@ -141,7 +141,7 @@ export class Menu {
   }
 
   showClasses() {
-    this.panel(`<h2>Classes</h2><p>Todas usam as armas do mapa e começam com 100 de vida. A classe muda como você se move e luta. A escolhida aqui vira sua classe padrão.</p>
+    this.panel(`<h2>Classes</h2><p>Todas usam as armas do mapa e começam com 150 de vida e colete cheio. A classe muda como você se move e luta. A escolhida aqui vira sua classe padrão.</p>
       ${this.classCards(this.setup.classId)}
       <div class="panel-actions"><button class="btn primary" data-back>Pronto</button></div>`);
     this.bindClassCards((id) => { this.setup.classId = id; this.saveSetup(); });

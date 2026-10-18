@@ -73,9 +73,9 @@ Todas as teclas podem ser remapeadas em Configurações.
 
 ## Regras (Team Elimination)
 
-- Azul contra Vermelho, até 5v5, 100 HP, sem respawn no round.
+- Azul contra Vermelho, até 5v5, 150 HP e colete cheio (100) ao nascer, sem respawn no round.
 - Rounds de 90 s. Primeiro a 6 rounds vence.
-- Se o tempo acabar, os sobreviventes são levados a arenas 1v1: vida 100, sem colete, sem poderes, mesma arma sorteada para os dois. Quem sobra espera e enfrenta o vencedor de um duelo. Se os duelos também esgotarem o tempo, vence a equipe com mais vida somada.
+- Se o tempo acabar, os sobreviventes são levados a arenas 1v1: vida cheia (150), sem colete, sem poderes, mesma arma sorteada para os dois. Quem sobra espera e enfrenta o vencedor de um duelo. Se os duelos também esgotarem o tempo, vence a equipe com mais vida somada.
 - Todos começam o round com a faca borboleta (BALISONG) e o taser de choque (VOLT-1). A faca dá +25% de velocidade no chão enquanto está na mão.
 - O taser tem uma carga: elimina com um disparo até 200 u (cerca de 5 m) e não faz nada além disso. Depois do disparo, volta para a melhor arma e recarrega sozinho em 30 s. Não cai ao morrer e não aparece no mapa. Nos duelos 1v1 entra só a faca e a arma sorteada.
 - Quem cai do mapa volta automaticamente para a base do próprio time.
@@ -100,9 +100,11 @@ Novas classes: adicione a definição em `shared/config/classes.ts` e um handler
 Arena flutuante simétrica no eixo Z (Azul em +Z, Vermelho em −Z):
 
 - **Rota A, Ridge** (verde-água): rampa dupla larga e longa, para iniciantes, termina no platô central.
-- **Rota B, Riptide** (magenta): duas rampas estreitas e íngremes em sequência, rápida e arriscada, termina no flanco direito (shotgun, SMG, velocidade).
+- **Rota B, Riptide** (magenta): duas rampas estreitas e íngremes em sequência, rápida e arriscada, termina na quina do platô, ao lado do jump pad que leva ao flanco direito.
 - **Rota C, Halo** (dourado): rampa longa que leva ao Poleiro elevado, com a sniper e visão do centro.
-- Centro com um pódio de arma forte, uma rampa central de surf que sai do Poleiro, passa por cima do platô e desce até o flanco (dá para andar e lutar por baixo dela), teletransportadores de volta ao spawn, e uma camada de nuvens embaixo; quem cai abaixo do platô volta automaticamente para a própria base. O mapa não tem jump pads: o Poleiro só é alcançado pela rota C. Do platô para o flanco há uma subida caminhável. Os teletransportadores mantêm a velocidade de quem entra (girada para a direção de saída) e dão 0,45 s sem atrito no chão, então dá para sair embalado e emendar na rampa.
+- Centro com um pódio de arma forte e uma rampa central de surf reta (sem desnível) e de perfil baixo, bem acima do platô, ligando o Poleiro ao flanco direito. Os dois flancos ficam na mesma altura, dentro da altura da rampa. Para atravessar, entre embalado e mantenha-se na metade de cima da face; dá para andar e lutar por baixo dela.
+- Quatro jump pads nas quinas do platô: os do lado +X lançam para o flanco direito, os do lado −X para o Poleiro. Eles não tiram velocidade: quem entra mais rápido que o pad sai com a própria velocidade, na direção do pad.
+- O resto do mapa: teletransportadores de volta ao spawn, e uma camada de nuvens embaixo; quem cai abaixo do platô volta automaticamente para a própria base. Do platô, os flancos são alcançados pelos jump pads; a rota C termina no Poleiro e a rota B na quina do platô, ao lado de um jump pad. Os teletransportadores mantêm a velocidade de quem entra (girada para a direção de saída) e dão 0,45 s sem atrito no chão, então dá para sair embalado e emendar na rampa.
 
 Cada rota foi validada por simulação: um bot sai do spawn e surfa até a área de combate sem cair (`tests/map.test.ts`).
 
@@ -112,8 +114,9 @@ Todos centralizados em `shared/config/`:
 
 - `physics.ts`: gravidade 800, aceleração no chão 10, aceleração aérea 150, teto de wishspeed aéreo 30, atrito 5.2, atrito de surf 0, velocidade máxima 3500/eixo, pulo 302, raio do jogador 16, sensibilidade de movimento, 100 ticks/s.
 - `physics.ts` → `SPRINT`: velocidade do sprint, stamina, recuperação, sprint-to-fire, impulso, duração e atrito do slide, trava de recuperação.
+- `weapons.ts` → `ITEMS.maxHp` (150) e `ITEMS.spawnArmor` (100).
 - `weapons.ts` → `ACCURACY.spreadMul` (0,5: metade do spread de todas as armas) e `RELOAD.speedMul` (1,45: recarga 45% mais rápida).
-- `weapons.ts`: dano, multiplicador de headshot, cadência, pente, recarga, spread no chão e no ar, recuo, queda de dano, zoom; faca borboleta (golpe leve 45, estocada 75, pelas costas 90/180, alcance); granadas e itens.
+- `weapons.ts`: dano, multiplicador de headshot, cadência, pente, recarga, spread no chão e no ar, recuo, queda de dano, zoom; faca borboleta (golpe leve 45, estocada 75, pelas costas 135/300, alcance); granadas e itens.
 - `pickups.ts`: pools de itens sorteados por ponto do mapa e seus pesos.
 - Longbow: `preciseRange` (900 u) faz o tiro sem zoom ir exatamente na mira quando o alvo está perto; com zoom ela fica parada (sem balanço nem recuo visual) e continua no zoom depois do tiro.
 - `classes.ts`: cooldowns, durações e números das passivas.
@@ -172,5 +175,5 @@ O ambiente onde o projeto foi construído não tinha acesso ao registro npm nem 
 
 ## Testes
 
-- `npm test`: 58 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots).
+- `npm test`: 61 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots).
 - `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint e slide pelo teclado, habilidade, eliminação e fim de round com placar.

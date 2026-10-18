@@ -1,7 +1,7 @@
 // HUD em DOM. Escritas no DOM só acontecem quando um valor muda (evita layout thrash).
 import type { World } from '../../../shared/sim/world';
 import type { Player } from '../../../shared/sim/player';
-import { WEAPONS, NADES, NadeKind, SLOT_NADES, SLOT_KEYS, reloadDuration } from '../../../shared/config/weapons';
+import { WEAPONS, NADES, NadeKind, SLOT_NADES, SLOT_KEYS, reloadDuration, ITEMS } from '../../../shared/config/weapons';
 import { CLASSES } from '../../../shared/config/classes';
 import { forwardFromAngles } from '../../../shared/math/vec3';
 
@@ -37,11 +37,11 @@ export class Hud {
     this.set('class-icon', 'text', cls.name[0]);
     const hp = Math.max(0, Math.ceil(p.hp));
     this.set('hp-val', 'text', String(hp));
-    this.set('hp-fill', 'style', `scaleX(${hp / 100})`, 'transform');
-    this.set('hp-ghost', 'style', `scaleX(${hp / 100})`, 'transform');
-    this.set('hp-fill', 'class', hp <= 30 ? 'low' : '');
+    this.set('hp-fill', 'style', `scaleX(${hp / ITEMS.maxHp})`, 'transform');
+    this.set('hp-ghost', 'style', `scaleX(${hp / ITEMS.maxHp})`, 'transform');
+    this.set('hp-fill', 'class', hp <= ITEMS.maxHp * 0.3 ? 'low' : '');
     this.set('armor-val', 'text', String(Math.ceil(p.armor + p.shield)));
-    this.set('armor-fill', 'style', `scaleX(${p.armor / 100})`, 'transform');
+    this.set('armor-fill', 'style', `scaleX(${p.armor / ITEMS.maxArmor})`, 'transform');
     this.set('shield-fill', 'style', `scaleX(${p.shield / 50})`, 'transform');
 
     // ability

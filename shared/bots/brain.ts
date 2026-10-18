@@ -4,7 +4,7 @@
 // =============================================================
 import { V3, DEG, yawFromDir, angleDiff, forwardFromAngles, rightFromYaw } from '../math/vec3';
 import { BOT_SKILL, BotDifficulty, BotSkill } from '../config/match';
-import { WEAPONS, WeaponId, SLOT_NADES, SLOT_KNIFE, SLOT_TASER } from '../config/weapons';
+import { WEAPONS, WeaponId, SLOT_NADES, SLOT_KNIFE, SLOT_TASER, ITEMS } from '../config/weapons';
 import type { NavPoint, BotRoute } from '../maps/types';
 import { emptyCmd } from '../physics/movement';
 import { steerToward } from './steer';
@@ -301,13 +301,13 @@ export class BotBrain {
         else if (!p.phys.onGround && this.mode === 'route' && Math.hypot(p.phys.vel.x, p.phys.vel.z) < 500 && !p.phys.surfing) inp.ability = true;
         break;
       case 'jumper':
-        if (fighting && p.hp < 45) inp.ability = true; // escape/reposition
+        if (fighting && p.hp < ITEMS.maxHp * 0.3) inp.ability = true; // escape/reposition
         break;
       case 'predator':
         if (!this.target && this.noEnemyTime > 3 && this.mode === 'roam') inp.ability = true;
         break;
       case 'berserker':
-        if (fighting && p.hp < 70) inp.ability = true;
+        if (fighting && p.hp < ITEMS.maxHp * 0.47) inp.ability = true;
         break;
     }
   }

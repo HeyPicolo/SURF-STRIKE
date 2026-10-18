@@ -2,6 +2,7 @@
 // config/classes.ts e registre um handler aqui.
 import { V3, forwardFromAngles } from '../math/vec3';
 import { CLASSES, ClassId } from '../config/classes';
+import { ITEMS } from '../config/weapons';
 import type { Player } from './player';
 import type { World } from './world';
 
@@ -87,14 +88,14 @@ export const ABILITIES: Record<ClassId, AbilityHandler> = {
     },
     onKill(world, p) {
       if (p.abilityActive > 0) {
-        p.hp = Math.min(100, p.hp + CLASSES.berserker.params.killHeal);
+        p.hp = Math.min(ITEMS.maxHp, p.hp + CLASSES.berserker.params.killHeal);
         world.emit({ t: 'heal', pid: p.id, amount: CLASSES.berserker.params.killHeal });
       }
     },
     tick(world, p, dt) {
       const prm = CLASSES.berserker.params;
-      if (p.abilityActive <= 0 && p.hp < 100 && world.time - p.lastCombat > prm.regenDelay) {
-        p.hp = Math.min(100, p.hp + prm.regenRate * dt);
+      if (p.abilityActive <= 0 && p.hp < ITEMS.maxHp && world.time - p.lastCombat > prm.regenDelay) {
+        p.hp = Math.min(ITEMS.maxHp, p.hp + prm.regenRate * dt);
       }
     },
   },

@@ -223,7 +223,7 @@ export class World {
   }
 
   private prepareDuelist(p: Player, weapon: WeaponId | null, sp: SpawnPoint) {
-    p.hp = 100; p.armor = 0; p.shield = 0; p.shieldTime = 0;
+    p.hp = ITEMS.maxHp; p.armor = 0; p.shield = 0; p.shieldTime = 0; // duelo: vida cheia, sem colete
     p.nades = { he: 0, smoke: 0, impulse: 0 };
     p.abilityActive = 0; p.tired = 0; p.speedBoost = 0; p.predatorStacks = 0;
     p.noAbilities = true;
@@ -348,6 +348,7 @@ export class World {
       autoBhop: p.autoBhop,
       fly: p.fly,
     };
+    p.entrySpeed = Math.hypot(p.phys.vel.x, p.phys.vel.z);
     const ev = this.mover.move(p.phys, cmd, dt, mods);
     if (ev.jumped) this.emit({ t: 'jump', pid: p.id });
     if (ev.landed > 250) this.emit({ t: 'land', pid: p.id, speed: ev.landed });
@@ -688,7 +689,7 @@ export class World {
     const res = computeDamage({
       base, head, explosion,
       attackerFury: !!attacker && attacker.classId === 'berserker' && attacker.abilityActive > 0,
-      attackerHp: attacker?.hp ?? 100,
+      attackerHp: attacker?.hp ?? ITEMS.maxHp,
       victimTired: victim.classId === 'jumper' && victim.tired > 0,
       victimArmor: victim.armor,
       victimShield: victim.shield,
@@ -896,8 +897,8 @@ export class World {
       let label = '';
       switch (k.kind) {
         case 'medkit':
-          if (p.hp >= 100) continue;
-          p.hp = Math.min(100, p.hp + ITEMS.medkitHeal); label = `+${ITEMS.medkitHeal} VIDA`; break;
+          if (p.hp >= ITEMS.maxHp) continue;
+          p.hp = Math.min(ITEMS.maxHp, p.hp + ITEMS.medkitHeal); label = `+${ITEMS.medkitHeal} VIDA`; break;
         case 'armor':
           if (p.armor >= ITEMS.maxArmor || p.inDuel >= 0) continue;
           p.armor = Math.min(ITEMS.maxArmor, p.armor + ITEMS.armorAmount); label = `+${ITEMS.armorAmount} COLETE`; break;
@@ -962,7 +963,14 @@ export class World {
         p.yaw = d.yaw; p.input.cmd.yaw = d.yaw;
         this.emit({ t: 'teleport', pid: p.id, from, to: st.pos.clone() });
       } else {
+        const inH = Math.max(p.entrySpeed, Math.hypot(st.vel.x, st.vel.z));
         st.vel.copy(tr.velocity);
+        if (tr.keepSpeed) {
+          // sem perder velocidade: segue na direção do pad com a maior velocidade entre a de entrada e a do pad
+          const padH = Math.hypot(tr.velocity.x, tr.velocity.z) || 1;
+          const h = Math.max(padH, inH);
+          st.vel.x = tr.velocity.x / padH * h; st.vel.z = tr.velocity.z / padH * h;
+        }
         st.onGround = false;
         st.pos.y += 2;
         this.emit({ t: 'jumppad', pid: p.id });

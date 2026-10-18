@@ -104,7 +104,7 @@ await waitSim(0.1);
 await page.mouse.down(); await waitSim(0.25); await page.mouse.up();
 await waitSim(0.05);
 const dummy = await S((id) => { const d = window.__surf.game.world.player(id); return { hp: d.hp, alive: d.alive, mag: window.__surf.game.world.local.weapons[0].mag }; }, dmg);
-check('7. dispara e causa dano', dummy.hp < 100 || !dummy.alive, JSON.stringify(dummy));
+check('7. dispara e causa dano', dummy.hp < 150 || !dummy.alive, JSON.stringify(dummy));
 await page.screenshot({ path: join(shots, '04-shooting.png') });
 
 // reload & switch

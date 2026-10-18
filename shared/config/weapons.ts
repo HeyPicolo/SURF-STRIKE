@@ -88,7 +88,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     falloffHalf: 1e9, range: 72,
     // andar com a faca na mão: +25% de velocidade base
     moveSpeedMul: 1.25, zoom: 0, color: 0x9aa6bd,
-    melee: { range: 72, heavyRange: 62, heavyDamage: 75, heavyHeadMult: 1.4, heavyInterval: 1.05, backstabDamage: 90, heavyBackstabDamage: 180, hitPadding: 7 },
+    melee: { range: 72, heavyRange: 62, heavyDamage: 75, heavyHeadMult: 1.4, heavyInterval: 1.05, backstabDamage: 135, heavyBackstabDamage: 300, hitPadding: 7 },
   },
   pistol: {
     id: 'pistol', name: 'VEX-9', category: 'Pistola', slot: 1,
@@ -163,8 +163,11 @@ export const ITEMS = {
   speedMul: 1.2,
   speedAirMul: 1.25,
   speedBoostImpulse: 180,
-  maxHp: 100,
+  /** Vida máxima de todos os jogadores. */
+  maxHp: 150,
   maxArmor: 100,
+  /** Todos nascem com colete cheio (exceto nos duelos 1v1, que são sem colete). */
+  spawnArmor: 100,
   pickupRadius: 70,
   weaponPickupRadius: 110,
   respawnTrainingSeconds: 8,

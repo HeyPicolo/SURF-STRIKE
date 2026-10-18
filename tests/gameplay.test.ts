@@ -9,6 +9,7 @@ import { V3 } from '../shared/math/vec3';
 import { CollisionWorld } from '../shared/physics/trace';
 import { Mover, PhysState, emptyCmd } from '../shared/physics/movement';
 import type { Player } from '../shared/sim/player';
+import { ITEMS } from '../shared/config/weapons';
 
 function world(seed = 1) {
   return new World(buildClouds(), { mode: 'training', teamSize: 1, difficulty: 'easy', local: { name: 'eu', team: 'blue', classId: 'runner' }, seed, autoBhop: true });
@@ -158,11 +159,13 @@ test('knife: light hit in front, heavy backstab kills', () => {
   d.phys.pos.set(14200, 2, 0); d.prevPos.copy(d.phys.pos); d.input.cmd = { ...d.input.cmd, yaw: 0, side: 0, forward: 0 };
   p.phys.pos.set(14200, 2, -50); p.input.cmd.yaw = Math.PI; p.input.cmd.pitch = -0.15;
   run(w, 5);
+  const hp0 = d.hp, armor0 = d.armor;
   p.input.fire = true; w.step(SIM_DT); p.input.fire = false;
-  assert.ok(Math.abs((100 - d.hp) - WEAPONS.knife.damage) < 1 || 100 - d.hp > 60, `front light hit dealt ${100 - d.hp}`);
+  const dealt = (hp0 - d.hp) + (armor0 - d.armor); // colete absorve metade no corpo
+  assert.ok(Math.abs(dealt - WEAPONS.knife.damage) < 1 || dealt > 60, `front light hit dealt ${dealt}`);
   run(w, 120);
-  // move behind the dummy (both facing −Z) and stab with the heavy attack
-  d.hp = 100;
+  // move behind the dummy (both facing −Z) and stab with the heavy attack — lethal even with 150 HP + colete
+  d.hp = ITEMS.maxHp; d.armor = ITEMS.maxArmor;
   p.phys.pos.set(14200, 2, 50); p.input.cmd.yaw = 0;
   run(w, 5);
   p.input.alt = true; w.step(SIM_DT); p.input.alt = false;
@@ -189,8 +192,10 @@ test('random pickups: same spots, varied items, mirrored between teams', () => {
   assert.ok(seen.size > 6, `item layout varies between rounds (${seen.size} layouts)`);
 });
 
-test('CLOUDS has no jump pads', () => {
-  assert.equal(buildClouds().triggers.filter((t) => t.kind === 'jumppad').length, 0);
+test('CLOUDS only has the 4 jump pads at the plateau corners', () => {
+  const pads = buildClouds().triggers.filter((t) => t.kind === 'jumppad');
+  assert.equal(pads.length, 4);
+  for (const t of pads) assert.ok(Math.abs(t.min.x + 60) > 1000 && Math.abs(t.min.z + 60) > 1300 && t.min.y === 0, 'corner of the plateau');
 });
 
 test('round start: everyone has only the knife', () => {
@@ -319,7 +324,7 @@ test('taser: starts loaded, one-shot kill in range, nothing out of range, rechar
   run(w, 50);
   aimAt(p, new V3(14200, 40, 400));
   p.input.fire = true; w.step(SIM_DT); p.input.fire = false;
-  assert.equal(d.hp, 100, 'no damage out of range');
+  assert.equal(d.hp, ITEMS.maxHp, 'no damage out of range');
   assert.equal(p.weapons[3]!.mag, 0);
   run(w, 50);
   assert.equal(p.currentWeapon()!.id, 'knife', 'back to the knife after the shot');

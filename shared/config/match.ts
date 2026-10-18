@@ -10,7 +10,7 @@ export const MATCH = {
   duelTime: 45,       // tempo máximo da fase de duelos 1v1
   duelCountdown: 3,
   maxTeamSize: 5,
-  maxHp: 100,
+  maxHp: 150,
 } as const;
 
 export type BotDifficulty = 'easy' | 'medium' | 'hard' | 'god';

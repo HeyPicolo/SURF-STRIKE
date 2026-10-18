@@ -1,7 +1,7 @@
 import { V3 } from '../math/vec3';
 import { PhysState, emptyCmd, MoveCmd } from '../physics/movement';
 import { PHYSICS, SPRINT } from '../config/physics';
-import { WEAPONS, WeaponId, NadeKind, SLOT_KNIFE, SLOT_NADES } from '../config/weapons';
+import { WEAPONS, WeaponId, NadeKind, SLOT_KNIFE, SLOT_NADES, ITEMS } from '../config/weapons';
 import { CLASSES, ClassId } from '../config/classes';
 import type { Team } from '../maps/types';
 
@@ -35,7 +35,7 @@ export class Player {
   prevInput: PlayerInput = emptyInput();
 
   alive = true;
-  hp = 100;
+  hp: number = ITEMS.maxHp;
   armor = 0;
   shield = 0;
   shieldTime = 0;
@@ -66,6 +66,8 @@ export class Player {
   crouchBuffer = 0;
   /** tempo restante sem atrito no chão depois de sair de um teleporte */
   teleportGlide = 0;
+  /** velocidade horizontal antes do movimento deste tick (jump pads usam a velocidade de entrada) */
+  entrySpeed = 0;
   nades: Record<NadeKind, number> = { he: 0, smoke: 0, impulse: 0 };
   nadeSel: NadeKind = 'he';
   fireCooldown = 0;
@@ -125,7 +127,7 @@ export class Player {
   resetForRound(classId?: ClassId) {
     if (classId) this.classId = classId;
     this.alive = true;
-    this.hp = 100; this.armor = 0; this.shield = 0; this.shieldTime = 0;
+    this.hp = ITEMS.maxHp; this.armor = ITEMS.spawnArmor; this.shield = 0; this.shieldTime = 0;
     this.weapons = [null, null, null, null];
     this.giveWeapon('knife');
     this.giveWeapon('taser');

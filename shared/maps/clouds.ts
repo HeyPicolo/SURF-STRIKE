@@ -28,12 +28,14 @@ export interface RampSpec { start: [number, number, number]; end: [number, numbe
 export const RAMPS: Record<string, RampSpec> = {
   A: { start: [0, 2280, 4800], end: [0, 900, 1750], hw: 520, h: 760, color: COLORS.rampA, glow: COLORS.routeA, tag: 'routeA' },
   B1: { start: [900, 2280, 5400], end: [1600, 1700, 3700], hw: 300, h: 650, color: COLORS.rampB, glow: COLORS.routeB, tag: 'routeB1' },
-  B2: { start: [1700, 1330, 3450], end: [1950, 850, 1300], hw: 300, h: 650, color: COLORS.rampB, glow: COLORS.routeB, tag: 'routeB2' },
+  // B2 desce até a quina do platô, ao lado do jump pad que leva ao flanco
+  B2: { start: [1700, 1330, 3450], end: [1150, 780, 1750], hw: 300, h: 650, color: COLORS.rampB, glow: COLORS.routeB, tag: 'routeB2' },
   C: { start: [-900, 2280, 5400], end: [-1900, 1650, 1700], hw: 420, h: 700, color: COLORS.rampC, glow: COLORS.routeC, tag: 'routeC' },
 };
 
 /** Rampa central sobre o platô (eixo z = 0, igual para os dois times). */
-export const CENTER_RAMP: RampSpec = { start: [-1500, 1000, 0], end: [1150, 700, 0], hw: 280, h: 500, color: 0xc9bdf5, glow: COLORS.accent, tag: 'centerRamp' };
+// reta (sem desnível), mais alta e com perfil mais baixo; liga a borda do Poleiro à borda do flanco
+export const CENTER_RAMP: RampSpec = { start: [-1500, 1150, 0], end: [1300, 1150, 0], hw: 170, h: 300, color: 0xc9bdf5, glow: COLORS.accent, tag: 'centerRamp' };
 
 /** Point on a ramp face: f = 0..1 along the ramp, u = ±1 face side, q = depth below apex (0 apex … 1 base). */
 export function facePoint(r: RampSpec, f: number, u: number, q: number): V3 {
@@ -90,8 +92,8 @@ function teamHalf(team: Team): { brushes: Brush[]; triggers: Trigger[]; pickups:
   brushes.push(box(-400, 0, Z(950), -300, 220, Z(1050), { color: COLORS.coverDark }));
   brushes.push(box(300, 0, Z(950), 400, 220, Z(1050), { color: COLORS.coverDark }));
   // flank cover
-  brushes.push(box(1700, 150, Z(380), 1900, 260, Z(440), { color: COLORS.cover, edgeGlow: tc }));
-  brushes.push(box(2200, 150, Z(500), 2260, 290, Z(700), { color: COLORS.coverDark }));
+  brushes.push(box(1700, 1000, Z(380), 1900, 1110, Z(440), { color: COLORS.cover, edgeGlow: tc }));
+  brushes.push(box(2200, 1000, Z(500), 2260, 1140, Z(700), { color: COLORS.coverDark }));
   // perch cover
   brushes.push(box(-2100, 1000, Z(420), -1900, 1080, Z(470), { color: COLORS.cover, edgeGlow: tc }));
 
@@ -120,13 +122,13 @@ function teamHalf(team: Team): { brushes: Brush[]; triggers: Trigger[]; pickups:
   P('midWeapon', 700, 0, 1100, 'weapon', 'smg');
   P('defense', -700, 0, 1100, 'armor');
   P('midWeapon', 300, 0, 760, 'weapon', 'rifle');
-  P('midWeapon', 2100, 150, 520, 'weapon', 'smg');
+  P('midWeapon', 2100, 1000, 520, 'weapon', 'smg');
   P('midWeapon', -1750, 1000, 250, 'weapon', 'shotgun');
   P('utility', 0, 0, 1400, 'nade_he');
   P('utility', -900, 0, 300, 'medkit');
   P('utility', 900, 0, 300, 'ammo');
-  P('utility', 2000, 150, 620, 'nade_smoke');
-  P('utility', 2350, 150, 300, 'speed');
+  P('utility', 2000, 1000, 620, 'nade_smoke');
+  P('utility', 2350, 1000, 300, 'speed');
   P('defense', -2050, 1000, 620, 'medkit');
   P('utility', -1700, 1000, 560, 'nade_he');
   P('utility', -2300, 1000, 300, 'ammo');
@@ -187,10 +189,11 @@ export function buildClouds(): MapDef {
   brushes.push(prismBrush(v(0, -220, -1500), v(0, -220, 1500), [[-1100, 0], [1100, 0], [700, -500], [-700, -500]], { color: COLORS.platformDark }));
 
   // ---------- Right flank (+X) ----------
-  brushes.push(box(1300, -60, -800, 2500, 150, 800, { color: COLORS.platform, edgeGlow: COLORS.routeB, tag: 'flank' }));
-  // subida caminhável (≈28°) do platô para o flanco
-  brushes.push(slopeX(1020, 1300, 0, 150, -260, 260, { color: COLORS.platformDark }));
-  brushes.push(box(1300, 150, -60, 1360, 220, 60, { color: COLORS.coverDark }));
+  // flanco direito na mesma altura do Poleiro e da rampa central (chega-se pelos jump pads ou pela rota B)
+  brushes.push(box(1300, 900, -800, 2500, 1000, 800, { color: COLORS.platform, edgeGlow: COLORS.routeB, tag: 'flank' }));
+  brushes.push(box(2460, 1000, -800, 2500, 1120, 800, { color: COLORS.metal }));
+  brushes.push(box(1950, 400, -80, 2050, 900, 80, { color: COLORS.metal }));
+
   // ---------- Left perch (−X, elevated) ----------
   brushes.push(box(-2500, 900, -800, -1500, 1000, 800, { color: COLORS.platform, edgeGlow: COLORS.routeC, tag: 'perch' }));
   brushes.push(box(-2500, 1000, -800, -2460, 1120, 800, { color: COLORS.metal }));
@@ -203,6 +206,14 @@ export function buildClouds(): MapDef {
     brushes.push(rampBrush(v(...r.start), v(...r.end), r.hw, r.h, 'both', { color: r.color, edgeGlow: r.glow, tag: r.tag }));
   }
 
+
+  // ---------- Jump pads nas 4 quinas do platô ----------
+  // As quinas +X lançam para o flanco direito, as −X para o Poleiro. Mantêm a velocidade de quem entra.
+  for (const sx of [1, -1]) for (const sz of [1, -1]) {
+    const cx = sx * 1080, cz = sz * 1380;
+    const hx = sx > 0 ? 330 : -425, hz = -sz * (sx > 0 ? 400 : 405);
+    triggers.push({ kind: 'jumppad', min: v(cx - 60, 0, cz - 60), max: v(cx + 60, 40, cz + 60), velocity: v(hx, 1330, hz), keepSpeed: true, color: sx > 0 ? COLORS.routeB : COLORS.routeC });
+  }
 
   // ---------- Recovery floor (cloud layer) ----------
   brushes.push(box(-4500, -1900, -7000, 4500, -1800, 7000, { color: COLORS.cloudFloor, edgeGlow: 0xffffff, tag: 'recovery' }));
@@ -218,7 +229,7 @@ export function buildClouds(): MapDef {
   // pontos únicos no eixo central (z = 0): mesma distância para os dois times
   pickups.push({ kind: 'weapon', weapon: 'rifle', pos: v(0, 32, 0), pool: 'highWeapon' });
   pickups.push({ kind: 'weapon', weapon: 'sniper', pos: v(-2000, 1000, 0), pool: 'highWeapon' });
-  pickups.push({ kind: 'weapon', weapon: 'shotgun', pos: v(1950, 150, 0), pool: 'highWeapon' });
+  pickups.push({ kind: 'weapon', weapon: 'shotgun', pos: v(1950, 1000, 0), pool: 'highWeapon' });
   pickups.push({ kind: 'shield', pos: v(-240, 16, 0), pool: 'defense' });
   pickups.push({ kind: 'weapon', weapon: 'rifle', pos: v(-900, 0, 0), pool: 'highWeapon' });
   pickups.push({ kind: 'armor', pos: v(900, 0, 0), pool: 'defense' });
@@ -260,7 +271,7 @@ export function buildClouds(): MapDef {
     combatNodes: [
       v(0, 32, 0), v(-600, 0, 300), v(600, 0, 300), v(-600, 0, -300), v(600, 0, -300),
       v(0, 0, 800), v(0, 0, -800), v(-900, 0, 900), v(900, 0, -900), v(-900, 0, -900), v(900, 0, 900),
-      v(1900, 150, 300), v(1900, 150, -300), v(-2000, 1000, 300), v(-2000, 1000, -300),
+      v(1900, 1000, 300), v(1900, 1000, -300), v(-2000, 1000, 300), v(-2000, 1000, -300),
     ],
     duelArenas,
     waitingRoom: { pos: v(wr.x, 2, wr.z), yaw: 0 },
@@ -270,7 +281,7 @@ export function buildClouds(): MapDef {
     trainingSpawn: { pos: v(0, 2402, 5450), yaw: 0 },
     trainingTargets: [
       { pos: v(-300, 2, -700), yaw: 0 }, { pos: v(300, 2, -900), yaw: 0 }, { pos: v(0, 34, 0), yaw: 0 },
-      { pos: v(1900, 152, -200), yaw: Math.PI / 2 }, { pos: v(-2000, 1002, -300), yaw: -Math.PI / 2 },
+      { pos: v(1900, 1002, -200), yaw: Math.PI / 2 }, { pos: v(-2000, 1002, -300), yaw: -Math.PI / 2 },
     ],
   };
 }
@@ -297,7 +308,7 @@ function blueRoutes(): BotRoute[] {
         { p: v(630, 2402, 5100), mode: 'walk', r: 50 },
         ...surf(RAMPS.B1, -1, [0.35, 0.65, 0.97], 0.35),
         ...surf(RAMPS.B2, -1, [0.1, 0.45, 0.8, 0.97], 0.35),
-        { p: v(1900, 150, 100), mode: 'air', r: 400 },
+        { p: v(950, 0, 1100), mode: 'air', r: 350 },
       ],
     },
     {

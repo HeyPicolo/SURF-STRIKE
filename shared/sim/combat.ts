@@ -17,7 +17,7 @@ export interface DamageResult { hpDamage: number; armorDamage: number; shieldDam
 
 /** Bônus de dano da Fúria: linear com a vida perdida (até +maxBonus em 0 HP). */
 export function furyMultiplier(hp: number): number {
-  const missing = Math.max(0, Math.min(100, 100 - hp)) / 100;
+  const missing = Math.max(0, Math.min(ITEMS.maxHp, ITEMS.maxHp - hp)) / ITEMS.maxHp;
   return 1 + CLASSES.berserker.params.maxBonus * missing;
 }
 
