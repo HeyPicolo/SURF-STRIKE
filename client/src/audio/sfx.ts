@@ -86,6 +86,7 @@ export class Sfx {
       case 'rifle': this.noise(d, t, 0.16, 2400, 400, 0.7, 1.0); this.tone(d, t, 0.12, 160, 50, 0.8, 'triangle'); break;
       case 'smg': this.noise(d, t, 0.09, 3600, 900, 0.9, 0.75); this.tone(d, t, 0.06, 260, 90, 0.4, 'square'); break;
       case 'shotgun': this.noise(d, t, 0.32, 1600, 160, 0.6, 1.2); this.tone(d, t, 0.22, 110, 38, 1.0, 'triangle'); break;
+      case 'taser': this.noise(d, t, 0.35, 5000, 2500, 3, 0.6); this.tone(d, t, 0.32, 1200, 900, 0.25, 'sawtooth'); this.tone(d, t, 0.3, 60, 55, 0.4, 'square'); break;
       case 'sniper': this.noise(d, t, 0.55, 2000, 120, 0.5, 1.3); this.tone(d, t, 0.3, 90, 30, 1.0, 'sawtooth'); this.noise(d, t + 0.05, 0.6, 600, 200, 0.4, 0.3, 'lowpass'); break;
     }
   }

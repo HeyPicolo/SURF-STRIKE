@@ -28,6 +28,8 @@ export interface MoveModifiers {
   /** Sliding: low friction, no ground acceleration (state owned by the game rules). */
   sliding?: boolean;
   slideFriction?: number;
+  /** Skip ground friction but keep normal acceleration (exit of a teleporter). */
+  noFriction?: boolean;
 }
 
 export const DEFAULT_MODS: MoveModifiers = { speedMul: 1, airAccelMul: 1, airCapMul: 1, autoBhop: true, fly: false };
@@ -156,7 +158,7 @@ export class Mover {
         // slide: momentum carries the player, only low friction slows it down
         applyFriction(st, dt, mods.slideFriction ?? 1);
       } else {
-        applyFriction(st, dt);
+        if (!mods.noFriction) applyFriction(st, dt);
         accelerate(st.vel, this.wish, wishSpeed, PHYSICS.groundAccelerate, dt);
       }
       this.clampVelocity(st);

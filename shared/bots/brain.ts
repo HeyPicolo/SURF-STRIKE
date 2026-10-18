@@ -4,7 +4,7 @@
 // =============================================================
 import { V3, DEG, yawFromDir, angleDiff, forwardFromAngles, rightFromYaw } from '../math/vec3';
 import { BOT_SKILL, BotDifficulty, BotSkill } from '../config/match';
-import { WEAPONS, WeaponId, SLOT_NADES } from '../config/weapons';
+import { WEAPONS, WeaponId, SLOT_NADES, SLOT_KNIFE, SLOT_TASER } from '../config/weapons';
 import type { NavPoint, BotRoute } from '../maps/types';
 import { emptyCmd } from '../physics/movement';
 import { steerToward } from './steer';
@@ -13,7 +13,7 @@ import type { World } from '../sim/world';
 
 type Mode = 'route' | 'roam' | 'idle';
 
-const WEAPON_PRIORITY: Record<WeaponId, number> = { rifle: 5, sniper: 4, smg: 3, shotgun: 2, pistol: 1, knife: 0 };
+const WEAPON_PRIORITY: Record<WeaponId, number> = { rifle: 5, sniper: 4, smg: 3, shotgun: 2, pistol: 1, knife: 0, taser: 0 };
 
 export class BotBrain {
   skill: BotSkill;
@@ -100,8 +100,8 @@ export class BotBrain {
 
     // engage: strafe on the ground while fighting
     const fighting = !!this.target && this.seenTime > this.skill.reaction;
-    const cw = p.currentWeapon();
-    const knifeOnly = !!cw && !!WEAPONS[cw.id].melee && w.firstWeaponSlot(p) === p.slot;
+    // sem arma de fogo (só faca/taser): luta corpo a corpo
+    const knifeOnly = w.firstWeaponSlot(p) === SLOT_KNIFE;
     let sprintWish = !fighting && this.mode === 'roam' && p.phys.onGround;
     if (fighting && p.phys.onGround) {
       this.strafeTimer -= dt;
@@ -227,7 +227,10 @@ export class BotBrain {
   private handleWeapons(dt: number, fighting: boolean) {
     const p = this.p, inp = p.input;
     // best weapon available: primary > pistol > knife
-    const bestSlot = this.world.firstWeaponSlot(p);
+    let bestSlot = this.world.firstWeaponSlot(p);
+    // só com faca e o inimigo bem perto: saca o taser (um disparo elimina)
+    if (fighting && bestSlot === SLOT_KNIFE && this.world.taserReady(p)
+      && this.target!.phys.pos.distTo(p.phys.pos) < WEAPONS.taser.range - 40) bestSlot = SLOT_TASER;
     if (p.slot !== SLOT_NADES && p.slot !== bestSlot && p.switchTime <= 0) inp.slot = bestSlot;
     if (p.slot === SLOT_NADES) {
       if (fighting && p.switchTime <= 0 && p.fireCooldown <= 0) inp.fire = !p.prevInput.fire;
@@ -237,6 +240,15 @@ export class BotBrain {
     const w = p.currentWeapon();
     if (!w) return;
     const def = WEAPONS[w.id];
+    if (def.recharge) {
+      if (!fighting || w.mag <= 0) return;
+      const t = this.target!;
+      const to = t.eyePos(new V3()).sub(p.eyePos(new V3()));
+      const d = to.len();
+      const look = forwardFromAngles(this.lookYaw, this.lookPitch, new V3());
+      if (d < def.range - 15 && look.dot(to.normalize()) > 0.97 && p.switchTime <= 0) inp.fire = !p.prevInput.fire;
+      return;
+    }
     if (def.melee) {
       if (!fighting) return;
       const t = this.target!;

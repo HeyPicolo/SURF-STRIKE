@@ -41,6 +41,8 @@ export const PHYSICS = {
   movementSensitivity: 1,
   /** Velocidade de voo/noclip do modo treino. */
   noclipSpeed: 1100,
+  /** Depois de um teleporte que mantém a velocidade, segundos sem atrito no chão para sair embalado. */
+  teleportGlide: 0.45,
   /** Abaixo desta altura o jogador é recuperado (queda fora da arena). */
   killPlaneY: -4200,
 } as const;
@@ -65,8 +67,12 @@ export const SPRINT = {
   sprintToFireKnife: 0.16,
   /** Atraso de quem só estava andando (referência: praticamente imediato). */
   walkToFire: 0,
-  /** Velocidade mínima para iniciar um slide. */
+  /** Velocidade mínima para iniciar um slide a partir do sprint. */
   slideMinStartSpeed: 200,
+  /** Acima desta velocidade, agachar no chão já faz o slide (sem precisar do sprint). */
+  autoSlideSpeed: 450,
+  /** Agachar apertado até este tempo antes de pousar ainda inicia o slide automático. */
+  slideLandBuffer: 0.3,
   /** Velocidade horizontal mínima no início do slide. */
   slideStartSpeed: 470,
   /** Ganho máximo de velocidade que o slide pode dar sobre a velocidade atual. */

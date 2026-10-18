@@ -5,7 +5,7 @@
 // =============================================================
 import { V3, DEG, forwardFromAngles, rightFromYaw, makeRng } from '../math/vec3';
 import { PHYSICS, SPRINT } from '../config/physics';
-import { WEAPONS, WeaponId, NadeKind, NADES, NADE_THROW_SPEED, NADE_SELF_DAMAGE, ITEMS, GUN_IDS, SLOT_KNIFE, SLOT_NADES } from '../config/weapons';
+import { WEAPONS, WeaponId, NadeKind, NADES, NADE_THROW_SPEED, NADE_SELF_DAMAGE, ITEMS, GUN_IDS, SLOT_KNIFE, SLOT_TASER, SLOT_NADES } from '../config/weapons';
 import { rollPool } from '../config/pickups';
 import { CLASSES, ClassId, CLASS_IDS } from '../config/classes';
 import { MATCH, BotDifficulty, BOT_NAMES } from '../config/match';
@@ -60,7 +60,7 @@ export type SimEvent =
   | { t: 'heal'; pid: number; amount: number }
   | { t: 'explode'; kind: NadeKind; pos: V3 }
   | { t: 'nadeThrow'; pid: number; kind: NadeKind }
-  | { t: 'teleport'; pid: number; from: V3; to: V3; ability?: boolean }
+  | { t: 'teleport'; pid: number; from: V3; to: V3; ability?: boolean; fall?: boolean }
   | { t: 'jumppad'; pid: number }
   | { t: 'jump'; pid: number }
   | { t: 'land'; pid: number; speed: number }
@@ -230,8 +230,8 @@ export class World {
     p.reloadTime = 0; p.zoomed = false; p.punchPitch = 0; p.punchYaw = 0;
     p.resetMovementState();
     if (weapon) {
-      p.weapons = [null, null, null];
-      p.giveWeapon('knife');
+      p.weapons = [null, null, null, null];
+      p.giveWeapon('knife'); // nos duelos: faca + a arma sorteada (sem taser)
       const ws = p.giveWeapon(weapon);
       ws.reserve = WEAPONS[weapon].mag * 4;
       p.slot = WEAPONS[weapon].slot;
@@ -322,6 +322,10 @@ export class World {
     p.speedBoost = Math.max(0, p.speedBoost - dt);
     p.fireCooldown = Math.max(0, p.fireCooldown - dt);
     p.switchTime = Math.max(0, p.switchTime - dt);
+    p.teleportGlide = Math.max(0, p.teleportGlide - dt);
+    for (const ws of p.weapons) {
+      if (ws?.recharge !== undefined && ws.recharge > 0) { ws.recharge -= dt; if (ws.recharge <= 0) { ws.recharge = 0; ws.mag = WEAPONS[ws.id].mag; } }
+    }
     if (p.shieldTime > 0) { p.shieldTime -= dt; if (p.shieldTime <= 0) p.shield = 0; }
     ABILITIES[p.classId].tick?.(this, p, dt);
 
@@ -337,6 +341,7 @@ export class World {
       speedMul: p.speedMul(),
       groundSpeedMul: p.groundSpeedMul(),
       sliding: p.slideTime > 0,
+      noFriction: p.teleportGlide > 0,
       slideFriction: SPRINT.slideFriction,
       airAccelMul: (p.classId === 'runner' ? CLASSES.runner.params.airAccelMul : 1) * (p.speedBoost > 0 ? ITEMS.speedAirMul : 1),
       airCapMul: p.classId === 'runner' ? CLASSES.runner.params.airCapMul : 1,
@@ -348,12 +353,7 @@ export class World {
     if (ev.landed > 250) this.emit({ t: 'land', pid: p.id, speed: ev.landed });
 
     this.checkTriggers(p);
-    if (p.phys.pos.y < this.map.killY) {
-      const sp = this.config.mode === 'training' ? this.map.trainingSpawn : this.map.recovery;
-      const from = p.phys.pos.clone();
-      this.spawnAt(p, { pos: sp.pos.clone().add(new V3((this.rng() - 0.5) * 200, 0, (this.rng() - 0.5) * 200)), yaw: p.yaw });
-      this.emit({ t: 'teleport', pid: p.id, from, to: p.phys.pos.clone() });
-    }
+    if (p.phys.pos.y < this.map.fallY) this.sendToBase(p);
 
     // weapons / actions — disabled while frozen in prep
     const canAct = !frozen && (this.match.combatEnabled || this.config.mode === 'training' || this.match.phase === 'roundEnd');
@@ -374,6 +374,8 @@ export class World {
     const crouchEdge = cmd.crouch && !prev.crouch;
     const jumpEdge = cmd.jump && !prev.jump;
     if (!cmd.crouch) p.crouchSuppressed = false;
+    p.crouchBuffer = Math.max(0, p.crouchBuffer - dt);
+    if (crouchEdge && !st.onGround) p.crouchBuffer = SPRINT.slideLandBuffer;
     p.slideCooldown = Math.max(0, p.slideCooldown - dt);
     p.slideRecover = Math.max(0, p.slideRecover - dt);
     const hs = Math.hypot(st.vel.x, st.vel.z);
@@ -394,7 +396,13 @@ export class World {
         p.slideCooldown = SPRINT.slideCooldown;
         this.emit({ t: 'slide', pid: p.id, phase: 'end' });
       }
-    } else if (crouchEdge && p.sprinting && st.onGround && hs >= SPRINT.slideMinStartSpeed && p.slideCooldown <= 0 && !p.fly) {
+    } else if (
+      // slide: agachar durante o sprint, ou agachar em alta velocidade (sem sprint). Agachar logo antes
+      // de pousar também conta, para emendar o slide na queda de uma rampa.
+      (crouchEdge || (p.crouchBuffer > 0 && cmd.crouch)) && st.onGround && p.slideCooldown <= 0 && !p.fly && !p.crouchSuppressed &&
+      ((p.sprinting && hs >= SPRINT.slideMinStartSpeed) || hs > SPRINT.autoSlideSpeed)
+    ) {
+      p.crouchBuffer = 0;
       p.slideTime = SPRINT.slideTime;
       p.sprinting = false;
       const target = Math.min(Math.max(hs, SPRINT.slideStartSpeed), hs + SPRINT.slideMaxBoost);
@@ -432,6 +440,19 @@ export class World {
   /** Weapon is raised (sprinting) or still being lowered: no shooting. */
   weaponBlocked(p: Player): boolean { return p.sprinting || p.raiseTime > SPRINT.walkToFire; }
 
+  /** Caiu do mapa: volta automaticamente para a base do próprio time (parado). */
+  sendToBase(p: Player) {
+    const from = p.phys.pos.clone();
+    const sps = this.config.mode === 'training' || p.isDummy ? [this.map.trainingSpawn] : this.map.spawns[p.team];
+    const sp = sps[Math.floor(this.rng() * sps.length)];
+    this.spawnAt(p, sp);
+    p.slideTime = 0; p.sprinting = false;
+    p.phys.ducked = false; p.phys.maxs.y = PHYSICS.playerHeight;
+    p.triggerCd = 0.5;
+    this.emit({ t: 'teleport', pid: p.id, from, to: p.phys.pos.clone(), fall: true });
+    this.bots.get(p.id)?.onRoundStart();
+  }
+
   private edge(p: Player, key: 'fire' | 'alt' | 'reload' | 'use' | 'ability' | 'drop') {
     return p.input[key] && !p.prevInput[key];
   }
@@ -439,11 +460,17 @@ export class World {
   private handleActions(p: Player, dt: number) {
     const inp = p.input;
     // slot switching
-    if (inp.slot !== null && inp.slot !== p.slot) {
+    const slotEdge = inp.slot !== null && inp.slot !== p.prevInput.slot;
+    if (inp.slot === SLOT_KNIFE && slotEdge && (p.slot === SLOT_KNIFE || p.slot === SLOT_TASER)) {
+      // tecla 3 alterna entre faca e taser (o taser só com carga)
+      if (p.slot === SLOT_KNIFE && this.taserReady(p)) this.switchTo(p, SLOT_TASER);
+      else if (p.slot === SLOT_TASER) this.switchTo(p, SLOT_KNIFE);
+    } else if (inp.slot !== null && inp.slot !== p.slot) {
       if (inp.slot === SLOT_NADES) {
         if (this.hasNades(p)) { p.lastWeaponSlot = p.slot; this.switchTo(p, SLOT_NADES); }
-      } else if (p.weapons[inp.slot]) this.switchTo(p, inp.slot);
-    } else if (inp.slot === SLOT_NADES && p.slot === SLOT_NADES && inp.slot !== p.prevInput.slot) this.cycleNade(p);
+      } else if (inp.slot === SLOT_TASER) { if (this.taserReady(p)) this.switchTo(p, SLOT_TASER); }
+      else if (p.weapons[inp.slot]) this.switchTo(p, inp.slot);
+    } else if (inp.slot === SLOT_NADES && p.slot === SLOT_NADES && slotEdge) this.cycleNade(p);
 
     if (this.edge(p, 'ability')) tryUseAbility(this, p);
     if (this.edge(p, 'use')) this.tryUsePickup(p);
@@ -460,6 +487,15 @@ export class World {
     const w = p.currentWeapon();
     if (!w) return;
     const def = WEAPONS[w.id];
+    if (def.recharge) {
+      // taser: um disparo, depois volta para a melhor arma e recarrega sozinho
+      if (w.mag <= 0) { if (p.switchTime <= 0) this.switchTo(p, this.firstWeaponSlot(p)); return; }
+      if (!blocked && this.edge(p, 'fire') && p.fireCooldown <= 0 && p.switchTime <= 0) {
+        this.fire(p, w);
+        w.recharge = def.recharge;
+      }
+      return;
+    }
     if (def.melee) {
       if (blocked || p.fireCooldown > 0 || p.switchTime > 0) return;
       if (this.edge(p, 'alt')) this.melee(p, true);
@@ -486,6 +522,8 @@ export class World {
       } else this.fire(p, w);
     }
   }
+
+  taserReady(p: Player) { const t = p.weapons[SLOT_TASER]; return !!t && t.mag > 0; }
 
   /** Best weapon slot available: primary, then pistol, then knife. */
   firstWeaponSlot(p: Player) { return p.weapons[0] ? 0 : p.weapons[1] ? 1 : SLOT_KNIFE; }
@@ -533,8 +571,11 @@ export class World {
     this.up.crossVectors(this.right, this.fwd).normalize();
     p.eyePos(this.eye);
     const dmgBy = new Map<number, { dmg: number; head: boolean; pos: V3 }>();
+    // precisão de perto: se o centro da mira já acerta um inimigo próximo, o tiro vai exatamente nele
+    let shotSpread = spread;
+    if (def.preciseRange && this.centerRayHitsEnemy(p, this.eye, this.fwd, def.preciseRange)) shotSpread = 0;
     for (let k = 0; k < def.pellets; k++) {
-      const a = Math.tan(spread * DEG * Math.sqrt(this.rng()));
+      const a = Math.tan(shotSpread * DEG * Math.sqrt(this.rng()));
       const th = this.rng() * Math.PI * 2;
       this.dir.copy(this.fwd).addScaled(this.right, Math.cos(th) * a).addScaled(this.up, Math.sin(th) * a).normalize();
       this.end.copy(this.eye).addScaled(this.dir, def.range);
@@ -565,7 +606,19 @@ export class World {
     p.punchYaw = Math.max(-5, Math.min(5, p.punchYaw));
     p.shotsFired++;
     for (const [vid, d] of dmgBy) this.applyDamage(this.player(vid)!, p, d.dmg, d.head, false, WEAPONS[w.id].name, d.pos);
-    if (def.zoom > 0 && def.id === 'sniper') p.zoomed = false;
+  }
+
+  private centerRayHitsEnemy(p: Player, eye: V3, dir: V3, range: number): boolean {
+    const end = eye.clone().addScaled(dir, range);
+    const wt = this.collision.traceRay(eye, end, newTrace(), 'glass');
+    const limit = wt.fraction * range;
+    for (const q of this.players) {
+      if (q === p || !q.alive || q.team === p.team || q.inDuel !== p.inDuel) continue;
+      hitboxes(q, this.hbHead, this.hbBody);
+      if (rayAabb(eye, dir, limit, this.hbHead.min, this.hbHead.max) >= 0) return true;
+      if (rayAabb(eye, dir, limit, this.hbBody.min, this.hbBody.max) >= 0) return true;
+    }
+    return false;
   }
 
   // ------------------------------------------------------------------ knife
@@ -619,7 +672,8 @@ export class World {
     const w = p.currentWeapon();
     const def = w ? WEAPONS[w.id] : WEAPONS.pistol;
     const sinceShot = this.time - p.lastShotTime;
-    if (sinceShot > fireInterval(def) * 1.2) {
+    // o recuo começa a voltar logo após o intervalo de tiro (no máximo 0,3 s, para armas lentas como a Longbow)
+    if (sinceShot > Math.min(fireInterval(def) * 1.2, 0.3)) {
       const r = def.recover * dt;
       p.punchPitch = Math.abs(p.punchPitch) <= r ? 0 : p.punchPitch - Math.sign(p.punchPitch) * r;
       p.punchYaw = Math.abs(p.punchYaw) <= r ? 0 : p.punchYaw - Math.sign(p.punchYaw) * r;
@@ -674,7 +728,7 @@ export class World {
     // queda de armas ao morrer
     const drop = victim.weapons[0] ?? victim.weapons[1];
     if (drop && victim.inDuel < 0 && !victim.isDummy) this.spawnDropped(drop, victim.phys.pos);
-    victim.weapons = [null, null, null];
+    victim.weapons = [null, null, null, null];
     this.emit({ t: 'kill', killer: killer?.id ?? NOBODY, victim: victim.id, weapon: weaponLabel, head });
     if (victim.inDuel >= 0) this.onDuelDeath(victim);
   }
@@ -849,7 +903,7 @@ export class World {
           p.armor = Math.min(ITEMS.maxArmor, p.armor + ITEMS.armorAmount); label = `+${ITEMS.armorAmount} COLETE`; break;
         case 'ammo': {
           let took = false;
-          for (const w of p.weapons) if (w && !WEAPONS[w.id].melee) { const d = WEAPONS[w.id]; if (w.reserve < d.reserve * 2) { w.reserve = Math.min(d.reserve * 2, w.reserve + d.mag * 2); took = true; } }
+          for (const w of p.weapons) if (w && !WEAPONS[w.id].melee && !WEAPONS[w.id].recharge) { const d = WEAPONS[w.id]; if (w.reserve < d.reserve * 2) { w.reserve = Math.min(d.reserve * 2, w.reserve + d.mag * 2); took = true; } }
           if (!took) continue;
           label = 'MUNIÇÃO'; break;
         }
@@ -896,6 +950,15 @@ export class World {
         const d = tr.teamDest ? tr.teamDest[p.team] : { pos: tr.dest, yaw: tr.destYaw };
         st.pos.copy(d.pos);
         if (!tr.keepVelocity) st.vel.set(0, 0, 0);
+        else {
+          // mantém a velocidade, girada junto com a visão: quem entra correndo para frente sai correndo para frente
+          const dy = d.yaw - p.yaw, c = Math.cos(dy), sn = Math.sin(dy);
+          const vx = st.vel.x, vz = st.vel.z;
+          st.vel.x = vx * c + vz * sn;
+          st.vel.z = -vx * sn + vz * c;
+          st.onGround = false;
+          p.teleportGlide = PHYSICS.teleportGlide;
+        }
         p.yaw = d.yaw; p.input.cmd.yaw = d.yaw;
         this.emit({ t: 'teleport', pid: p.id, from, to: st.pos.clone() });
       } else {

@@ -35,6 +35,19 @@ export class Effects {
     this.tracers.push({ ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z, life, max: life, color, width });
   }
 
+  /** Arco elétrico em zigue-zague (taser). */
+  arc(a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }, color: number) {
+    const n = 7;
+    let px = a.x, py = a.y, pz = a.z;
+    for (let i = 1; i <= n; i++) {
+      const k = i / n, j = i === n ? 0 : 7;
+      const x = a.x + (b.x - a.x) * k + (Math.random() - 0.5) * j, y = a.y + (b.y - a.y) * k + (Math.random() - 0.5) * j, z = a.z + (b.z - a.z) * k + (Math.random() - 0.5) * j;
+      this.tracer({ x: px, y: py, z: pz }, { x, y, z }, color, 1.6, 0.16);
+      px = x; py = y; pz = z;
+    }
+    this.emit(b.x, b.y, b.z, 10, { color, size: 8, speed: 160, max: 0.3, add: true });
+  }
+
   impact(x: number, y: number, z: number, nx: number, ny: number, nz: number) {
     this.emit(x, y, z, 6, { color: 0xfff2c0, size: 5, speed: 260, max: 0.25, add: true, dir: [nx, ny, nz], spread: 0.8, grav: 600 });
     this.emit(x, y, z, 3, { color: 0x9aa4b8, size: 14, speed: 40, max: 0.7, grow: 30, alpha: 0.5, dir: [nx, ny, nz], spread: 0.6 });

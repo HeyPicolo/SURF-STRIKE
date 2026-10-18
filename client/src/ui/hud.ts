@@ -1,7 +1,7 @@
 // HUD em DOM. Escritas no DOM só acontecem quando um valor muda (evita layout thrash).
 import type { World } from '../../../shared/sim/world';
 import type { Player } from '../../../shared/sim/player';
-import { WEAPONS, NADES, NadeKind, SLOT_NADES } from '../../../shared/config/weapons';
+import { WEAPONS, NADES, NadeKind, SLOT_NADES, SLOT_KEYS } from '../../../shared/config/weapons';
 import { CLASSES } from '../../../shared/config/classes';
 import { forwardFromAngles } from '../../../shared/math/vec3';
 
@@ -69,6 +69,13 @@ export class Hud {
       this.set('ammo-mag', 'text', String(p.nades[nk]));
       this.set('ammo-res', 'text', '');
       this.set('ammo-mag', 'class', '');
+    } else if (ws && WEAPONS[ws.id].recharge) {
+      const def = WEAPONS[ws.id];
+      this.set('weapon-name', 'text', `${def.name}  ${def.category}`);
+      this.set('ammo-mag', 'text', ws.mag > 0 ? '1' : String(Math.ceil(ws.recharge ?? 0)));
+      this.set('ammo-res', 'text', ws.mag > 0 ? 'carga pronta, alcance curto' : 's para recarregar');
+      this.set('ammo-res', 'class', 'melee');
+      this.set('ammo-mag', 'class', ws.mag > 0 ? '' : 'empty');
     } else if (ws && WEAPONS[ws.id].melee) {
       const def = WEAPONS[ws.id];
       this.set('weapon-name', 'text', `${def.name}  ${def.category}`);
@@ -87,8 +94,11 @@ export class Hud {
       this.set('weapon-name', 'text', 'Desarmado');
       this.set('ammo-mag', 'text', '–'); this.set('ammo-res', 'text', '');
     }
-    const slots = [...p.weapons.map((w) => (w ? WEAPONS[w.id].name : null)), p.nades.he + p.nades.smoke + p.nades.impulse > 0 ? 'Granadas' : null];
-    this.set('slots', 'html', slots.map((s, i) => s ? `<span class="slot ${p.slot === i ? 'on' : ''}">${i + 1} ${s}</span>` : '').join(''));
+    const slots = [
+      ...p.weapons.map((w) => (w ? WEAPONS[w.id].name + (w.recharge ? ` ${Math.ceil(w.recharge)}s` : '') : null)),
+      p.nades.he + p.nades.smoke + p.nades.impulse > 0 ? 'Granadas' : null,
+    ];
+    this.set('slots', 'html', slots.map((s, i) => s ? `<span class="slot ${p.slot === i ? 'on' : ''}">${SLOT_KEYS[i]} ${s}</span>` : '').join(''));
     this.set('nades', 'html', (['he', 'smoke', 'impulse'] as NadeKind[]).filter((k) => p.nades[k] > 0)
       .map((k) => `<i class="nade ${p.slot === SLOT_NADES && p.nadeSel === k ? 'sel' : ''}" style="--c:${hex(NADES[k].color)}" title="${NADES[k].name}"></i>`).join(''));
     if (p.reloadTime > 0 && ws) {

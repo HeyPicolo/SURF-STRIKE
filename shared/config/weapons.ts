@@ -2,10 +2,12 @@
 //  Arsenal — todos os atributos são dados (balanceamento aqui).
 //  Ângulos em graus, tempos em segundos, distâncias em unidades.
 // =============================================================
-export type WeaponId = 'pistol' | 'rifle' | 'smg' | 'shotgun' | 'sniper' | 'knife';
-/** 0 = primária, 1 = secundária (pistola), 2 = faca. As granadas usam o slot 3 do jogador. */
-export type WeaponSlot = 0 | 1 | 2;
-export const SLOT_PRIMARY = 0, SLOT_SECONDARY = 1, SLOT_KNIFE = 2, SLOT_NADES = 3;
+export type WeaponId = 'pistol' | 'rifle' | 'smg' | 'shotgun' | 'sniper' | 'knife' | 'taser';
+/** 0 = primária, 1 = secundária (pistola), 2 = faca, 3 = taser. As granadas usam o slot 4 do jogador. */
+export type WeaponSlot = 0 | 1 | 2 | 3;
+export const SLOT_PRIMARY = 0, SLOT_SECONDARY = 1, SLOT_KNIFE = 2, SLOT_TASER = 3, SLOT_NADES = 4;
+/** Tecla mostrada para cada slot (faca e taser dividem a tecla 3, como no CS). */
+export const SLOT_KEYS = ['1', '2', '3', '3', '4'];
 
 /** Ataque corpo a corpo (faca). */
 export interface MeleeDef {
@@ -56,6 +58,12 @@ export interface WeaponDef {
   color: number;
   /** presente apenas em armas brancas */
   melee?: MeleeDef;
+  /** Arma inicial que não aparece no mapa nem cai ao morrer (taser). */
+  starter?: boolean;
+  /** Recarga automática da carga, em segundos (taser: sem munição reserva). */
+  recharge?: number;
+  /** Se o centro da mira acerta um inimigo até esta distância, o tiro sai sem spread. */
+  preciseRange?: number;
 }
 
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
@@ -98,12 +106,22 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     damage: 104, headMult: 3.0, pellets: 1, auto: false, rpm: 44, mag: 5, reserve: 20, reloadTime: 2.9,
     spread: 3.0, airSpread: 2.0, moveSpread: 1.2, kick: 4.2, kickSide: 0.6, recover: 6,
     falloffHalf: 30000, range: 16000, moveSpeedMul: 0.86, zoom: 0.28, zoomSpread: 0.02, color: 0x2b4a3a,
+    // de perto (sem zoom) o tiro vai exatamente onde a mira aponta
+    preciseRange: 900,
+  },
+  taser: {
+    // taser de choque: 1 carga, alcance curtíssimo, elimina com um disparo; recarrega sozinho
+    id: 'taser', name: 'VOLT-1', category: 'Taser', slot: 3, starter: true,
+    damage: 500, headMult: 1, pellets: 1, auto: false, rpm: 60, mag: 1, reserve: 0, reloadTime: 0,
+    spread: 0.25, airSpread: 0.35, moveSpread: 0.2, kick: 2.2, kickSide: 0.4, recover: 10,
+    falloffHalf: 1e9, range: 200, moveSpeedMul: 1.0, zoom: 0, color: 0xffd23c,
+    recharge: 30,
   },
 };
 
 export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
 /** Armas de fogo (o que pode aparecer no mapa ou em duelos). */
-export const GUN_IDS = WEAPON_IDS.filter((id) => !WEAPONS[id].melee);
+export const GUN_IDS = WEAPON_IDS.filter((id) => !WEAPONS[id].melee && !WEAPONS[id].starter);
 
 /** Fall-off: damage multiplier at distance d. */
 export function falloff(def: WeaponDef, d: number): number {

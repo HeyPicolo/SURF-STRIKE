@@ -73,6 +73,8 @@ export interface MapDef {
   waitingRoom: SpawnPoint;
   recovery: SpawnPoint;
   killY: number;
+  /** Abaixo desta altura o jogador caiu do mapa e volta para a base. */
+  fallY: number;
   trainingSpawn: SpawnPoint;
   trainingTargets: SpawnPoint[];
 }

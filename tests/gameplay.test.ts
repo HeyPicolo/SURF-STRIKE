@@ -200,3 +200,146 @@ test('round start: everyone has only the knife', () => {
     assert.equal(p.weapons[0], null); assert.equal(p.weapons[1], null);
   }
 });
+
+// ---------------------------------------------------------------- v3: queda, teleporte, slide auto, Longbow, taser
+
+test('falling off the map sends the player back to their own base', () => {
+  const w = new World(buildClouds(), { mode: 'bots', teamSize: 2, difficulty: 'easy', local: { name: 'eu', team: 'blue', classId: 'runner' }, seed: 5, autoBhop: true });
+  w.match.phase = 'active'; w.match.timer = 99;
+  for (const p of w.players) p.frozen = false;
+  const blue = w.local, red = w.players.find((q) => q.team === 'red')!;
+  for (const p of [blue, red]) { p.phys.pos.set(3000, -1100, 0); p.phys.vel.set(500, -900, 0); }
+  w.step(SIM_DT);
+  assert.ok(blue.phys.pos.z > 4800 && blue.phys.pos.y > 2300, `blue at base ${blue.phys.pos.toArray().map(Math.round)}`);
+  assert.ok(red.phys.pos.z < -4800 && red.phys.pos.y > 2300, `red at base ${red.phys.pos.toArray().map(Math.round)}`);
+  assert.ok(blue.phys.vel.len() < 20, 'arrives standing still');
+});
+
+test('teleporters keep the speed and turn it with the view', () => {
+  const w = world(); const p = w.local;
+  // blue plateau teleporter is at (0, 0, 1330) and sends to the blue spawn front facing yaw 0
+  p.phys.pos.set(0, 2, 1398); p.prevPos.copy(p.phys.pos); p.phys.vel.set(0, 0, -600);
+  p.input.cmd.yaw = 0; w.step(SIM_DT);
+  for (let i = 0; i < 20 && p.phys.pos.y < 2000; i++) w.step(SIM_DT);
+  assert.ok(p.phys.pos.y > 2300, 'arrived at the spawn front');
+  run(w, 20); // glide off the spawn platform
+  assert.ok(Math.hypot(p.phys.vel.x, p.phys.vel.z) > 560, `speed kept: ${Math.hypot(p.phys.vel.x, p.phys.vel.z).toFixed(0)}`);
+  // entering sideways (looking −X, moving −X) exits moving forward along the destination yaw (−Z)
+  const w2 = world(); const q = w2.local;
+  run(w2, 60); // let the trigger cooldown expire
+  q.phys.pos.set(74, 2, 1330); q.prevPos.copy(q.phys.pos); q.phys.vel.set(-600, 0, 0);
+  q.input.cmd.yaw = Math.PI / 2; w2.step(SIM_DT);
+  for (let i = 0; i < 20 && q.phys.pos.y < 2000; i++) w2.step(SIM_DT);
+  assert.ok(q.phys.pos.y > 2300, 'teleported');
+  assert.ok(q.phys.vel.z < -540 && Math.abs(q.phys.vel.x) < 60, `exit velocity ${q.phys.vel.toArray().map(Math.round)}`);
+});
+
+test('crouch above 450 u/s slides without sprint (also right before landing)', () => {
+  const w = world(); const p = arena(w);
+  // slow: just crouches
+  p.phys.vel.set(0, 0, -300);
+  p.input.cmd.crouch = true; w.step(SIM_DT); p.input.cmd.crouch = false;
+  assert.equal(p.slideTime, 0);
+  run(w, 60);
+  // fast, no sprint key: slides
+  p.phys.pos.set(14200, 2, 760); p.phys.vel.set(0, 0, -650);
+  w.step(SIM_DT);
+  p.input.cmd.crouch = true; w.step(SIM_DT);
+  assert.ok(p.slideTime > 0, 'slide without sprint');
+  assert.ok(Math.hypot(p.phys.vel.x, p.phys.vel.z) > 600, 'keeps the speed');
+  p.input.cmd.crouch = false; run(w, 120);
+  // crouch pressed in the air, just before touching down
+  p.phys.pos.set(14200, 22, 760); p.phys.vel.set(0, -250, -700); p.phys.onGround = false;
+  p.input.cmd.crouch = true;
+  let slid = false;
+  run(w, 25, () => { if (p.slideTime > 0) slid = true; });
+  assert.ok(slid, 'landing slide');
+});
+
+function aimAt(p: Player, target: V3) {
+  const e = p.eyePos(new V3());
+  p.input.cmd.yaw = Math.atan2(-(target.x - e.x), -(target.z - e.z));
+  p.input.cmd.pitch = Math.atan2(target.y - e.y, Math.hypot(target.x - e.x, target.z - e.z));
+}
+
+function sniperRange(dist: number, shots: number) {
+  const w = world(7); const p = w.local;
+  const d = w.players.find((q) => q.isDummy)!;
+  w.bots.delete(d.id); d.input.cmd.side = 0;
+  d.phys.pos.set(14200, 2, -700); d.prevPos.copy(d.phys.pos); d.phys.vel.set(0, 0, 0);
+  p.phys.pos.set(14200, 2, -700 + dist); p.phys.vel.set(0, 0, 0);
+  p.giveWeapon('sniper'); p.weapons[0]!.mag = 99;
+  p.input.slot = 0; w.step(SIM_DT); p.input.slot = null;
+  run(w, 50);
+  let hits = 0;
+  for (let i = 0; i < shots; i++) {
+    d.alive = true; d.hp = 1000; d.phys.pos.set(14200, 2, -700);
+    aimAt(p, new V3(14200, 42, -700));
+    const before = d.hp;
+    p.input.fire = true; w.step(SIM_DT); p.input.fire = false;
+    if (d.hp < before) hits++;
+    run(w, 150);
+  }
+  return hits;
+}
+
+test('Longbow: accurate up close without scope, still inaccurate far away', () => {
+  assert.equal(sniperRange(350, 12), 12, 'every close hip shot hits');
+  assert.ok(sniperRange(1400, 12) < 12, 'far hip shots still spread');
+});
+
+test('Longbow: stays scoped after the shot', () => {
+  const w = world(); const p = arena(w);
+  p.giveWeapon('sniper');
+  p.input.slot = 0; w.step(SIM_DT); p.input.slot = null;
+  run(w, 50);
+  p.input.alt = true; w.step(SIM_DT); p.input.alt = false;
+  assert.ok(p.zoomed);
+  p.input.fire = true; w.step(SIM_DT); p.input.fire = false;
+  assert.equal(p.weapons[0]!.mag, WEAPONS.sniper.mag - 1);
+  assert.ok(p.zoomed, 'scope kept');
+});
+
+test('taser: starts loaded, one-shot kill in range, nothing out of range, recharges', () => {
+  const w = world(); const p = arena(w);
+  const d = w.players.find((q) => q.isDummy)!;
+  w.bots.delete(d.id);
+  d.input.cmd.side = 0; d.input.cmd.forward = 0;
+  assert.equal(p.weapons[3]?.id, 'taser');
+  assert.equal(p.weapons[3]!.mag, 1);
+  // key 3 toggles knife ↔ taser
+  p.input.slot = 2; w.step(SIM_DT); p.input.slot = null; w.step(SIM_DT);
+  assert.equal(p.currentWeapon()!.id, 'taser');
+  p.input.slot = 2; w.step(SIM_DT); p.input.slot = null; w.step(SIM_DT);
+  assert.equal(p.currentWeapon()!.id, 'knife');
+  // out of range (260u): the charge is spent, no damage
+  d.phys.pos.set(14200, 2, 400); d.prevPos.copy(d.phys.pos); d.phys.vel.set(0, 0, 0);
+  p.phys.pos.set(14200, 2, 660); p.phys.vel.set(0, 0, 0);
+  p.input.slot = 2; w.step(SIM_DT); p.input.slot = null;
+  run(w, 50);
+  aimAt(p, new V3(14200, 40, 400));
+  p.input.fire = true; w.step(SIM_DT); p.input.fire = false;
+  assert.equal(d.hp, 100, 'no damage out of range');
+  assert.equal(p.weapons[3]!.mag, 0);
+  run(w, 50);
+  assert.equal(p.currentWeapon()!.id, 'knife', 'back to the knife after the shot');
+  // recharge
+  run(w, Math.round(WEAPONS.taser.recharge! / SIM_DT) + 5);
+  assert.equal(p.weapons[3]!.mag, 1, 'recharged');
+  // in range (140u) with armor: lethal
+  d.armor = 100; d.phys.pos.set(14200, 2, 400); d.phys.vel.set(0, 0, 0);
+  p.phys.pos.set(14200, 2, 540); p.phys.vel.set(0, 0, 0);
+  p.input.slot = 2; w.step(SIM_DT); p.input.slot = null;
+  run(w, 50);
+  aimAt(p, new V3(14200, 40, 400));
+  p.input.fire = true; w.step(SIM_DT); p.input.fire = false;
+  assert.equal(d.alive, false, `one-shot kill (hp ${d.hp}, slot ${p.currentWeapon()!.id}, mag ${p.weapons[3]!.mag}, dummy ${d.phys.pos.toArray().map(Math.round)})`);
+});
+
+test('taser is never dropped and never spawns on the map', () => {
+  const w = world(); const p = arena(w);
+  p.input.slot = 2; w.step(SIM_DT); p.input.slot = null; run(w, 40);
+  p.input.drop = true; w.step(SIM_DT); p.input.drop = false;
+  assert.ok(p.weapons[3], 'cannot drop the taser');
+  for (let s = 1; s < 20; s++) assert.ok(!world(s).pickups.some((k) => k.weapon === 'taser'));
+});

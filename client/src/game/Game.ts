@@ -205,7 +205,8 @@ export class Game {
           }
           // tracer starts from the muzzle (approx.) for the viewer
           const from = isMe ? this.muzzleWorld(p) : e.from;
-          if (e.weapon !== 'shotgun' || e.pellet % 3 === 0) this.fx.tracer(from, e.to, e.weapon === 'sniper' ? 0xbfffe0 : 0xfff0b0, e.weapon === 'sniper' ? 2.6 : 1.4, e.weapon === 'sniper' ? 0.35 : 0.08);
+          if (e.weapon === 'taser') this.fx.arc(from, e.to, 0x7fe9ff);
+          else if (e.weapon !== 'shotgun' || e.pellet % 3 === 0) this.fx.tracer(from, e.to, e.weapon === 'sniper' ? 0xbfffe0 : 0xfff0b0, e.weapon === 'sniper' ? 2.6 : 1.4, e.weapon === 'sniper' ? 0.35 : 0.08);
           if (e.hitWorld && e.normal) this.fx.impact(e.to.x, e.to.y, e.to.z, e.normal.x, e.normal.y, e.normal.z);
           break;
         }
@@ -261,7 +262,11 @@ export class Game {
         case 'teleport':
           this.fx.emit(e.from.x, e.from.y + 36, e.from.z, 24, { color: 0x9b7bff, size: 20, speed: 200, max: 0.5, add: true });
           this.fx.emit(e.to.x, e.to.y + 36, e.to.z, 24, { color: 0x9b7bff, size: 20, speed: 200, max: 0.5, add: true });
-          if (e.pid === me.id) { this.sfx.teleport(); if (!e.ability) this.syncView(); }
+          if (e.pid === me.id) {
+            this.sfx.teleport();
+            if (!e.ability) this.syncView();
+            if (e.fall) this.hud.toast('VOCÊ CAIU — DE VOLTA À BASE', '#9cc2ff');
+          }
           break;
         case 'jumppad': if (e.pid === me.id) this.sfx.jumppad(); break;
         case 'jump': if (e.pid === me.id) this.sfx.jump(); break;
@@ -371,11 +376,14 @@ export class Game {
     this.eyeSmooth += (viewer.eyeHeight - this.eyeSmooth) * Math.min(1, dt * 14);
     const hs = Math.hypot(viewer.phys.vel.x, viewer.phys.vel.z);
     if (viewer.phys.onGround && hs > 30) this.bobPhase += dt * hs * 0.035;
-    const bobAmt = this.settings.viewBob && viewer.phys.onGround ? Math.min(1, hs / 250) : 0;
+    // com a Longbow no zoom a mira fica parada: sem balanço, sem pouso e sem recuo visual
+    const wsView = viewer.currentWeapon();
+    const scopedStatic = viewer.zoomed && !!wsView && wsView.id === 'sniper';
+    const bobAmt = this.settings.viewBob && viewer.phys.onGround && !scopedStatic ? Math.min(1, hs / 250) : 0;
     const bob = Math.sin(this.bobPhase) * 1.4 * bobAmt;
-    const land = -viewer.phys.landImpact * 7;
+    const land = scopedStatic ? 0 : -viewer.phys.landImpact * 7;
     this.viewKick = Math.max(0, this.viewKick - dt * 6);
-    const punchVis = 0.5;
+    const punchVis = scopedStatic ? 0 : 0.5;
     const camPitch = pitch + viewer.punchPitch * DEG * punchVis;
     const camYaw = yaw + viewer.punchYaw * DEG * punchVis;
     // FOV (horizontal setting at 16:9 → vertical), zoom

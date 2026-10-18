@@ -93,6 +93,16 @@ export function buildWeapon(r: Renderer, id: WeaponId): GpuMesh {
       m.beam([0, -1.5, -2.6], [0, -1.15, -13.8], 0.25, 0x37e3ff, 1);
       break;
     }
+    case 'taser':
+      // corpo compacto amarelo e preto com eletrodos na ponta
+      m.box(-1.8, -0.5, -11, 1.8, 4.2, 2, 0xffd23c);
+      m.box(-1.9, 1.2, -11.2, 1.9, 2.0, 1, 0x262b38);
+      m.box(-1.4, -7.5, -1, 1.4, -0.5, 3, 0x262b38);
+      m.box(-1.6, 0.2, -13, 1.6, 3.6, -11, 0x262b38);
+      m.box(-1.2, 2.6, -13.6, -0.4, 3.2, -13, 0x7fe9ff, 1);
+      m.box(0.4, 2.6, -13.6, 1.2, 3.2, -13, 0x7fe9ff, 1);
+      m.box(-1.9, 3.0, -8, 1.9, 3.6, -2, 0x7fe9ff, 1);
+      break;
     case 'pistol':
       m.box(-1.6, 0, -13, 1.6, 4, 2, light);
       m.box(-1.3, -7, -1, 1.3, 0, 3, metal);

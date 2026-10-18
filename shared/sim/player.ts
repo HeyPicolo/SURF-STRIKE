@@ -5,7 +5,7 @@ import { WEAPONS, WeaponId, NadeKind, SLOT_KNIFE, SLOT_NADES } from '../config/w
 import { CLASSES, ClassId } from '../config/classes';
 import type { Team } from '../maps/types';
 
-export interface WeaponState { id: WeaponId; mag: number; reserve: number; }
+export interface WeaponState { id: WeaponId; mag: number; reserve: number; /** segundos até recarregar a carga (taser) */ recharge?: number; }
 
 export interface PlayerInput {
   cmd: MoveCmd;
@@ -40,9 +40,9 @@ export class Player {
   shield = 0;
   shieldTime = 0;
 
-  /** [primária, secundária (pistola), faca] */
-  weapons: (WeaponState | null)[] = [null, null, null];
-  /** 0 primária, 1 secundária, 2 faca, 3 granadas */
+  /** [primária, secundária (pistola), faca, taser] */
+  weapons: (WeaponState | null)[] = [null, null, null, null];
+  /** 0 primária, 1 secundária, 2 faca, 3 taser, 4 granadas */
   slot = SLOT_KNIFE;
   lastWeaponSlot = SLOT_KNIFE;
   /** golpe pesado da faca em andamento (para animação) */
@@ -62,6 +62,10 @@ export class Player {
   slideRecover = 0;
   /** depois de cancelar o slide com agachar, ignora o agachar até soltar a tecla */
   crouchSuppressed = false;
+  /** agachar apertado pouco antes de pousar ainda conta para o slide automático */
+  crouchBuffer = 0;
+  /** tempo restante sem atrito no chão depois de sair de um teleporte */
+  teleportGlide = 0;
   nades: Record<NadeKind, number> = { he: 0, smoke: 0, impulse: 0 };
   nadeSel: NadeKind = 'he';
   fireCooldown = 0;
@@ -122,8 +126,9 @@ export class Player {
     if (classId) this.classId = classId;
     this.alive = true;
     this.hp = 100; this.armor = 0; this.shield = 0; this.shieldTime = 0;
-    this.weapons = [null, null, null];
+    this.weapons = [null, null, null, null];
     this.giveWeapon('knife');
+    this.giveWeapon('taser');
     this.slot = SLOT_KNIFE; this.lastWeaponSlot = SLOT_KNIFE;
     this.resetMovementState();
     this.nades = { he: 0, smoke: 0, impulse: 0 };
@@ -140,7 +145,7 @@ export class Player {
 
   resetMovementState() {
     this.sprinting = false; this.stamina = SPRINT.stamina; this.staminaLocked = false; this.sinceSprint = 99;
-    this.raiseTime = 0; this.slideTime = 0; this.slideCooldown = 0; this.slideRecover = 0; this.crouchSuppressed = false;
+    this.raiseTime = 0; this.slideTime = 0; this.slideCooldown = 0; this.slideRecover = 0; this.crouchSuppressed = false; this.crouchBuffer = 0; this.teleportGlide = 0;
   }
 
   /** Multiplier applied only on the ground: weapon in hand (knife +25%), sprint, slide recovery. */

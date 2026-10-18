@@ -95,14 +95,14 @@ function teamHalf(team: Team): { brushes: Brush[]; triggers: Trigger[]; pickups:
   // ---------- Teleporter on the plateau: back to own spawn front (rotation) ----------
   triggers.push({
     kind: 'teleport', min: v(-60, 0, Z(1330) - 60), max: v(60, 60, Z(1330) + 60),
-    dest: v(0, 2402, Z(5050)), destYaw: s > 0 ? 0 : Math.PI, keepVelocity: false, color: tc,
+    dest: v(0, 2402, Z(5050)), destYaw: s > 0 ? 0 : Math.PI, keepVelocity: true, color: tc,
   });
   // Recovery floor pad → this team's spawn (teamDest makes it fair for everyone)
   triggers.push({
     kind: 'teleport', min: v(-100, -1800, Z(3000) - 100), max: v(100, -1720, Z(3000) + 100),
     dest: v(0, 2402, Z(5050)), destYaw: 0,
     teamDest: { blue: { pos: v(0, 2402, 5050), yaw: 0 }, red: { pos: v(0, 2402, -5050), yaw: Math.PI } },
-    keepVelocity: false, color: 0xffffff,
+    keepVelocity: true, color: 0xffffff,
   });
 
   // ---------- Pickups (mirrored) ----------
@@ -204,7 +204,7 @@ export function buildClouds(): MapDef {
   for (const sx of [-1, 1]) {
     triggers.push({
       kind: 'teleport', min: v(sx * 2500 - 100, -1800, -100), max: v(sx * 2500 + 100, -1720, 100),
-      dest: v(sx * 800, 2, 0), destYaw: sx > 0 ? Math.PI / 2 : -Math.PI / 2, keepVelocity: false, color: COLORS.accent,
+      dest: v(sx * 800, 2, 0), destYaw: sx > 0 ? Math.PI / 2 : -Math.PI / 2, keepVelocity: true, color: COLORS.accent,
     });
   }
 
@@ -260,6 +260,7 @@ export function buildClouds(): MapDef {
     waitingRoom: { pos: v(wr.x, 2, wr.z), yaw: 0 },
     recovery: { pos: v(0, -1798, 0), yaw: 0 },
     killY: -4200,
+    fallY: -1000,
     trainingSpawn: { pos: v(0, 2402, 5450), yaw: 0 },
     trainingTargets: [
       { pos: v(-300, 2, -700), yaw: 0 }, { pos: v(300, 2, -900), yaw: 0 }, { pos: v(0, 34, 0), yaw: 0 },
