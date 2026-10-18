@@ -10,7 +10,8 @@
 // =============================================================
 import { V3 } from '../math/vec3';
 import { Brush, boxBrush, rampBrush, prismBrush, makeBrush, BrushOptions } from '../physics/brush';
-import type { MapDef, Trigger, PickupSpawn, Decor, BotRoute, Team, DuelArena, SpawnPoint } from './types';
+import type { MapDef, Trigger, PickupSpawn, Decor, BotRoute, Team, DuelArena, SpawnPoint, PickupKind } from './types';
+import type { PoolId } from '../config/pickups';
 
 export const COLORS = {
   blue: 0x2f7bff, red: 0xff4757,
@@ -105,22 +106,27 @@ function teamHalf(team: Team): { brushes: Brush[]; triggers: Trigger[]; pickups:
   });
 
   // ---------- Pickups (mirrored) ----------
-  pickups.push({ kind: 'ammo', pos: v(0, 2400, Z(5480)) });
-  pickups.push({ kind: 'nade_impulse', pos: v(-420, 2400, Z(5150)) });
-  pickups.push({ kind: 'medkit', pos: v(420, 2400, Z(5150)) });
-  pickups.push({ kind: 'weapon', weapon: 'smg', pos: v(700, 0, Z(1100)) });
-  pickups.push({ kind: 'armor', pos: v(-700, 0, Z(1100)) });
-  pickups.push({ kind: 'weapon', weapon: 'rifle', pos: v(300, 0, Z(760)) });
-  pickups.push({ kind: 'weapon', weapon: 'smg', pos: v(2100, 150, Z(520)) });
-  pickups.push({ kind: 'weapon', weapon: 'shotgun', pos: v(-1750, 1000, Z(250)) });
-  pickups.push({ kind: 'nade_he', pos: v(0, 0, Z(1400)) });
-  pickups.push({ kind: 'medkit', pos: v(-900, 0, Z(300)) });
-  pickups.push({ kind: 'ammo', pos: v(900, 0, Z(300)) });
-  pickups.push({ kind: 'nade_smoke', pos: v(2000, 150, Z(620)) });
-  pickups.push({ kind: 'speed', pos: v(2350, 150, Z(300)) });
-  pickups.push({ kind: 'medkit', pos: v(-2050, 1000, Z(620)) });
-  pickups.push({ kind: 'nade_he', pos: v(-1700, 1000, Z(560)) });
-  pickups.push({ kind: 'ammo', pos: v(-2300, 1000, Z(300)) });
+  // Posições fixas; o item de cada ponto é sorteado do pool a cada round. O `group` é igual nos
+  // dois lados, então os pontos espelhados recebem sempre o mesmo item.
+  const P = (pool: PoolId, x: number, y: number, z: number, kind: PickupKind, weapon?: string) => {
+    pickups.push({ kind, weapon, pos: v(x, y, Z(z)), pool, group: `half-${pickups.length}` });
+  };
+  P('spawnGun', 0, 2400, 5480, 'weapon', 'pistol');
+  P('spawnUtility', -420, 2400, 5150, 'nade_impulse');
+  P('spawnUtility', 420, 2400, 5150, 'medkit');
+  P('midWeapon', 700, 0, 1100, 'weapon', 'smg');
+  P('defense', -700, 0, 1100, 'armor');
+  P('midWeapon', 300, 0, 760, 'weapon', 'rifle');
+  P('midWeapon', 2100, 150, 520, 'weapon', 'smg');
+  P('midWeapon', -1750, 1000, 250, 'weapon', 'shotgun');
+  P('utility', 0, 0, 1400, 'nade_he');
+  P('utility', -900, 0, 300, 'medkit');
+  P('utility', 900, 0, 300, 'ammo');
+  P('utility', 2000, 150, 620, 'nade_smoke');
+  P('utility', 2350, 150, 300, 'speed');
+  P('defense', -2050, 1000, 620, 'medkit');
+  P('utility', -1700, 1000, 560, 'nade_he');
+  P('utility', -2300, 1000, 300, 'ammo');
 
   // ---------- Decor ----------
   decor.push({ kind: 'ring', pos: v(0, 2700, Z(4300)), scale: 260, color: tc });
@@ -191,9 +197,6 @@ export function buildClouds(): MapDef {
   brushes.push(box(-1500, 1000, -116, 1300, 1050, -110, { color: COLORS.glass, kind: 'glass' }));
   brushes.push(box(-1500, 1000, 110, 1300, 1050, 116, { color: COLORS.glass, kind: 'glass' }));
 
-  // Jump pads: plateau → perch, flank → bridge
-  triggers.push({ kind: 'jumppad', min: v(-1120, 0, -70), max: v(-1040, 40, 70), velocity: v(-430, 1360, 0), color: COLORS.routeC });
-  triggers.push({ kind: 'jumppad', min: v(2280, 150, -70), max: v(2400, 190, 70), velocity: v(-500, 1260, 0), color: COLORS.routeB });
 
   // ---------- Recovery floor (cloud layer) ----------
   brushes.push(box(-4500, -1900, -7000, 4500, -1800, 7000, { color: COLORS.cloudFloor, edgeGlow: 0xffffff, tag: 'recovery' }));
@@ -206,12 +209,13 @@ export function buildClouds(): MapDef {
   }
 
   // ---------- Contested pickups (z = 0) ----------
-  pickups.push({ kind: 'weapon', weapon: 'rifle', pos: v(0, 32, 0) });
-  pickups.push({ kind: 'weapon', weapon: 'sniper', pos: v(-2000, 1000, 0) });
-  pickups.push({ kind: 'weapon', weapon: 'shotgun', pos: v(1950, 150, 0) });
-  pickups.push({ kind: 'shield', pos: v(0, 1000, 0) });
-  pickups.push({ kind: 'weapon', weapon: 'rifle', pos: v(-900, 0, 0) });
-  pickups.push({ kind: 'armor', pos: v(900, 0, 0) });
+  // pontos únicos no eixo central (z = 0): mesma distância para os dois times
+  pickups.push({ kind: 'weapon', weapon: 'rifle', pos: v(0, 32, 0), pool: 'highWeapon' });
+  pickups.push({ kind: 'weapon', weapon: 'sniper', pos: v(-2000, 1000, 0), pool: 'highWeapon' });
+  pickups.push({ kind: 'weapon', weapon: 'shotgun', pos: v(1950, 150, 0), pool: 'highWeapon' });
+  pickups.push({ kind: 'shield', pos: v(0, 1000, 0), pool: 'defense' });
+  pickups.push({ kind: 'weapon', weapon: 'rifle', pos: v(-900, 0, 0), pool: 'highWeapon' });
+  pickups.push({ kind: 'armor', pos: v(900, 0, 0), pool: 'defense' });
 
   // ---------- Decor: low-poly cloud sea & islands ----------
   let seed = 7;

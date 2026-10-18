@@ -76,6 +76,23 @@ export function buildWeapon(r: Renderer, id: WeaponId): GpuMesh {
   const metal = 0x2a2f3b, light = 0x8e99ad;
   const neon = id === 'sniper' ? 0x37ff9a : id === 'shotgun' ? 0xff8a3c : id === 'smg' ? 0xffd23c : id === 'rifle' ? 0x37c6ff : 0xc77dff;
   switch (id) {
+    case 'knife': {
+      // cabo com guarda e lâmina angular de duas faces; filete luminoso no fio
+      m.box(-1.3, -1.6, -1, 1.3, 1.6, 7, 0x262b38);
+      m.box(-1.5, -1.2, 1.5, 1.5, -0.6, 2.2, 0x37e3ff, 1);
+      m.box(-2.4, -2.6, -2.2, 2.4, 2.6, -1, metal); // guarda
+      const blade = 0xd5dceb;
+      m.quad([0, 1.8, -2.2], [0, 1.5, -15], [0.5, 0, -15.5], [0.6, 0, -2.2], blade);
+      m.quad([0.6, 0, -2.2], [0.5, 0, -15.5], [0, -1.2, -14], [0, -1.6, -2.2], 0xb7c0d2);
+      m.quad([0, 1.8, -2.2], [-0.6, 0, -2.2], [-0.5, 0, -15.5], [0, 1.5, -15], blade);
+      m.quad([-0.6, 0, -2.2], [0, -1.6, -2.2], [0, -1.2, -14], [-0.5, 0, -15.5], 0xb7c0d2);
+      m.tri([0, 1.5, -15], [0.5, 0, -15.5], [0, -0.2, -19], blade);
+      m.tri([0, 1.5, -15], [0, -0.2, -19], [-0.5, 0, -15.5], blade);
+      m.tri([0.5, 0, -15.5], [0, -1.2, -14], [0, -0.2, -19], 0xb7c0d2);
+      m.tri([-0.5, 0, -15.5], [0, -0.2, -19], [0, -1.2, -14], 0xb7c0d2);
+      m.beam([0, -1.5, -2.6], [0, -1.15, -13.8], 0.25, 0x37e3ff, 1);
+      break;
+    }
     case 'pistol':
       m.box(-1.6, 0, -13, 1.6, 4, 2, light);
       m.box(-1.3, -7, -1, 1.3, 0, 3, metal);

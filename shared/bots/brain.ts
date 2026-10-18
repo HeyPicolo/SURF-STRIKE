@@ -4,7 +4,7 @@
 // =============================================================
 import { V3, DEG, yawFromDir, angleDiff, forwardFromAngles, rightFromYaw } from '../math/vec3';
 import { BOT_SKILL, BotDifficulty, BotSkill } from '../config/match';
-import { WEAPONS, WeaponId } from '../config/weapons';
+import { WEAPONS, WeaponId, SLOT_NADES } from '../config/weapons';
 import type { NavPoint, BotRoute } from '../maps/types';
 import { emptyCmd } from '../physics/movement';
 import { steerToward } from './steer';
@@ -13,7 +13,7 @@ import type { World } from '../sim/world';
 
 type Mode = 'route' | 'roam' | 'idle';
 
-const WEAPON_PRIORITY: Record<WeaponId, number> = { rifle: 5, sniper: 4, smg: 3, shotgun: 2, pistol: 1 };
+const WEAPON_PRIORITY: Record<WeaponId, number> = { rifle: 5, sniper: 4, smg: 3, shotgun: 2, pistol: 1, knife: 0 };
 
 export class BotBrain {
   skill: BotSkill;
@@ -100,6 +100,9 @@ export class BotBrain {
 
     // engage: strafe on the ground while fighting
     const fighting = !!this.target && this.seenTime > this.skill.reaction;
+    const cw = p.currentWeapon();
+    const knifeOnly = !!cw && !!WEAPONS[cw.id].melee && w.firstWeaponSlot(p) === p.slot;
+    let sprintWish = !fighting && this.mode === 'roam' && p.phys.onGround;
     if (fighting && p.phys.onGround) {
       this.strafeTimer -= dt;
       if (this.strafeTimer <= 0) { this.strafeDir = this.rand() < 0.5 ? -1 : 1; this.strafeTimer = 0.35 + this.rand() * 0.7; }
@@ -107,9 +110,16 @@ export class BotBrain {
       const dist = toT.hLen();
       const ty = yawFromDir(toT.x, toT.z);
       steer.yaw = ty;
-      steer.forward = dist > 1400 ? 1 : dist < 300 ? -0.6 : 0;
-      steer.side = this.strafeDir;
-      if (this.skill.abilityUse > 0.6 && this.rand() < 0.004) steer.jump = true;
+      if (knifeOnly) {
+        // só com a faca: corre direto para o inimigo e só para de correr perto dele
+        steer.forward = dist > 45 ? 1 : 0;
+        steer.side = dist > 200 ? this.strafeDir * 0.35 : 0;
+        sprintWish = dist > 320;
+      } else {
+        steer.forward = dist > 1400 ? 1 : dist < 300 ? -0.6 : 0;
+        steer.side = this.strafeDir;
+        if (this.skill.abilityUse > 0.6 && this.rand() < 0.004) steer.jump = true;
+      }
     }
 
     // ---------- look / aim ----------
@@ -152,6 +162,8 @@ export class BotBrain {
     inp.cmd.forward = fwd; inp.cmd.side = side;
     inp.cmd.yaw = this.lookYaw; inp.cmd.pitch = this.lookPitch;
     inp.cmd.jump = steer.jump; inp.cmd.crouch = false;
+    // tactical sprint when travelling on foot (it raises the weapon, so never while trading shots)
+    inp.cmd.sprint = sprintWish && fwd > 0.5;
 
     // ---------- weapons ----------
     this.handleWeapons(dt, fighting);
@@ -214,16 +226,29 @@ export class BotBrain {
 
   private handleWeapons(dt: number, fighting: boolean) {
     const p = this.p, inp = p.input;
-    // prefer the primary
-    if (p.slot !== 0 && p.weapons[0] && p.switchTime <= 0 && p.slot !== 2) inp.slot = 0;
-    if (p.slot === 2) {
+    // best weapon available: primary > pistol > knife
+    const bestSlot = this.world.firstWeaponSlot(p);
+    if (p.slot !== SLOT_NADES && p.slot !== bestSlot && p.switchTime <= 0) inp.slot = bestSlot;
+    if (p.slot === SLOT_NADES) {
       if (fighting && p.switchTime <= 0 && p.fireCooldown <= 0) inp.fire = !p.prevInput.fire;
-      else if (!fighting) inp.slot = p.weapons[0] ? 0 : 1;
+      else if (!fighting) inp.slot = bestSlot;
       return;
     }
     const w = p.currentWeapon();
-    if (!w) { if (p.weapons[1]) inp.slot = 1; return; }
+    if (!w) return;
     const def = WEAPONS[w.id];
+    if (def.melee) {
+      if (!fighting) return;
+      const t = this.target!;
+      const d = t.phys.pos.distTo(p.phys.pos);
+      const to = t.eyePos(new V3()).sub(p.eyePos(new V3())).normalize();
+      const look = forwardFromAngles(this.lookYaw, this.lookPitch, new V3());
+      if (d < def.melee.range + 20 && look.dot(to) > 0.85) {
+        if (this.rand() < 0.25 * this.skill.abilityUse) inp.alt = !p.prevInput.alt; // heavy stab
+        else inp.fire = true;
+      }
+      return;
+    }
     if (!fighting) {
       if (w.mag < def.mag * 0.4 && w.reserve > 0 && p.reloadTime <= 0) inp.reload = true;
       if (p.zoomed) inp.alt = true;
@@ -241,7 +266,7 @@ export class BotBrain {
     // sniper: scope when the target is far
     if (def.zoom > 0 && def.id === 'sniper' && !p.zoomed && dist > 700 && p.fireCooldown <= 0) inp.alt = true;
     // grenade opportunity
-    if (p.nades.he > 0 && dist > 400 && dist < 1100 && this.rand() < 0.003 * this.skill.abilityUse) { inp.slot = 2; return; }
+    if (p.nades.he > 0 && dist > 400 && dist < 1100 && this.rand() < 0.003 * this.skill.abilityUse) { inp.slot = SLOT_NADES; return; }
     if (this.burstPause > 0) { this.burstPause -= dt; return; }
     if (angErr < tolerance && p.fireCooldown <= 0) {
       if (def.auto) {
@@ -285,9 +310,9 @@ export class BotBrain {
 
   private pickRoamTarget() {
     const w = this.world, p = this.p;
-    // go for a weapon if we only have the pistol
+    // go for a weapon if we only have the pistol (or just the knife: look further)
     if (!p.weapons[0]) {
-      let best: V3 | null = null, bd = 2600;
+      let best: V3 | null = null, bd = p.weapons[1] ? 2600 : 4200;
       for (const k of w.pickups) {
         if (!k.active || k.kind !== 'weapon') continue;
         if (Math.abs(k.pos.y - p.phys.pos.y) > 120) continue; // same level only

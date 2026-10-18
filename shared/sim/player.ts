@@ -1,7 +1,7 @@
 import { V3 } from '../math/vec3';
 import { PhysState, emptyCmd, MoveCmd } from '../physics/movement';
-import { PHYSICS } from '../config/physics';
-import { WEAPONS, WeaponId, NadeKind } from '../config/weapons';
+import { PHYSICS, SPRINT } from '../config/physics';
+import { WEAPONS, WeaponId, NadeKind, SLOT_KNIFE, SLOT_NADES } from '../config/weapons';
 import { CLASSES, ClassId } from '../config/classes';
 import type { Team } from '../maps/types';
 
@@ -15,7 +15,7 @@ export interface PlayerInput {
   use: boolean;
   ability: boolean;
   drop: boolean;
-  /** 0,1,2 = slot selected this tick (keys 1/2/3), null = no change */
+  /** 0..3 = slot selected this tick (keys 1/2/3/4), null = no change */
   slot: number | null;
 }
 
@@ -40,10 +40,28 @@ export class Player {
   shield = 0;
   shieldTime = 0;
 
-  weapons: (WeaponState | null)[] = [null, null];
-  /** 0 primary, 1 secondary, 2 grenades */
-  slot = 1;
-  lastWeaponSlot = 1;
+  /** [primária, secundária (pistola), faca] */
+  weapons: (WeaponState | null)[] = [null, null, null];
+  /** 0 primária, 1 secundária, 2 faca, 3 granadas */
+  slot = SLOT_KNIFE;
+  lastWeaponSlot = SLOT_KNIFE;
+  /** golpe pesado da faca em andamento (para animação) */
+  lastMeleeHeavy = false;
+
+  // ---- Tactical Sprint / Slide ----
+  sprinting = false;
+  /** stamina oculta do sprint (segundos) */
+  stamina: number = SPRINT.stamina;
+  /** esgotou: só volta a correr acima de SPRINT.restartStamina */
+  staminaLocked = false;
+  sinceSprint = 99;
+  /** tempo restante para abaixar a arma e poder atirar */
+  raiseTime = 0;
+  slideTime = 0;
+  slideCooldown = 0;
+  slideRecover = 0;
+  /** depois de cancelar o slide com agachar, ignora o agachar até soltar a tecla */
+  crouchSuppressed = false;
   nades: Record<NadeKind, number> = { he: 0, smoke: 0, impulse: 0 };
   nadeSel: NadeKind = 'he';
   fireCooldown = 0;
@@ -91,7 +109,7 @@ export class Player {
   get eyeHeight() { return this.phys.eyeHeight(); }
   eyePos(out = new V3()): V3 { return out.set(this.phys.pos.x, this.phys.pos.y + this.eyeHeight, this.phys.pos.z); }
 
-  currentWeapon(): WeaponState | null { return this.slot < 2 ? this.weapons[this.slot] : null; }
+  currentWeapon(): WeaponState | null { return this.slot < SLOT_NADES ? this.weapons[this.slot] : null; }
 
   giveWeapon(id: WeaponId): WeaponState {
     const def = WEAPONS[id];
@@ -104,9 +122,10 @@ export class Player {
     if (classId) this.classId = classId;
     this.alive = true;
     this.hp = 100; this.armor = 0; this.shield = 0; this.shieldTime = 0;
-    this.weapons = [null, null];
-    this.giveWeapon('pistol');
-    this.slot = 1; this.lastWeaponSlot = 1;
+    this.weapons = [null, null, null];
+    this.giveWeapon('knife');
+    this.slot = SLOT_KNIFE; this.lastWeaponSlot = SLOT_KNIFE;
+    this.resetMovementState();
     this.nades = { he: 0, smoke: 0, impulse: 0 };
     this.fireCooldown = 0; this.switchTime = 0; this.reloadTime = 0; this.zoomed = false;
     this.punchPitch = 0; this.punchYaw = 0; this.shotsFired = 0;
@@ -119,11 +138,24 @@ export class Player {
     this.lastAttacker = -1;
   }
 
-  /** Movement speed multiplier from weapon weight and buffs. */
-  speedMul(): number {
+  resetMovementState() {
+    this.sprinting = false; this.stamina = SPRINT.stamina; this.staminaLocked = false; this.sinceSprint = 99;
+    this.raiseTime = 0; this.slideTime = 0; this.slideCooldown = 0; this.slideRecover = 0; this.crouchSuppressed = false;
+  }
+
+  /** Multiplier applied only on the ground: weapon in hand (knife +25%), sprint, slide recovery. */
+  groundSpeedMul(): number {
     let m = 1;
     const w = this.currentWeapon();
     if (w) m *= WEAPONS[w.id].moveSpeedMul;
+    if (this.sprinting) m *= SPRINT.speedMul;
+    if (this.slideRecover > 0) m *= SPRINT.slideRecoverSpeedMul;
+    return m;
+  }
+
+  /** Movement speed multiplier from buffs/debuffs (ground and air). */
+  speedMul(): number {
+    let m = 1;
     if (this.zoomed) m *= 0.75;
     if (this.tired > 0) m *= CLASSES.jumper.params.tiredSpeedMul;
     if (this.speedBoost > 0) m *= 1.2;

@@ -41,6 +41,7 @@ export class Input {
 
   lock() {
     setTimeout(() => { if (!this.locked && this.enabled) this.freeLook = true; }, 500);
+    if (this.settings.fullscreenLock) this.enterFullscreenLock();
     try {
       const r = (this.el as HTMLElement & { requestPointerLock: (o?: unknown) => Promise<void> | void }).requestPointerLock({ unadjustedMovement: true });
       if (r && typeof (r as Promise<void>).catch === 'function') {
@@ -49,7 +50,27 @@ export class Input {
     } catch { try { this.el.requestPointerLock(); } catch { /* ignore */ } }
   }
 
-  unlock() { if (document.pointerLockElement) document.exitPointerLock(); }
+  unlock() {
+    if (document.pointerLockElement) document.exitPointerLock();
+    this.exitFullscreenLock();
+  }
+
+  /** Tela cheia + Keyboard Lock (Chrome/Edge): Ctrl+W, Ctrl+T etc. passam a ir para o jogo. */
+  private enterFullscreenLock() {
+    const kb = (navigator as Navigator & { keyboard?: { lock?: (keys?: string[]) => Promise<void> } }).keyboard;
+    const doLock = () => { kb?.lock?.(['KeyW', 'KeyT', 'KeyN', 'KeyQ', 'KeyR', 'KeyS', 'KeyD', 'KeyA']).catch(() => { /* sem suporte */ }); };
+    try {
+      if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen({ navigationUI: 'hide' }).then(doLock).catch(() => { /* recusado */ });
+      } else doLock();
+    } catch { /* ignore */ }
+  }
+
+  private exitFullscreenLock() {
+    const kb = (navigator as Navigator & { keyboard?: { unlock?: () => void } }).keyboard;
+    try { kb?.unlock?.(); } catch { /* ignore */ }
+    try { if (document.fullscreenElement) document.exitFullscreen().catch(() => { /* ignore */ }); } catch { /* ignore */ }
+  }
 
   private plc = () => {
     const was = this.locked;
@@ -67,7 +88,9 @@ export class Input {
 
   private kd = (e: KeyboardEvent) => {
     if (!this.enabled) return;
-    if (e.code === 'Tab' || e.code === 'Space' || (e.code.startsWith('Digit') && this.locked)) e.preventDefault();
+    // Ctrl é a tecla de agachar: bloqueia os atalhos do navegador que dá para bloquear (Ctrl+S, Ctrl+D,
+    // Ctrl+F...). Ctrl+W/T/N só podem ser capturados em tela cheia com Keyboard Lock (ver lock()).
+    if (e.code === 'Tab' || e.code === 'Space' || e.ctrlKey || e.metaKey || (e.code.startsWith('Digit') && this.locked)) e.preventDefault();
     if (e.repeat) return;
     this.keys.add(e.code);
     const a = this.actionFor(e.code);

@@ -115,6 +115,12 @@ test('shooting a dummy: hitscan damage, ammo, reload, weapon switching', () => {
   const chest = d.phys.pos.clone(); chest.y += 40;
   p.input.cmd.yaw = Math.atan2(-(chest.x - eye.x), -(chest.z - eye.z));
   p.input.cmd.pitch = Math.atan2(chest.y - eye.y, Math.hypot(chest.x - eye.x, chest.z - eye.z));
+  // starts with only the knife; give a pistol and select it
+  assert.equal(p.currentWeapon()!.id, 'knife');
+  assert.equal(p.weapons[1], null, 'no pistol at round start');
+  p.giveWeapon('pistol');
+  p.input.slot = 1; w.step(SIM_DT); p.input.slot = null;
+  for (let i = 0; i < 40; i++) w.step(SIM_DT); // switch time
   const mag0 = p.weapons[1]!.mag;
   p.input.fire = true;
   w.step(SIM_DT);
@@ -127,22 +133,25 @@ test('shooting a dummy: hitscan damage, ammo, reload, weapon switching', () => {
   assert.ok(p.reloadTime > 0);
   for (let i = 0; i < 200; i++) w.step(SIM_DT);
   assert.equal(p.weapons[1]!.mag, WEAPONS.pistol.mag);
-  // switch: give a rifle and select slot 1 (index 0)
+  // switch: give a rifle and select slot 1 (index 0); knife is slot 3 (index 2)
   p.giveWeapon('rifle');
   p.input.slot = 0; w.step(SIM_DT); p.input.slot = null;
-  assert.equal(p.slot, 0);
   assert.equal(p.currentWeapon()!.id, 'rifle');
+  p.input.slot = 2; w.step(SIM_DT); p.input.slot = null;
+  assert.equal(p.currentWeapon()!.id, 'knife');
 });
 
 test('picking up a weapon with E and auto pickups', () => {
   const w = trainingWorld();
   const p = w.local;
-  const rifle = w.pickups.find((k) => k.kind === 'weapon' && k.weapon === 'rifle')!;
-  p.phys.pos.copy(rifle.pos); p.phys.pos.y += 2;
+  const gun = w.pickups.find((k) => k.kind === 'weapon')!;
+  assert.ok(gun, 'map has weapon pickups');
+  p.phys.pos.copy(gun.pos); p.phys.pos.y += 2;
   p.input.use = true; w.step(SIM_DT); p.input.use = false;
-  assert.equal(p.weapons[0]?.id, 'rifle');
-  assert.equal(rifle.active, false);
-  const med = w.pickups.find((k) => k.kind === 'medkit')!;
+  assert.equal(p.weapons[WEAPONS[gun.weapon!].slot]?.id, gun.weapon);
+  assert.equal(gun.active, false);
+  const med = w.pickups.find((k) => k.kind !== 'weapon' && k.active)!;
+  med.kind = 'medkit';
   p.hp = 40;
   p.phys.pos.copy(med.pos); p.phys.pos.y += 2;
   w.step(SIM_DT);

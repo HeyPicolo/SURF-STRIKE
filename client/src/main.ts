@@ -87,6 +87,12 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && game.world && !input.locked && !game.paused) pause();
 });
 
+// Agachar fica no Ctrl: se o navegador não deixar capturar Ctrl+W (sem tela cheia ou no Firefox),
+// pelo menos pede confirmação antes de fechar a aba no meio de uma partida.
+window.addEventListener('beforeunload', (e) => {
+  if (game.world && game.world.match.phase !== 'matchEnd') { e.preventDefault(); e.returnValue = ''; }
+});
+
 // expose for automated browser tests / debugging
 (window as unknown as { __surf: unknown }).__surf = { game, input, menu, settings };
 

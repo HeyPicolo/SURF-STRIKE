@@ -1,19 +1,19 @@
 // Configurações do jogador (persistidas no localStorage quando disponível).
 export type Action =
-  | 'forward' | 'back' | 'left' | 'right' | 'jump' | 'crouch'
-  | 'reload' | 'use' | 'ability' | 'drop' | 'slot1' | 'slot2' | 'slot3' | 'scoreboard'
+  | 'forward' | 'back' | 'left' | 'right' | 'jump' | 'crouch' | 'sprint'
+  | 'reload' | 'use' | 'ability' | 'drop' | 'slot1' | 'slot2' | 'slot3' | 'slot4' | 'scoreboard'
   | 'resetPos' | 'fly' | 'saveCp' | 'loadCp';
 
 export const ACTION_LABELS: Record<Action, string> = {
   forward: 'Frente', back: 'Trás', left: 'Esquerda (strafe)', right: 'Direita (strafe)', jump: 'Pular / Bunny hop',
-  crouch: 'Agachar', reload: 'Recarregar', use: 'Interagir / Coletar', ability: 'Habilidade da classe',
-  drop: 'Soltar equipamento', slot1: 'Arma primária', slot2: 'Pistola', slot3: 'Granadas', scoreboard: 'Placar',
+  crouch: 'Agachar / Slide (correndo)', sprint: 'Sprint tático', reload: 'Recarregar', use: 'Interagir / Coletar', ability: 'Habilidade da classe',
+  drop: 'Soltar equipamento', slot1: 'Arma primária', slot2: 'Pistola', slot3: 'Faca', slot4: 'Granadas', scoreboard: 'Placar',
   resetPos: 'Treino: reiniciar posição', fly: 'Treino: voar (noclip)', saveCp: 'Treino: salvar checkpoint', loadCp: 'Treino: carregar checkpoint',
 };
 
 export const DEFAULT_KEYS: Record<Action, string> = {
-  forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', crouch: 'ShiftLeft',
-  reload: 'KeyR', use: 'KeyE', ability: 'KeyQ', drop: 'KeyG', slot1: 'Digit1', slot2: 'Digit2', slot3: 'Digit3',
+  forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', crouch: 'ControlLeft', sprint: 'ShiftLeft',
+  reload: 'KeyR', use: 'KeyE', ability: 'KeyQ', drop: 'KeyG', slot1: 'Digit1', slot2: 'Digit2', slot3: 'Digit3', slot4: 'Digit4',
   scoreboard: 'Tab', resetPos: 'KeyT', fly: 'KeyV', saveCp: 'KeyZ', loadCp: 'KeyX',
 };
 
@@ -29,13 +29,15 @@ export interface Settings {
   autoBhop: boolean;
   showSpeed: boolean;
   viewBob: boolean;
+  /** Tela cheia + Keyboard Lock ao jogar: impede que Ctrl+W/Ctrl+T fechem ou troquem a aba. */
+  fullscreenLock: boolean;
   keys: Record<Action, string>;
   playerName: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   sensitivity: 2.0, fov: 100, masterVolume: 0.7, sfxVolume: 0.9, quality: 'high', effects: true,
-  autoBhop: true, showSpeed: true, viewBob: true, keys: { ...DEFAULT_KEYS }, playerName: 'Jogador',
+  autoBhop: true, showSpeed: true, viewBob: true, fullscreenLock: true, keys: { ...DEFAULT_KEYS }, playerName: 'Jogador',
 };
 
 const KEY = 'surfstrike.settings.v1';
@@ -45,7 +47,16 @@ export function loadSettings(): Settings {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const s = JSON.parse(raw);
-      return { ...DEFAULT_SETTINGS, ...s, keys: { ...DEFAULT_KEYS, ...(s.keys ?? {}) } };
+      const keys = { ...DEFAULT_KEYS, ...(s.keys ?? {}) };
+      if (!s.keys?.sprint) {
+        // migração da versão antiga: agachar saiu do Shift para o Ctrl, Shift virou sprint,
+        // 3 virou faca e as granadas foram para o 4
+        if (keys.crouch === 'ShiftLeft') keys.crouch = DEFAULT_KEYS.crouch;
+        keys.sprint = DEFAULT_KEYS.sprint;
+        keys.slot3 = DEFAULT_KEYS.slot3;
+        keys.slot4 = DEFAULT_KEYS.slot4;
+      }
+      return { ...DEFAULT_SETTINGS, ...s, keys };
     }
   } catch { /* storage indisponível */ }
   return { ...DEFAULT_SETTINGS, keys: { ...DEFAULT_KEYS } };

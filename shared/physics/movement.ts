@@ -11,18 +11,23 @@ export interface MoveCmd {
   pitch: number;     // radians
   jump: boolean;     // jump held
   crouch: boolean;   // crouch held
+  sprint: boolean;   // tactical sprint held
 }
 
 export function emptyCmd(): MoveCmd {
-  return { forward: 0, side: 0, up: 0, yaw: 0, pitch: 0, jump: false, crouch: false };
+  return { forward: 0, side: 0, up: 0, yaw: 0, pitch: 0, jump: false, crouch: false, sprint: false };
 }
 
 export interface MoveModifiers {
-  speedMul: number;     // ground wishspeed multiplier (buffs/debuffs, weapon weight)
-  airAccelMul: number;  // class passives
+  speedMul: number;       // wishspeed multiplier on ground AND air (buffs/debuffs)
+  groundSpeedMul?: number; // extra multiplier only on the ground (sprint, knife, weapon weight)
+  airAccelMul: number;    // class passives
   airCapMul: number;
   autoBhop: boolean;
-  fly: boolean;         // training noclip/fly
+  fly: boolean;           // training noclip/fly
+  /** Sliding: low friction, no ground acceleration (state owned by the game rules). */
+  sliding?: boolean;
+  slideFriction?: number;
 }
 
 export const DEFAULT_MODS: MoveModifiers = { speedMul: 1, airAccelMul: 1, airCapMul: 1, autoBhop: true, fly: false };
@@ -129,6 +134,7 @@ export class Mover {
     this.wish.set(this.fwd.x * fm + this.right.x * sm, 0, this.fwd.z * fm + this.right.z * sm);
     let wishSpeed = Math.min(this.wish.len(), 1) * PHYSICS.maxGroundSpeed * mods.speedMul;
     this.wish.normalize();
+    if (st.onGround) wishSpeed *= mods.groundSpeedMul ?? 1;
     if (st.ducked && st.onGround) wishSpeed *= PHYSICS.crouchSpeedFactor;
 
     // half gravity before move
@@ -146,8 +152,13 @@ export class Mover {
 
     if (st.onGround) {
       st.vel.y = 0;
-      applyFriction(st, dt);
-      accelerate(st.vel, this.wish, wishSpeed, PHYSICS.groundAccelerate, dt);
+      if (mods.sliding) {
+        // slide: momentum carries the player, only low friction slows it down
+        applyFriction(st, dt, mods.slideFriction ?? 1);
+      } else {
+        applyFriction(st, dt);
+        accelerate(st.vel, this.wish, wishSpeed, PHYSICS.groundAccelerate, dt);
+      }
       this.clampVelocity(st);
       this.walkMove(st, dt);
     } else {

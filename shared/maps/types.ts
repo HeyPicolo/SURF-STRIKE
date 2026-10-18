@@ -11,9 +11,14 @@ export type PickupKind =
   | 'shield' | 'speed';
 
 export interface PickupSpawn {
+  /** Item padrão (usado quando o ponto não tem pool). */
   kind: PickupKind;
   weapon?: string;
   pos: V3;
+  /** Pool de itens sorteado a cada round (ver config/pickups.ts). */
+  pool?: import('../config/pickups').PoolId;
+  /** Pontos com o mesmo grupo recebem o mesmo item (espelhamento entre times). */
+  group?: string;
 }
 
 export interface TriggerVolume {

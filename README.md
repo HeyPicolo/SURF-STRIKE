@@ -38,33 +38,45 @@ No menu: **Jogar contra bots** (escolha 1v1 a 5v5, dificuldade, equipe e classe)
 4. Para curvar no ar (air-strafe): segure A e gire o mouse para a esquerda (ou D + direita), suavemente.
 5. Segure Espaço para bunny hop automático (pode ser desligado em Configurações).
 
+### Sprint tático e slide
+
+- **Shift** ativa o sprint tático: +30% de velocidade no chão, mas a arma fica levantada e você não atira. A stamina é oculta (cerca de 4 s de corrida contínua) e volta depois de 1 s sem correr.
+- Ao parar de correr (ou apertar o tiro), a arma leva 0,42 s para descer antes de atirar. Andando, o tiro é imediato. Com a faca, a espera é de 0,16 s.
+- **Ctrl enquanto corre** faz um slide: um impulso de velocidade agachado. O slide só sai a partir do sprint.
+- **Slide cancel**: apertar Espaço ou Ctrl de novo no meio do slide levanta na hora, sem a trava de 0,35 s do fim natural do slide, e reseta a stamina do sprint. Com Espaço, você sai pulando e mantém o embalo.
+
 ### Controles
 
 | Tecla | Ação |
 |---|---|
 | W A S D | Movimento (A/D para surfar e fazer air-strafe) |
 | Mouse | Câmera e mira |
-| Clique esquerdo | Atirar / lançar granada |
-| Clique direito | Zoom (rifle e sniper) / lançamento curto de granada |
-| Espaço | Pular / bunny hop |
-| Shift | Agachar |
+| Clique esquerdo | Atirar / golpe de faca / lançar granada |
+| Clique direito | Zoom (rifle e sniper) / estocada de faca / lançamento curto de granada |
+| Espaço | Pular / bunny hop / cancelar slide |
+| Shift | Sprint tático |
+| Ctrl | Agachar / slide (durante o sprint) / cancelar slide |
 | R | Recarregar |
 | E | Pegar arma |
 | Q | Habilidade da classe |
 | G | Soltar arma |
-| 1 / 2 / 3 | Primária / pistola / granadas (3 de novo alterna o tipo) |
+| 1 / 2 / 3 / 4 | Primária / pistola / faca / granadas (4 de novo alterna o tipo) |
 | Tab | Placar |
 | Esc | Pausa e configurações |
 | T / V / Z / X | Treino: reiniciar posição / voar / salvar checkpoint / carregar checkpoint |
 
 Todas as teclas podem ser remapeadas em Configurações.
 
+**Sobre o Ctrl:** no navegador, Ctrl+W fecha a aba e Ctrl+T abre outra. Por isso o jogo entra em tela cheia ao capturar o mouse e usa o Keyboard Lock do Chrome e do Edge, que entrega essas combinações ao jogo. No Firefox (ou com a opção "Tela cheia ao jogar" desligada) isso não é possível; o jogo então pede confirmação antes de fechar a aba durante uma partida. Se preferir, troque o agachar para outra tecla em Configurações.
+
 ## Regras (Team Elimination)
 
 - Azul contra Vermelho, até 5v5, 100 HP, sem respawn no round.
 - Rounds de 90 s. Primeiro a 6 rounds vence.
 - Se o tempo acabar, os sobreviventes são levados a arenas 1v1: vida 100, sem colete, sem poderes, mesma arma sorteada para os dois. Quem sobra espera e enfrenta o vencedor de um duelo. Se os duelos também esgotarem o tempo, vence a equipe com mais vida somada.
-- Itens e armas voltam ao lugar no início de cada round. Quem morre deixa a arma no chão.
+- Todos começam o round só com a faca (FANG). A faca dá +25% de velocidade no chão enquanto está na mão.
+- Os pontos de item do mapa têm posições fixas, mas o item de cada ponto é sorteado a cada round. Pontos espelhados entre os dois times recebem sempre o mesmo item; os pontos do eixo central são únicos. A plataforma de spawn sempre tem uma arma leve (pistola, SMG ou shotgun).
+- Quem morre deixa a arma de fogo no chão. A faca não pode ser solta.
 
 Estados da partida: lobby → seleção → preparação → contagem → round ativo → (duelos) → fim do round → resultado.
 
@@ -86,7 +98,7 @@ Arena flutuante simétrica no eixo Z (Azul em +Z, Vermelho em −Z):
 - **Rota A, Ridge** (verde-água): rampa dupla larga e longa, para iniciantes, termina no platô central.
 - **Rota B, Riptide** (magenta): duas rampas estreitas e íngremes em sequência, rápida e arriscada, termina no flanco direito (shotgun, SMG, velocidade).
 - **Rota C, Halo** (dourado): rampa longa que leva ao Poleiro elevado, com a sniper e visão do centro.
-- Centro com rifle no pódio, pontes aéreas (escudo temporário no meio), jump pads, teletransportadores de volta ao spawn, e uma camada de nuvens embaixo para recuperar quedas, com pads que devolvem cada jogador ao seu spawn.
+- Centro com um pódio de arma forte, ponte aérea ligada ao Poleiro, teletransportadores de volta ao spawn, e uma camada de nuvens embaixo para recuperar quedas, com pads que devolvem cada jogador ao seu spawn. O mapa não tem jump pads: o Poleiro e a ponte só são alcançados pela rota C.
 
 Cada rota foi validada por simulação: um bot sai do spawn e surfa até a área de combate sem cair (`tests/map.test.ts`).
 
@@ -95,7 +107,9 @@ Cada rota foi validada por simulação: um bot sai do spawn e surfa até a área
 Todos centralizados em `shared/config/`:
 
 - `physics.ts`: gravidade 800, aceleração no chão 10, aceleração aérea 150, teto de wishspeed aéreo 30, atrito 5.2, atrito de surf 0, velocidade máxima 3500/eixo, pulo 302, raio do jogador 16, sensibilidade de movimento, 100 ticks/s.
-- `weapons.ts`: dano, multiplicador de headshot, cadência, pente, recarga, spread no chão e no ar, recuo, queda de dano, zoom; granadas e itens.
+- `physics.ts` → `SPRINT`: velocidade do sprint, stamina, recuperação, sprint-to-fire, impulso, duração e atrito do slide, trava de recuperação.
+- `weapons.ts`: dano, multiplicador de headshot, cadência, pente, recarga, spread no chão e no ar, recuo, queda de dano, zoom; faca (golpe leve 45, estocada 75, pelas costas 90/180, alcance); granadas e itens.
+- `pickups.ts`: pools de itens sorteados por ponto do mapa e seus pesos.
 - `classes.ts`: cooldowns, durações e números das passivas.
 - `match.ts`: tempos de round, rounds para vencer, perfis de dificuldade dos bots (reação, velocidade de mira, erro, headshots, uso de habilidades).
 
@@ -132,8 +146,10 @@ O ambiente onde o projeto foi construído não tinha acesso ao registro npm nem 
 ### Funcionando
 
 - Física de surf: rampas, projeção de velocidade, air-strafe, conservação de momentum, transições entre rampas, bunny hop com auto-bhop, colisão contínua, anti-travamento, recuperação de quedas
-- Combate: hitscan com cabeça/corpo, 5 armas com dados próprios, recuo funcional e visual, spread baixo no ar, recarga, troca, zoom, muzzle flash, tracers, impactos, hitmarker, indicador de dano, kill feed, armas caem ao morrer, soltar arma
-- Pickups: armas (E), munição, kit médico, colete, 3 granadas (explosiva, fumaça, impulso), escudo temporário, velocidade
+- Sprint tático com stamina oculta e sprint-to-fire, slide a partir do sprint, slide cancel com pulo ou agachar
+- Faca inicial com golpe leve, estocada e dano pelas costas; +25% de velocidade com ela na mão; bots lutam com faca até achar uma arma
+- Combate: hitscan com cabeça/corpo, 5 armas de fogo com dados próprios, recuo funcional e visual, spread baixo no ar, recarga, troca, zoom, muzzle flash, tracers, impactos, hitmarker, indicador de dano, kill feed, armas caem ao morrer, soltar arma
+- Pickups: armas (E), munição, kit médico, colete, 3 granadas (explosiva, fumaça, impulso), escudo temporário, velocidade, sorteados por round e espelhados entre os times
 - 4 classes com habilidades, cooldowns, efeitos visuais e passivas
 - Partidas contra bots de 1v1 a 5v5, 4 dificuldades, rounds, duelos 1v1 no fim do tempo, placar, tela de resultado
 - Modo treino com alvos, voo, checkpoints e reinício
@@ -148,5 +164,5 @@ O ambiente onde o projeto foi construído não tinha acesso ao registro npm nem 
 
 ## Testes
 
-- `npm test`: 34 testes (física, mapa, dano, spread, cooldowns, estados, coleta, partida completa de bots).
-- `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, habilidade, eliminação e fim de round com placar.
+- `npm test`: 45 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, spawns aleatórios, partida completa de bots).
+- `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint e slide pelo teclado, habilidade, eliminação e fim de round com placar.

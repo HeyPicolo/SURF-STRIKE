@@ -82,7 +82,7 @@ await page.keyboard.up('KeyA');
 check('4/5. surfa na rampa ganhando velocidade', maxSpeed > 700 && surfTicks > 10, `max=${maxSpeed.toFixed(0)} surfSamples=${surfTicks}`);
 
 // pickup weapon
-await S(() => { const w = window.__surf.game.world, p = w.local; const k = w.pickups.find((k) => k.weapon === 'rifle' && k.active); p.phys.pos.copy(k.pos); p.phys.pos.y += 2; p.phys.vel.set(0, 0, 0); });
+await S(() => { const w = window.__surf.game.world, p = w.local; const k = w.pickups.find((k) => k.kind === 'weapon' && k.active); k.weapon = 'rifle'; p.phys.pos.copy(k.pos); p.phys.pos.y += 2; p.phys.vel.set(0, 0, 0); });
 await waitSim(0.1);
 await page.keyboard.press('KeyE');
 await waitSim(0.1);
@@ -110,9 +110,26 @@ await page.screenshot({ path: join(shots, '04-shooting.png') });
 // reload & switch
 await page.keyboard.press('KeyR'); await waitSim(2.6);
 const mag = await S(() => window.__surf.game.world.local.weapons[0].mag);
-await page.keyboard.press('Digit2'); await waitSim(0.1);
+await page.keyboard.press('Digit3'); await waitSim(0.1);
 const slot = await S(() => window.__surf.game.world.local.slot);
-check('8. recarrega e alterna armas', mag === 30 && slot === 1, `mag=${mag} slot=${slot}`);
+check('8. recarrega e alterna armas (3 = faca)', mag === 30 && slot === 2, `mag=${mag} slot=${slot}`);
+
+// tactical sprint (Shift) + slide (Ctrl) + slide cancel (Space) pelo teclado
+await S(() => { const w = window.__surf.game.world, p = w.local; p.phys.pos.set(14200, 2, 760); p.phys.vel.set(0, 0, 0); window.__surf.input.yaw = 0; window.__surf.input.pitch = 0; });
+await waitSim(0.2);
+await page.keyboard.down('KeyW'); await waitSim(0.5);
+const walkSpeed = await S(() => { const v = window.__surf.game.world.local.phys.vel; return Math.hypot(v.x, v.z); });
+await page.keyboard.down('ShiftLeft'); await waitSim(0.6);
+const sprint = await S(() => { const p = window.__surf.game.world.local; return { s: Math.hypot(p.phys.vel.x, p.phys.vel.z), on: p.sprinting }; });
+check('12. sprint tático no Shift (+30%)', sprint.on && sprint.s / walkSpeed > 1.25, `andando=${walkSpeed.toFixed(0)} correndo=${sprint.s.toFixed(0)}`);
+await page.keyboard.down('ControlLeft'); await waitSim(0.05);
+const slide = await S(() => { const p = window.__surf.game.world.local; return { t: p.slideTime, s: Math.hypot(p.phys.vel.x, p.phys.vel.z), ducked: p.phys.ducked }; });
+await page.screenshot({ path: join(shots, '08-slide.png') });
+await waitSim(0.15);
+await page.keyboard.press('Space'); await waitSim(0.05);
+const cancel = await S(() => { const p = window.__surf.game.world.local; return { t: p.slideTime, stamina: p.stamina, ducked: p.phys.ducked }; });
+await page.keyboard.up('ControlLeft'); await page.keyboard.up('ShiftLeft'); await page.keyboard.up('KeyW');
+check('13. slide com Shift + Ctrl e cancel com Espaço', slide.t > 0 && slide.ducked && cancel.t === 0 && !cancel.ducked && cancel.stamina === 4, `slide=${JSON.stringify(slide)} cancel=${JSON.stringify(cancel)}`);
 
 // ability
 await page.keyboard.press('KeyQ'); await waitSim(0.1);
@@ -158,5 +175,5 @@ check('sem erros no console', errors.length === 0, errors.slice(0, 5).join(' | '
 await browser.close();
 server.close();
 const failed = results.filter((r) => !r.ok);
-console.log(`\n${results.length - failed.length}/${results.length} verificações passaram. Testes 12–13 (multiplayer) ainda não se aplicam.`);
+console.log(`\n${results.length - failed.length}/${results.length} verificações passaram. Os testes de multiplayer da especificação ainda não se aplicam.`);
 process.exit(failed.length ? 1 : 0);

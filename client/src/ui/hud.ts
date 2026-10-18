@@ -1,7 +1,7 @@
 // HUD em DOM. Escritas no DOM só acontecem quando um valor muda (evita layout thrash).
 import type { World } from '../../../shared/sim/world';
 import type { Player } from '../../../shared/sim/player';
-import { WEAPONS, NADES, NadeKind } from '../../../shared/config/weapons';
+import { WEAPONS, NADES, NadeKind, SLOT_NADES } from '../../../shared/config/weapons';
 import { CLASSES } from '../../../shared/config/classes';
 import { forwardFromAngles } from '../../../shared/math/vec3';
 
@@ -63,26 +63,34 @@ export class Hud {
 
     // weapon
     const ws = p.currentWeapon();
-    if (p.slot === 2) {
+    if (p.slot === SLOT_NADES) {
       const nk = p.nadeSel;
       this.set('weapon-name', 'text', NADES[nk].name);
       this.set('ammo-mag', 'text', String(p.nades[nk]));
       this.set('ammo-res', 'text', '');
+      this.set('ammo-mag', 'class', '');
+    } else if (ws && WEAPONS[ws.id].melee) {
+      const def = WEAPONS[ws.id];
+      this.set('weapon-name', 'text', `${def.name}  ${def.category}`);
+      this.set('ammo-mag', 'text', '∞');
+      this.set('ammo-res', 'text', 'clique: golpe, direito: estocada');
+      this.set('ammo-res', 'class', 'melee');
       this.set('ammo-mag', 'class', '');
     } else if (ws) {
       const def = WEAPONS[ws.id];
       this.set('weapon-name', 'text', `${def.name}  ${def.category}`);
       this.set('ammo-mag', 'text', String(ws.mag));
       this.set('ammo-res', 'text', `/ ${ws.reserve}`);
+      this.set('ammo-res', 'class', '');
       this.set('ammo-mag', 'class', ws.mag === 0 ? 'empty' : ws.mag <= def.mag * 0.25 ? 'low' : '');
     } else {
       this.set('weapon-name', 'text', 'Desarmado');
       this.set('ammo-mag', 'text', '–'); this.set('ammo-res', 'text', '');
     }
-    const slots = [p.weapons[0] ? WEAPONS[p.weapons[0].id].name : null, p.weapons[1] ? WEAPONS[p.weapons[1].id].name : null, p.nades.he + p.nades.smoke + p.nades.impulse > 0 ? 'Granadas' : null];
+    const slots = [...p.weapons.map((w) => (w ? WEAPONS[w.id].name : null)), p.nades.he + p.nades.smoke + p.nades.impulse > 0 ? 'Granadas' : null];
     this.set('slots', 'html', slots.map((s, i) => s ? `<span class="slot ${p.slot === i ? 'on' : ''}">${i + 1} ${s}</span>` : '').join(''));
     this.set('nades', 'html', (['he', 'smoke', 'impulse'] as NadeKind[]).filter((k) => p.nades[k] > 0)
-      .map((k) => `<i class="nade ${p.slot === 2 && p.nadeSel === k ? 'sel' : ''}" style="--c:${hex(NADES[k].color)}" title="${NADES[k].name}"></i>`).join(''));
+      .map((k) => `<i class="nade ${p.slot === SLOT_NADES && p.nadeSel === k ? 'sel' : ''}" style="--c:${hex(NADES[k].color)}" title="${NADES[k].name}"></i>`).join(''));
     if (p.reloadTime > 0 && ws) {
       this.set('reload-bar', 'class', 'on');
       this.set('reload-fill', 'style', `scaleX(${1 - p.reloadTime / WEAPONS[ws.id].reloadTime})`, 'transform');
@@ -91,7 +99,8 @@ export class Hud {
     // crosshair spread & scope
     const scoped = p.zoomed && ws && ws.id === 'sniper';
     this.set('scope', 'class', scoped ? 'on' : '');
-    this.set('crosshair', 'style', scoped ? 'none' : 'block', 'display');
+    // correndo (arma levantada) a mira some; volta quando a arma abaixa
+    this.set('crosshair', 'style', scoped || p.sprinting ? 'none' : 'block', 'display');
     const air = !p.phys.onGround ? 4 : 0;
     const gap = Math.min(14, p.punchPitch * 1.2 + air + (p.zoomed ? 0 : 0));
     this.set('crosshair', 'style', `${gap.toFixed(0)}px`, '--gap');

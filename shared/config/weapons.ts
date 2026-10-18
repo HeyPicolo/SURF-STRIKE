@@ -2,8 +2,23 @@
 //  Arsenal — todos os atributos são dados (balanceamento aqui).
 //  Ângulos em graus, tempos em segundos, distâncias em unidades.
 // =============================================================
-export type WeaponId = 'pistol' | 'rifle' | 'smg' | 'shotgun' | 'sniper';
-export type WeaponSlot = 0 | 1; // 0 = primária, 1 = secundária (pistola)
+export type WeaponId = 'pistol' | 'rifle' | 'smg' | 'shotgun' | 'sniper' | 'knife';
+/** 0 = primária, 1 = secundária (pistola), 2 = faca. As granadas usam o slot 3 do jogador. */
+export type WeaponSlot = 0 | 1 | 2;
+export const SLOT_PRIMARY = 0, SLOT_SECONDARY = 1, SLOT_KNIFE = 2, SLOT_NADES = 3;
+
+/** Ataque corpo a corpo (faca). */
+export interface MeleeDef {
+  range: number;           // alcance do golpe leve
+  heavyRange: number;      // alcance do golpe pesado
+  heavyDamage: number;
+  heavyHeadMult: number;
+  heavyInterval: number;   // segundos entre golpes pesados
+  backstabDamage: number;  // golpe leve pelas costas
+  heavyBackstabDamage: number;
+  /** quanto as caixas de acerto crescem para o golpe (tolerância de mira) */
+  hitPadding: number;
+}
 
 export interface WeaponDef {
   id: WeaponId;
@@ -39,9 +54,21 @@ export interface WeaponDef {
   /** spread com zoom (sniper) */
   zoomSpread?: number;
   color: number;
+  /** presente apenas em armas brancas */
+  melee?: MeleeDef;
 }
 
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
+  knife: {
+    id: 'knife', name: 'FANG', category: 'Faca', slot: 2,
+    // golpe leve (clique esquerdo): 45 no corpo, 72 na cabeça, 2 golpes por segundo
+    damage: 45, headMult: 1.6, pellets: 1, auto: true, rpm: 120, mag: 0, reserve: 0, reloadTime: 0,
+    spread: 0, airSpread: 0, moveSpread: 0, kick: 0, kickSide: 0, recover: 20,
+    falloffHalf: 1e9, range: 72,
+    // andar com a faca na mão: +25% de velocidade base
+    moveSpeedMul: 1.25, zoom: 0, color: 0x9aa6bd,
+    melee: { range: 72, heavyRange: 62, heavyDamage: 75, heavyHeadMult: 1.4, heavyInterval: 1.05, backstabDamage: 90, heavyBackstabDamage: 180, hitPadding: 7 },
+  },
   pistol: {
     id: 'pistol', name: 'VEX-9', category: 'Pistola', slot: 1,
     damage: 26, headMult: 2.8, pellets: 1, auto: false, rpm: 380, mag: 12, reserve: 48, reloadTime: 1.4,
@@ -75,6 +102,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
 };
 
 export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
+/** Armas de fogo (o que pode aparecer no mapa ou em duelos). */
+export const GUN_IDS = WEAPON_IDS.filter((id) => !WEAPONS[id].melee);
 
 /** Fall-off: damage multiplier at distance d. */
 export function falloff(def: WeaponDef, d: number): number {

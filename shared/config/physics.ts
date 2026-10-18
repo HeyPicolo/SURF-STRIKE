@@ -45,6 +45,45 @@ export const PHYSICS = {
   killPlaneY: -4200,
 } as const;
 
+// =============================================================
+//  Tactical Sprint e Slide
+// =============================================================
+export const SPRINT = {
+  /** Multiplicador de velocidade no chão durante o sprint tático. */
+  speedMul: 1.3,
+  /** Stamina oculta, em segundos de sprint contínuo. */
+  stamina: 4.0,
+  /** Stamina mínima para voltar a correr depois de esgotar. */
+  restartStamina: 1.0,
+  /** Recuperação de stamina por segundo (após o atraso). */
+  regenRate: 0.8,
+  /** Segundos parado/andando antes de a stamina começar a recuperar. */
+  regenDelay: 1.0,
+  /** Tempo para abaixar a arma e poder atirar depois do sprint (armas de fogo). */
+  sprintToFire: 0.42,
+  /** Mesmo atraso para a faca (mais leve). */
+  sprintToFireKnife: 0.16,
+  /** Atraso de quem só estava andando (referência: praticamente imediato). */
+  walkToFire: 0,
+  /** Velocidade mínima para iniciar um slide. */
+  slideMinStartSpeed: 200,
+  /** Velocidade horizontal mínima no início do slide. */
+  slideStartSpeed: 470,
+  /** Ganho máximo de velocidade que o slide pode dar sobre a velocidade atual. */
+  slideMaxBoost: 120,
+  /** Duração máxima do slide. */
+  slideTime: 0.75,
+  /** Atrito durante o slide (o atrito normal é 5.2). */
+  slideFriction: 0.9,
+  /** O slide termina sozinho abaixo desta velocidade. */
+  slideEndSpeed: 150,
+  /** Tempo "travado" levantando ao fim de um slide natural (o cancel pula isso). */
+  slideRecoverTime: 0.35,
+  slideRecoverSpeedMul: 0.55,
+  /** Intervalo mínimo entre slides. */
+  slideCooldown: 0.35,
+} as const;
+
 export type PhysicsConfig = typeof PHYSICS;
 
 export const SIM_DT = 1 / PHYSICS.tickRate;

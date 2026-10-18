@@ -99,6 +99,21 @@ export class Sfx {
   empty() { const d = this.out(0, 0.5); if (!d) return; this.tone(d, this.ctx!.currentTime, 0.04, 1400, 1200, 0.3, 'square'); }
   switchWeapon() { const d = this.out(0, 0.4); if (!d) return; this.noise(d, this.ctx!.currentTime, 0.07, 3000, 1500, 3, 0.4); }
 
+  knife(hit: 'player' | 'world' | 'none', heavy: boolean, pan = 0, gain = 1) {
+    const d = this.out(pan, gain * 0.8); if (!d) return;
+    const t = this.ctx!.currentTime;
+    // whoosh
+    this.noise(d, t, heavy ? 0.28 : 0.16, heavy ? 900 : 1600, heavy ? 3000 : 5000, 1.4, 0.55);
+    if (hit === 'player') { this.noise(d, t + 0.04, 0.12, 700, 250, 1, 0.9, 'lowpass'); this.tone(d, t + 0.04, 0.1, 160, 70, 0.5); }
+    else if (hit === 'world') { this.tone(d, t + 0.03, 0.12, 2600, 2200, 0.25, 'triangle'); this.noise(d, t + 0.03, 0.06, 4000, 3000, 3, 0.4); }
+  }
+  slide(phase: 'start' | 'cancel' | 'end') {
+    const d = this.out(0, 0.45); if (!d) return;
+    const t = this.ctx!.currentTime;
+    if (phase === 'start') this.noise(d, t, 0.55, 500, 180, 0.7, 0.7, 'lowpass');
+    else if (phase === 'cancel') { this.noise(d, t, 0.08, 1200, 600, 1, 0.5); this.tone(d, t, 0.06, 300, 520, 0.2, 'triangle'); }
+  }
+
   pickup() {
     const d = this.out(0, 0.5); if (!d) return;
     const t = this.ctx!.currentTime;

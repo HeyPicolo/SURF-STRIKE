@@ -136,6 +136,7 @@ button { font: inherit; }
 #ammo b { font-size: 54px; font-weight: 700; line-height: 1; text-shadow: 0 3px 10px rgba(0, 20, 60, .5); }
 #ammo b.low { color: #ffd23c; } #ammo b.empty { color: var(--red); }
 #ammo span { font-size: 20px; opacity: .7; margin-left: 4px; }
+#ammo span.melee { font-size: 13px; }
 #slots { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
 .slot { font-size: 11px; padding: 2px 8px; background: var(--panel); opacity: .55; transform: skewX(var(--slant)); }
 .slot.on { opacity: 1; box-shadow: inset 0 -2px 0 #fff; }

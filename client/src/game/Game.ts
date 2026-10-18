@@ -4,8 +4,8 @@
 // =============================================================
 import { World, WorldConfig, SimEvent } from '../../../shared/sim/world';
 import { Player, hitboxes } from '../../../shared/sim/player';
-import { SIM_DT, PHYSICS } from '../../../shared/config/physics';
-import { WEAPONS, WeaponId, NADES, ITEMS } from '../../../shared/config/weapons';
+import { SIM_DT, PHYSICS, SPRINT } from '../../../shared/config/physics';
+import { WEAPONS, WeaponId, NADES, ITEMS, SLOT_NADES } from '../../../shared/config/weapons';
 import { CLASSES, ClassId } from '../../../shared/config/classes';
 import { V3, DEG, forwardFromAngles, rightFromYaw } from '../../../shared/math/vec3';
 import type { MapDef, Team, PickupKind } from '../../../shared/maps/types';
@@ -48,6 +48,9 @@ export class Game {
   private specIdx = 0;
   private swayX = 0; private swayY = 0; private lastYaw = 0; private lastPitch = 0;
   private flashTime = 0;
+  private sprintPose = 0;
+  private slideRoll = 0;
+  private fovKick = 0;
   private switchAnim = 0;
   private animPhase = new Map<number, number>();
   paused = false;
@@ -165,8 +168,11 @@ export class Game {
     inp.cmd.forward = h('forward') - h('back');
     inp.cmd.side = h('right') - h('left');
     inp.cmd.up = 0;
-    inp.cmd.jump = i.held('jump');
-    inp.cmd.crouch = i.held('crouch');
+    // toques rápidos (apertar e soltar entre dois ticks) contam por pelo menos um tick:
+    // importante para o slide (toque no Ctrl) e para o slide cancel (toque no Espaço)
+    inp.cmd.jump = i.held('jump') || (first && i.consume('jump'));
+    inp.cmd.crouch = i.held('crouch') || (first && i.consume('crouch'));
+    inp.cmd.sprint = i.held('sprint');
     const live = i.locked || i.enabled;
     inp.fire = live && (i.mouse[0] || (first && i.consumeMouse(0)));
     inp.alt = live && (first ? i.consumeMouse(2) : false);
@@ -175,7 +181,7 @@ export class Game {
       inp.use = i.consume('use');
       inp.ability = i.consume('ability');
       inp.drop = i.consume('drop');
-      inp.slot = i.consume('slot1') ? 0 : i.consume('slot2') ? 1 : i.consume('slot3') ? 2 : null;
+      inp.slot = i.consume('slot1') ? 0 : i.consume('slot2') ? 1 : i.consume('slot3') ? 2 : i.consume('slot4') ? SLOT_NADES : null;
     } else { inp.reload = inp.use = inp.ability = inp.drop = false; inp.slot = null; }
     p.autoBhop = this.settings.autoBhop;
   }
@@ -228,6 +234,19 @@ export class Game {
           if (e.pid === me.id) { this.sfx.pickup(); this.hud.toast(e.label, '#7fffd4'); }
           break;
         case 'reload': if (e.pid === viewer.id) this.sfx.reload(); break;
+        case 'melee': {
+          const isMe = e.pid === viewer.id;
+          const [pan, g] = this.spatial(e.pos);
+          this.sfx.knife(e.hit, e.heavy, isMe ? 0 : pan, isMe ? 1 : g);
+          if (isMe) this.viewKick = Math.min(1, this.viewKick + (e.heavy ? 0.6 : 0.3));
+          if (e.hit === 'world' && e.normal) this.fx.impact(e.pos.x, e.pos.y, e.pos.z, e.normal.x, e.normal.y, e.normal.z);
+          if (e.backstab && e.pid === me.id) this.hud.toast('PELAS COSTAS', '#ffd23c');
+          break;
+        }
+        case 'slide':
+          if (e.pid === viewer.id) this.sfx.slide(e.phase);
+          if (e.phase === 'start') { const p = w.player(e.pid); if (p) this.fx.emit(p.phys.pos.x, p.phys.pos.y + 4, p.phys.pos.z, 8, { color: 0xdfe6f0, size: 16, speed: 90, max: 0.5, alpha: 0.5, grow: 20 }); }
+          break;
         case 'empty': if (e.pid === viewer.id) this.sfx.empty(); break;
         case 'switch': if (e.pid === viewer.id) { this.sfx.switchWeapon(); this.switchAnim = 1; } break;
         case 'ability': {
@@ -365,8 +384,13 @@ export class Game {
     let sensMul = 1;
     if (viewer.zoomed && ws && WEAPONS[ws.id].zoom > 0) { tanH *= WEAPONS[ws.id].zoom; sensMul = WEAPONS[ws.id].zoom; }
     this.input.sensMul = isMe ? sensMul : 1;
+    // sprint/slide: leve abertura de FOV e inclinação da câmera no slide (sem afetar a mira)
+    const kickGoal = viewer.slideTime > 0 ? 1 : viewer.sprinting ? 0.6 : 0;
+    this.fovKick += (kickGoal - this.fovKick) * Math.min(1, dt * 8);
+    this.slideRoll += ((viewer.slideTime > 0 ? 0.045 : 0) - this.slideRoll) * Math.min(1, dt * 10);
+    if (!viewer.zoomed) tanH *= 1 + this.fovKick * 0.06;
     const fovY = 2 * Math.atan(tanH);
-    r.beginFrame({ x: vpos.x, y: vpos.y + this.eyeSmooth + bob + land, z: vpos.z, yaw: camYaw, pitch: camPitch, roll: 0, fovY }, this.time);
+    r.beginFrame({ x: vpos.x, y: vpos.y + this.eyeSmooth + bob + land, z: vpos.z, yaw: camYaw, pitch: camPitch, roll: this.settings.viewBob ? this.slideRoll : 0, fovY }, this.time);
 
     // world
     r.drawMesh(A.world, null, { grid: 1 });
@@ -518,16 +542,16 @@ export class Game {
     r.drawMesh(cm.legL, child(this.tmpM2, root, -6, hip, 0, 0, legL, 0, 1, 1 - duck / 60), opts);
     r.drawMesh(cm.legR, child(this.tmpM2, root, 6, hip, 0, 0, legR, 0, 1, 1 - duck / 60), opts);
     // torso
-    const torso = child(this.tmpM3, root, 0, hip, 0, 0, p.phys.ducked ? -0.25 : air ? -0.08 : 0);
+    const torso = child(this.tmpM3, root, 0, hip, 0, 0, p.slideTime > 0 ? 0.45 : p.phys.ducked ? -0.25 : air ? -0.08 : p.sprinting ? -0.18 : 0);
     r.drawMesh(cm.torso, torso, opts);
     r.drawMesh(cm.head, child(this.tmpM2, torso, 0, 25, 0, 0, p.pitch * 0.6), opts);
     // arms aim with pitch
-    const armPitch = Math.PI / 2 + p.pitch;
+    const armPitch = p.sprinting ? 0.6 : Math.PI / 2 + p.pitch; // correndo: arma levantada junto ao peito
     const armR = child(mat4(), torso, 15, 22, -1, 0, armPitch, 0);
     r.drawMesh(cm.armR, armR, opts);
     r.drawMesh(cm.armL, child(this.tmpM2, torso, -13, 22, -1, -0.45, armPitch, 0), opts);
     // weapon in hand
-    const wpn = p.slot < 2 ? p.weapons[p.slot] : null;
+    const wpn = p.slot < SLOT_NADES ? p.weapons[p.slot] : null;
     if (wpn && !xr) {
       const handM = child(this.tmpM2, armR, -4, -24, 0, 0, -Math.PI / 2, 0, 0.9);
       r.drawMesh(this.assets!.weapons.get(wpn.id)!, handM);
@@ -557,17 +581,39 @@ export class Game {
     if (p.reloadTime > 0 && ws) { const tot = WEAPONS[ws.id].reloadTime; const k = 1 - p.reloadTime / tot; reloadK = Math.sin(Math.min(1, k) * Math.PI); }
     const kick = this.viewKick;
     const air = !p.phys.onGround ? 1 : 0;
-    const x = 9 + this.swayX + bx, y = -9.5 - this.swayY - by - this.switchAnim * 14 - reloadK * 6 - air * 0.6 - p.phys.landImpact * 2, z = -21 + kick * 3;
-    const m = trs(this.tmpM, x, y, z, -0.06 + this.swayX * 0.01, kick * 0.12 - reloadK * 0.5, reloadK * 0.6, 0.72);
-    if (p.slot === 2) {
+    // sprint tático: arma levantada; volta à posição de tiro durante o sprint-to-fire delay
+    const isKnife = !!ws && !!WEAPONS[ws.id].melee;
+    const lowerTime = isKnife ? SPRINT.sprintToFireKnife : SPRINT.sprintToFire;
+    const poseGoal = p.sprinting ? 1 : Math.min(1, p.raiseTime / lowerTime);
+    this.sprintPose += (poseGoal - this.sprintPose) * Math.min(1, dt * (p.sprinting ? 9 : 30));
+    const sp = this.sprintPose * (1 - this.switchAnim);
+    // armas de fogo sobem e giram para o lado; a faca só baixa e recua um pouco
+    const sx = isKnife ? 1 : -3, sy = isKnife ? -3 : 2.5, sz = isKnife ? -1 : 3, syaw = isKnife ? 0.25 : 0.75, spitch = isKnife ? -0.25 : 0.55, sroll = isKnife ? 0.15 : 0.5;
+    let x = 9 + this.swayX + bx + sp * sx, y = -9.5 - this.swayY - by - this.switchAnim * 14 - reloadK * 6 - air * 0.6 - p.phys.landImpact * 2 + sp * sy, z = -21 + kick * 3 + sp * sz;
+    let yawO = -0.06 + this.swayX * 0.01 + sp * syaw, pitchO = kick * 0.12 - reloadK * 0.5 + sp * spitch, rollO = reloadK * 0.6 + sp * sroll;
+    if (isKnife) {
+      // golpe da faca: leve = corte da direita para a esquerda, pesado = estocada para frente
+      const since = (this.world?.time ?? 0) - p.lastShotTime;
+      if (p.lastMeleeHeavy && since < 0.55) {
+        const k = since / 0.55, wind = k < 0.35 ? k / 0.35 : 1 - (k - 0.35) / 0.65;
+        z += k < 0.35 ? wind * 4 : -wind * 9; pitchO -= wind * 0.3; x -= wind * 2;
+      } else if (!p.lastMeleeHeavy && since < 0.3) {
+        const k = since / 0.3;
+        yawO += 1.2 - k * 2.4; x += 3 - k * 9; rollO -= 0.6 * Math.sin(k * Math.PI);
+      }
+    }
+    if (isKnife) { x -= 1.5; y += 1.2; z += 4; yawO += 0.18; pitchO += 0.12; rollO -= 0.35; }
+    const m = trs(this.tmpM, x, y, z, yawO, pitchO, rollO, isKnife ? 0.95 : 0.72);
+    if (p.slot === SLOT_NADES) {
       const nk = p.nadeSel;
       r.drawMesh(this.assets!.grenade, trs(this.tmpM2, x, y + 2, z - 4, this.time, 0, 0, 1.4), { tint: NADES[nk].color, tintMix: 0.7, emissive: 0.2 });
     } else if (ws) {
       r.drawMesh(this.assets!.weapons.get(ws.id)!, m);
-      // glove
-      r.drawMesh(this.assets!.hand, child(this.tmpM2, m, 0, -3, 1, 0, 0, 0, 5, 7, 5));
+      // glove (na faca, só em volta do cabo)
+      if (isKnife) r.drawMesh(this.assets!.hand, child(this.tmpM2, m, 0, 0, 4, 0, 0, 0, 3.6, 4.2, 5));
+      else r.drawMesh(this.assets!.hand, child(this.tmpM2, m, 0, -3, 1, 0, 0, 0, 5, 7, 5));
       // muzzle flash
-      if (this.flashTime > 0) {
+      if (this.flashTime > 0 && !isKnife) {
         this.flashTime -= dt;
         const len = ws.id === 'sniper' ? -44 : ws.id === 'shotgun' ? -38 : ws.id === 'rifle' ? -34 : ws.id === 'smg' ? -21 : -16;
         const s = 3 + Math.random() * 3;
