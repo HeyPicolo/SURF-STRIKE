@@ -66,9 +66,22 @@ export interface WeaponDef {
   preciseRange?: number;
 }
 
+// Ajustes globais de balanceamento (aplicados a todas as armas)
+export const ACCURACY = {
+  /** Multiplicador de todo o spread (base, no ar, andando e com zoom). 0.5 = metade do spread. */
+  spreadMul: 0.5,
+};
+export const RELOAD = {
+  /** Velocidade de recarga: 1.45 = 45% mais rápida que o tempo base de cada arma. */
+  speedMul: 1.45,
+};
+/** Tempo efetivo de recarga da arma. */
+export function reloadDuration(def: WeaponDef): number { return def.reloadTime / RELOAD.speedMul; }
+
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   knife: {
-    id: 'knife', name: 'FANG', category: 'Faca', slot: 2,
+    // faca borboleta (balisong): modelo e animações próprios do jogo
+    id: 'knife', name: 'BALISONG', category: 'Faca borboleta', slot: 2,
     // golpe leve (clique esquerdo): 45 no corpo, 72 na cabeça, 2 golpes por segundo
     damage: 45, headMult: 1.6, pellets: 1, auto: true, rpm: 120, mag: 0, reserve: 0, reloadTime: 0,
     spread: 0, airSpread: 0, moveSpread: 0, kick: 0, kickSide: 0, recover: 20,

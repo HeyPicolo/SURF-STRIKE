@@ -343,3 +343,44 @@ test('taser is never dropped and never spawns on the map', () => {
   assert.ok(p.weapons[3], 'cannot drop the taser');
   for (let s = 1; s < 20; s++) assert.ok(!world(s).pickups.some((k) => k.weapon === 'taser'));
 });
+
+// ---------------------------------------------------------------- v4: bases sem armas, spread, recarga
+import { computeSpread } from '../shared/sim/combat';
+import { ACCURACY, RELOAD, reloadDuration } from '../shared/config/weapons';
+
+test('bases never spawn weapons', () => {
+  for (let seed = 1; seed <= 40; seed++) {
+    const w = world(seed);
+    for (const k of w.pickups) {
+      if (Math.abs(k.pos.z) > 4700) assert.notEqual(k.kind, 'weapon', `weapon at a base (seed ${seed})`);
+    }
+  }
+});
+
+test('spread is halved for every weapon', () => {
+  assert.equal(ACCURACY.spreadMul, 0.5);
+  for (const def of Object.values(WEAPONS)) {
+    if (def.melee) continue;
+    const s = computeSpread(def, { onGround: false, hSpeed: 0, ducked: false, zoomed: false });
+    assert.ok(Math.abs(s - (def.spread + def.airSpread) * 0.5) < 1e-9, def.id);
+  }
+});
+
+test('reloads are 45% faster', () => {
+  assert.equal(RELOAD.speedMul, 1.45);
+  const w = world(); const p = arena(w);
+  p.giveWeapon('rifle');
+  p.input.slot = 0; w.step(SIM_DT); p.input.slot = null;
+  run(w, 50);
+  p.weapons[0]!.mag = 5;
+  p.input.reload = true; w.step(SIM_DT); p.input.reload = false;
+  const expected = reloadDuration(WEAPONS.rifle);
+  assert.ok(Math.abs(expected - WEAPONS.rifle.reloadTime / 1.45) < 1e-9);
+  let ticks = 0;
+  while (p.weapons[0]!.mag < WEAPONS.rifle.mag && ticks < 500) { w.step(SIM_DT); ticks++; }
+  assert.ok(Math.abs(ticks * SIM_DT - expected) < 0.03, `reload took ${(ticks * SIM_DT).toFixed(2)}s (expected ${expected.toFixed(2)}s)`);
+});
+
+test('the knife is the butterfly knife', () => {
+  assert.equal(WEAPONS.knife.category, 'Faca borboleta');
+});

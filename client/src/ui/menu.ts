@@ -107,7 +107,7 @@ export class Menu {
   showPlay() {
     const s = this.setup;
     this.panel(`<h2>Partida contra bots</h2>
-      <p>Team Elimination: sem respawn no round, ${MATCH.roundTime}s por round, primeiro a ${MATCH.roundsToWin} rounds vence. Todos começam com a faca e o taser; as armas estão espalhadas pelo mapa e mudam a cada round. Se o tempo acabar, os sobreviventes vão para duelos 1v1 sem colete e sem poderes, com a mesma arma sorteada para os dois.</p>
+      <p>Team Elimination: sem respawn no round, ${MATCH.roundTime}s por round, primeiro a ${MATCH.roundsToWin} rounds vence. Todos começam com a faca borboleta e o taser; as armas estão espalhadas pelo mapa e mudam a cada round. Se o tempo acabar, os sobreviventes vão para duelos 1v1 sem colete e sem poderes, com a mesma arma sorteada para os dois.</p>
       <h4>Tamanho das equipes</h4>${this.choiceRow('size', [['1', '1v1'], ['2', '2v2'], ['3', '3v3'], ['4', '4v4'], ['5', '5v5']], String(s.teamSize))}
       <h4>Dificuldade dos bots</h4>${this.choiceRow('diff', (Object.keys(BOT_SKILL) as BotDifficulty[]).map((d) => [d, BOT_SKILL[d].label]), s.difficulty)}
       <h4>Sua equipe</h4>${this.choiceRow('team', [['blue', 'Equipe Azul', 'team-blue'], ['red', 'Equipe Vermelha', 'team-red']], s.team)}

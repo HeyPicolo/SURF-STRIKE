@@ -24,7 +24,7 @@ export const COLORS = {
 const v = (x: number, y: number, z: number) => new V3(x, y, z);
 
 /** Surf ramp specification (blue side, z > 0). Red side is mirrored in Z. */
-interface RampSpec { start: [number, number, number]; end: [number, number, number]; hw: number; h: number; color: number; glow: number; tag: string; }
+export interface RampSpec { start: [number, number, number]; end: [number, number, number]; hw: number; h: number; color: number; glow: number; tag: string; }
 export const RAMPS: Record<string, RampSpec> = {
   A: { start: [0, 2280, 4800], end: [0, 900, 1750], hw: 520, h: 760, color: COLORS.rampA, glow: COLORS.routeA, tag: 'routeA' },
   B1: { start: [900, 2280, 5400], end: [1600, 1700, 3700], hw: 300, h: 650, color: COLORS.rampB, glow: COLORS.routeB, tag: 'routeB1' },
@@ -32,8 +32,11 @@ export const RAMPS: Record<string, RampSpec> = {
   C: { start: [-900, 2280, 5400], end: [-1900, 1650, 1700], hw: 420, h: 700, color: COLORS.rampC, glow: COLORS.routeC, tag: 'routeC' },
 };
 
+/** Rampa central sobre o platô (eixo z = 0, igual para os dois times). */
+export const CENTER_RAMP: RampSpec = { start: [-1500, 1000, 0], end: [1150, 700, 0], hw: 280, h: 500, color: 0xc9bdf5, glow: COLORS.accent, tag: 'centerRamp' };
+
 /** Point on a ramp face: f = 0..1 along the ramp, u = ±1 face side, q = depth below apex (0 apex … 1 base). */
-function facePoint(r: RampSpec, f: number, u: number, q: number): V3 {
+export function facePoint(r: RampSpec, f: number, u: number, q: number): V3 {
   const s = v(...r.start), e = v(...r.end);
   const flat = v(e.x - s.x, 0, e.z - s.z).normalize();
   const side = v(-flat.z, 0, flat.x);
@@ -111,7 +114,7 @@ function teamHalf(team: Team): { brushes: Brush[]; triggers: Trigger[]; pickups:
   const P = (pool: PoolId, x: number, y: number, z: number, kind: PickupKind, weapon?: string) => {
     pickups.push({ kind, weapon, pos: v(x, y, Z(z)), pool, group: `half-${pickups.length}` });
   };
-  P('spawnGun', 0, 2400, 5480, 'weapon', 'pistol');
+  P('spawnUtility', 0, 2400, 5480, 'ammo'); // bases sem armas
   P('spawnUtility', -420, 2400, 5150, 'nade_impulse');
   P('spawnUtility', 420, 2400, 5150, 'medkit');
   P('midWeapon', 700, 0, 1100, 'weapon', 'smg');
@@ -185,17 +188,20 @@ export function buildClouds(): MapDef {
 
   // ---------- Right flank (+X) ----------
   brushes.push(box(1300, -60, -800, 2500, 150, 800, { color: COLORS.platform, edgeGlow: COLORS.routeB, tag: 'flank' }));
-  brushes.push(slopeX(1200, 1300, 0, 150, -260, 260, { color: COLORS.platformDark }));
+  // subida caminhável (≈28°) do platô para o flanco
+  brushes.push(slopeX(1020, 1300, 0, 150, -260, 260, { color: COLORS.platformDark }));
   brushes.push(box(1300, 150, -60, 1360, 220, 60, { color: COLORS.coverDark }));
   // ---------- Left perch (−X, elevated) ----------
   brushes.push(box(-2500, 900, -800, -1500, 1000, 800, { color: COLORS.platform, edgeGlow: COLORS.routeC, tag: 'perch' }));
   brushes.push(box(-2500, 1000, -800, -2460, 1120, 800, { color: COLORS.metal }));
-  brushes.push(box(-1580, 1000, -120, -1500, 1060, 120, { color: COLORS.cover, edgeGlow: COLORS.routeC }));
   brushes.push(box(-2050, 400, -80, -1950, 900, 80, { color: COLORS.metal }));
-  // ---------- Aerial corridor (sky bridge) ----------
-  brushes.push(box(-1500, 980, -110, 1300, 1000, 110, { color: COLORS.platformDark, edgeGlow: COLORS.accent, tag: 'bridge' }));
-  brushes.push(box(-1500, 1000, -116, 1300, 1050, -110, { color: COLORS.glass, kind: 'glass' }));
-  brushes.push(box(-1500, 1000, 110, 1300, 1050, 116, { color: COLORS.glass, kind: 'glass' }));
+  // ---------- Rampa central (no lugar da antiga ponte) ----------
+  // Sai da borda do Poleiro e desce sobre o centro até o flanco; a base fica acima do platô,
+  // então dá para andar e lutar por baixo dela.
+  {
+    const r = CENTER_RAMP;
+    brushes.push(rampBrush(v(...r.start), v(...r.end), r.hw, r.h, 'both', { color: r.color, edgeGlow: r.glow, tag: r.tag }));
+  }
 
 
   // ---------- Recovery floor (cloud layer) ----------
@@ -213,7 +219,7 @@ export function buildClouds(): MapDef {
   pickups.push({ kind: 'weapon', weapon: 'rifle', pos: v(0, 32, 0), pool: 'highWeapon' });
   pickups.push({ kind: 'weapon', weapon: 'sniper', pos: v(-2000, 1000, 0), pool: 'highWeapon' });
   pickups.push({ kind: 'weapon', weapon: 'shotgun', pos: v(1950, 150, 0), pool: 'highWeapon' });
-  pickups.push({ kind: 'shield', pos: v(0, 1000, 0), pool: 'defense' });
+  pickups.push({ kind: 'shield', pos: v(-240, 16, 0), pool: 'defense' });
   pickups.push({ kind: 'weapon', weapon: 'rifle', pos: v(-900, 0, 0), pool: 'highWeapon' });
   pickups.push({ kind: 'armor', pos: v(900, 0, 0), pool: 'defense' });
 

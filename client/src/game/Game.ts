@@ -5,14 +5,15 @@
 import { World, WorldConfig, SimEvent } from '../../../shared/sim/world';
 import { Player, hitboxes } from '../../../shared/sim/player';
 import { SIM_DT, PHYSICS, SPRINT } from '../../../shared/config/physics';
-import { WEAPONS, WeaponId, NADES, ITEMS, SLOT_NADES } from '../../../shared/config/weapons';
+import { WEAPONS, WeaponId, NADES, ITEMS, SLOT_NADES, reloadDuration } from '../../../shared/config/weapons';
 import { CLASSES, ClassId } from '../../../shared/config/classes';
 import { V3, DEG, forwardFromAngles, rightFromYaw } from '../../../shared/math/vec3';
 import type { MapDef, Team, PickupKind } from '../../../shared/maps/types';
 import { Renderer, GpuMesh } from '../render/Renderer';
 import { trs, child, mat4, multiply, Mat4 } from '../render/glm';
 import { buildWorldMesh } from '../maps/worldMesh';
-import { buildCharacter, buildWeapon, buildPickup, buildGrenade, buildCube, CharacterMeshes, TEAM_COLORS, PICKUP_COLORS } from '../entities/models';
+import { buildCharacter, buildWeapon, buildPickup, buildGrenade, buildCube, buildButterflyParts, ButterflyParts, CharacterMeshes, TEAM_COLORS, PICKUP_COLORS } from '../entities/models';
+import { ViewPose, REST, butterflyDraw, butterflyInspect, gunInspect, nadeInspect, BF_DRAW_TIME, BF_INSPECT_TIME, GUN_INSPECT_TIME, NADE_INSPECT_TIME } from './viewAnims';
 import { Effects } from './effects';
 import { Input } from './input';
 import type { Settings } from './settings';
@@ -28,6 +29,7 @@ interface Assets {
   grenade: GpuMesh;
   flash: GpuMesh;
   hand: GpuMesh;
+  butterfly: ButterflyParts;
 }
 
 export interface GameCallbacks {
@@ -48,6 +50,10 @@ export class Game {
   private specIdx = 0;
   private swayX = 0; private swayY = 0; private lastYaw = 0; private lastPitch = 0;
   private flashTime = 0;
+  /** início da animação de sacar a faca borboleta (relógio do cliente) */
+  private knifeDrawStart = -10;
+  /** inspeção em andamento (tecla F) */
+  private inspect: { start: number; slot: number; weapon: string } | null = null;
   private sprintPose = 0;
   private slideRoll = 0;
   private fovKick = 0;
@@ -66,6 +72,7 @@ export class Game {
     input.onAction = (a) => {
       if (!this.world || this.paused) return;
       const w = this.world, p = w.local;
+      if (a === 'inspect') this.startInspect();
       if (w.config.mode === 'training') {
         if (a === 'resetPos') { w.resetPosition(p); this.syncView(); this.hud.toast('Posição reiniciada'); }
         if (a === 'fly') { p.fly = !p.fly; this.hud.toast(p.fly ? 'Voo ativado' : 'Voo desativado'); }
@@ -87,7 +94,7 @@ export class Game {
     const handMb = buildCube(r, 0x262b38, 0);
     this.assets = {
       world: r.createMesh(wm.opaque), glass: r.createMesh(wm.glass), chars: new Map(), weapons, pickups,
-      grenade: buildGrenade(r), flash: buildCube(r, 0xffe3a0, 1), hand: handMb,
+      grenade: buildGrenade(r), flash: buildCube(r, 0xffe3a0, 1), hand: handMb, butterfly: buildButterflyParts(r),
     };
   }
 
@@ -106,6 +113,7 @@ export class Game {
     this.applySettings();
     this.syncView();
     this.lastEnded = false;
+    this.knifeDrawStart = this.time; this.inspect = null;
     this.hud.show(true);
     this.paused = false;
     this.clearLabels();
@@ -249,7 +257,12 @@ export class Game {
           if (e.phase === 'start') { const p = w.player(e.pid); if (p) this.fx.emit(p.phys.pos.x, p.phys.pos.y + 4, p.phys.pos.z, 8, { color: 0xdfe6f0, size: 16, speed: 90, max: 0.5, alpha: 0.5, grow: 20 }); }
           break;
         case 'empty': if (e.pid === viewer.id) this.sfx.empty(); break;
-        case 'switch': if (e.pid === viewer.id) { this.sfx.switchWeapon(); this.switchAnim = 1; } break;
+        case 'switch':
+          if (e.pid === viewer.id) {
+            this.sfx.switchWeapon(); this.switchAnim = 1; this.inspect = null;
+            if (viewer.slot === 2) this.knifeDrawStart = this.time;
+          }
+          break;
         case 'ability': {
           const p = w.player(e.pid)!;
           const col = CLASSES[e.cls].color;
@@ -298,6 +311,7 @@ export class Game {
     const me = w.local;
     if (tr.type === 'roundStart') {
       this.syncView();
+      this.knifeDrawStart = this.time; this.inspect = null;
       this.fx.clear();
       this.hud.banner(`ROUND ${tr.round}`, `${CLASSES[me.classId].name} — ${CLASSES[me.classId].ability.name} [${keyLabel(this.settings.keys.ability)}]`, me.team, 2.4);
     } else if (tr.type === 'enter' && tr.phase === 'countdown') {
@@ -571,6 +585,31 @@ export class Game {
     if (!xr && p.tired > 0 && Math.random() < 0.3) this.fx.emit(pos.x, pos.y + 70, pos.z, 1, { color: 0x9b7bff, size: 8, speed: 15, max: 0.6, add: true });
   }
 
+  /** Tecla F: inspeciona a arma na mão (só visual). */
+  private startInspect() {
+    const p = this.world?.local;
+    if (!p || !p.alive || p.sprinting || p.slideTime > 0 || p.reloadTime > 0 || p.switchTime > 0) return;
+    const ws = p.currentWeapon();
+    this.inspect = { start: this.time, slot: p.slot, weapon: ws?.id ?? 'nade' };
+    this.knifeDrawStart = -10;
+  }
+
+  /** Pose extra da animação atual (sacar/inspecionar), ou cancela a inspeção se o jogador agiu. */
+  private viewPose(p: Player, isKnife: boolean): ViewPose {
+    const ins = this.inspect;
+    if (ins) {
+      const ws = p.currentWeapon();
+      const cancelled = p.slot !== ins.slot || (ws?.id ?? 'nade') !== ins.weapon || p.sprinting || p.slideTime > 0 || p.reloadTime > 0
+        || this.input.mouse[0] || this.input.mouse[2] || !p.alive;
+      const t = this.time - ins.start;
+      const dur = isKnife ? BF_INSPECT_TIME : p.slot === SLOT_NADES ? NADE_INSPECT_TIME : GUN_INSPECT_TIME;
+      if (cancelled || t > dur) this.inspect = null;
+      else return isKnife ? butterflyInspect(t) : p.slot === SLOT_NADES ? nadeInspect(t) : gunInspect(t);
+    }
+    if (isKnife && this.time - this.knifeDrawStart < BF_DRAW_TIME) return butterflyDraw(this.time - this.knifeDrawStart);
+    return REST;
+  }
+
   private drawViewmodel(p: Player, dt: number, hs: number, yaw: number, pitch: number) {
     const r = this.r;
     const ws = p.currentWeapon();
@@ -586,7 +625,7 @@ export class Game {
     const bx = Math.cos(this.bobPhase * 0.5) * 0.8 * bobA, by = Math.abs(Math.sin(this.bobPhase * 0.5)) * 0.8 * bobA;
     this.switchAnim = Math.max(0, this.switchAnim - dt * 3.5);
     let reloadK = 0;
-    if (p.reloadTime > 0 && ws) { const tot = WEAPONS[ws.id].reloadTime; const k = 1 - p.reloadTime / tot; reloadK = Math.sin(Math.min(1, k) * Math.PI); }
+    if (p.reloadTime > 0 && ws) { const tot = reloadDuration(WEAPONS[ws.id]); const k = 1 - p.reloadTime / tot; reloadK = Math.sin(Math.min(1, k) * Math.PI); }
     const kick = this.viewKick;
     const air = !p.phys.onGround ? 1 : 0;
     // sprint tático: arma levantada; volta à posição de tiro durante o sprint-to-fire delay
@@ -610,16 +649,27 @@ export class Game {
         yawO += 1.2 - k * 2.4; x += 3 - k * 9; rollO -= 0.6 * Math.sin(k * Math.PI);
       }
     }
-    if (isKnife) { x -= 1.5; y += 1.2; z += 4; yawO += 0.18; pitchO += 0.12; rollO -= 0.35; }
+    if (isKnife) {
+      x -= 1.5; y += 1.2; z += 4; yawO += 0.18; pitchO += 0.12; rollO -= 0.35;
+      y += this.switchAnim * 14; // a faca usa a própria animação de sacar no lugar do "abaixar"
+    }
+    // animação de sacar / inspecionar (tecla F)
+    const pose = this.viewPose(p, isKnife);
+    x += pose.ox; y += pose.oy; z += pose.oz; yawO += pose.yaw; pitchO += pose.pitch; rollO += pose.roll;
     const m = trs(this.tmpM, x, y, z, yawO, pitchO, rollO, isKnife ? 0.95 : 0.72);
     if (p.slot === SLOT_NADES) {
       const nk = p.nadeSel;
-      r.drawMesh(this.assets!.grenade, trs(this.tmpM2, x, y + 2, z - 4, this.time, 0, 0, 1.4), { tint: NADES[nk].color, tintMix: 0.7, emissive: 0.2 });
+      r.drawMesh(this.assets!.grenade, trs(this.tmpM2, x, y + 2, z - 4, this.time + pose.roll, pose.pitch, 0, 1.4), { tint: NADES[nk].color, tintMix: 0.7, emissive: 0.2 });
+    } else if (ws && isKnife) {
+      // faca borboleta: o cabo "safe" fica na mão; a lâmina e o cabo "bite" giram nos pinos
+      const bf = this.assets!.butterfly;
+      r.drawMesh(bf.safe, m);
+      r.drawMesh(bf.blade, child(this.tmpM2, m, 0, 0, 0, 0, pose.blade, 0));
+      r.drawMesh(bf.bite, child(this.tmpM2, m, 0, 0, 0, 0, pose.bite, 0));
+      r.drawMesh(this.assets!.hand, child(this.tmpM2, m, 0.9, 0, 7, 0, 0, 0, 2.6, 4.4, 7));
     } else if (ws) {
       r.drawMesh(this.assets!.weapons.get(ws.id)!, m);
-      // glove (na faca, só em volta do cabo)
-      if (isKnife) r.drawMesh(this.assets!.hand, child(this.tmpM2, m, 0, 0, 4, 0, 0, 0, 3.6, 4.2, 5));
-      else r.drawMesh(this.assets!.hand, child(this.tmpM2, m, 0, -3, 1, 0, 0, 0, 5, 7, 5));
+      r.drawMesh(this.assets!.hand, child(this.tmpM2, m, 0, -3, 1, 0, 0, 0, 5, 7, 5));
       // muzzle flash
       if (this.flashTime > 0 && !isKnife) {
         this.flashTime -= dt;

@@ -7,17 +7,12 @@
 import type { PickupKind } from '../maps/types';
 import type { WeaponId } from './weapons';
 
-export type PoolId = 'spawnGun' | 'spawnUtility' | 'midWeapon' | 'highWeapon' | 'utility' | 'defense';
+export type PoolId = 'spawnUtility' | 'midWeapon' | 'highWeapon' | 'utility' | 'defense';
 
 export interface PoolEntry { kind: PickupKind; weapon?: WeaponId; weight: number; }
 
 export const PICKUP_POOLS: Record<PoolId, PoolEntry[]> = {
-  /** Plataforma de spawn: quase sempre uma arma leve (todos começam só com a faca). */
-  spawnGun: [
-    { kind: 'weapon', weapon: 'pistol', weight: 60 },
-    { kind: 'weapon', weapon: 'smg', weight: 20 },
-    { kind: 'weapon', weapon: 'shotgun', weight: 20 },
-  ],
+  /** Bases (plataformas de spawn): só utilitários, nenhuma arma. */
   spawnUtility: [
     { kind: 'nade_impulse', weight: 30 },
     { kind: 'medkit', weight: 25 },

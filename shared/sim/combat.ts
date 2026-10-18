@@ -1,5 +1,5 @@
 // Cálculos de dano puros (testáveis) + modelo de spread/recuo.
-import { WEAPONS, WeaponDef, ITEMS, falloff } from '../config/weapons';
+import { WEAPONS, WeaponDef, ITEMS, falloff, ACCURACY } from '../config/weapons';
 import { CLASSES } from '../config/classes';
 
 export interface DamageContext {
@@ -51,7 +51,7 @@ export function computeSpread(def: WeaponDef, s: SpreadState): number {
   if (!s.onGround) spread += def.airSpread;
   else if (s.hSpeed > 130) spread += def.moveSpread * Math.min(1, s.hSpeed / 250);
   if (s.ducked && s.onGround) spread *= 0.8;
-  return spread;
+  return spread * ACCURACY.spreadMul;
 }
 
 export function fireInterval(def: WeaponDef, fireRateMul = 1): number {

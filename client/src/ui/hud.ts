@@ -1,7 +1,7 @@
 // HUD em DOM. Escritas no DOM só acontecem quando um valor muda (evita layout thrash).
 import type { World } from '../../../shared/sim/world';
 import type { Player } from '../../../shared/sim/player';
-import { WEAPONS, NADES, NadeKind, SLOT_NADES, SLOT_KEYS } from '../../../shared/config/weapons';
+import { WEAPONS, NADES, NadeKind, SLOT_NADES, SLOT_KEYS, reloadDuration } from '../../../shared/config/weapons';
 import { CLASSES } from '../../../shared/config/classes';
 import { forwardFromAngles } from '../../../shared/math/vec3';
 
@@ -103,7 +103,7 @@ export class Hud {
       .map((k) => `<i class="nade ${p.slot === SLOT_NADES && p.nadeSel === k ? 'sel' : ''}" style="--c:${hex(NADES[k].color)}" title="${NADES[k].name}"></i>`).join(''));
     if (p.reloadTime > 0 && ws) {
       this.set('reload-bar', 'class', 'on');
-      this.set('reload-fill', 'style', `scaleX(${1 - p.reloadTime / WEAPONS[ws.id].reloadTime})`, 'transform');
+      this.set('reload-fill', 'style', `scaleX(${1 - p.reloadTime / reloadDuration(WEAPONS[ws.id])})`, 'transform');
     } else this.set('reload-bar', 'class', '');
 
     // crosshair spread & scope

@@ -5,7 +5,7 @@
 // =============================================================
 import { V3, DEG, forwardFromAngles, rightFromYaw, makeRng } from '../math/vec3';
 import { PHYSICS, SPRINT } from '../config/physics';
-import { WEAPONS, WeaponId, NadeKind, NADES, NADE_THROW_SPEED, NADE_SELF_DAMAGE, ITEMS, GUN_IDS, SLOT_KNIFE, SLOT_TASER, SLOT_NADES } from '../config/weapons';
+import { WEAPONS, WeaponId, NadeKind, NADES, NADE_THROW_SPEED, NADE_SELF_DAMAGE, ITEMS, GUN_IDS, SLOT_KNIFE, SLOT_TASER, SLOT_NADES, reloadDuration } from '../config/weapons';
 import { rollPool } from '../config/pickups';
 import { CLASSES, ClassId, CLASS_IDS } from '../config/classes';
 import { MATCH, BotDifficulty, BOT_NAMES } from '../config/match';
@@ -547,7 +547,7 @@ export class World {
   }
 
   private startReload(p: Player, w: WeaponState) {
-    p.reloadTime = WEAPONS[w.id].reloadTime;
+    p.reloadTime = reloadDuration(WEAPONS[w.id]);
     p.zoomed = false;
     this.emit({ t: 'reload', pid: p.id, weapon: w.id });
   }

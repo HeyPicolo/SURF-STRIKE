@@ -61,6 +61,7 @@ No menu: **Jogar contra bots** (escolha 1v1 a 5v5, dificuldade, equipe e classe)
 | E | Pegar arma |
 | Q | Habilidade da classe |
 | G | Soltar arma |
+| F | Inspecionar a arma na mão |
 | 1 / 2 / 3 / 4 | Primária / pistola / faca e taser (3 de novo alterna) / granadas (4 de novo alterna o tipo) |
 | Tab | Placar |
 | Esc | Pausa e configurações |
@@ -75,10 +76,10 @@ Todas as teclas podem ser remapeadas em Configurações.
 - Azul contra Vermelho, até 5v5, 100 HP, sem respawn no round.
 - Rounds de 90 s. Primeiro a 6 rounds vence.
 - Se o tempo acabar, os sobreviventes são levados a arenas 1v1: vida 100, sem colete, sem poderes, mesma arma sorteada para os dois. Quem sobra espera e enfrenta o vencedor de um duelo. Se os duelos também esgotarem o tempo, vence a equipe com mais vida somada.
-- Todos começam o round com a faca (FANG) e o taser de choque (VOLT-1). A faca dá +25% de velocidade no chão enquanto está na mão.
+- Todos começam o round com a faca borboleta (BALISONG) e o taser de choque (VOLT-1). A faca dá +25% de velocidade no chão enquanto está na mão.
 - O taser tem uma carga: elimina com um disparo até 200 u (cerca de 5 m) e não faz nada além disso. Depois do disparo, volta para a melhor arma e recarrega sozinho em 30 s. Não cai ao morrer e não aparece no mapa. Nos duelos 1v1 entra só a faca e a arma sorteada.
 - Quem cai do mapa volta automaticamente para a base do próprio time.
-- Os pontos de item do mapa têm posições fixas, mas o item de cada ponto é sorteado a cada round. Pontos espelhados entre os dois times recebem sempre o mesmo item; os pontos do eixo central são únicos. A plataforma de spawn sempre tem uma arma leve (pistola, SMG ou shotgun).
+- Os pontos de item do mapa têm posições fixas, mas o item de cada ponto é sorteado a cada round. Pontos espelhados entre os dois times recebem sempre o mesmo item; os pontos do eixo central são únicos. As bases (plataformas de spawn) não têm armas, só utilitários: as armas ficam no platô, nos flancos e no Poleiro.
 - Quem morre deixa a arma de fogo no chão. A faca não pode ser solta.
 
 Estados da partida: lobby → seleção → preparação → contagem → round ativo → (duelos) → fim do round → resultado.
@@ -101,7 +102,7 @@ Arena flutuante simétrica no eixo Z (Azul em +Z, Vermelho em −Z):
 - **Rota A, Ridge** (verde-água): rampa dupla larga e longa, para iniciantes, termina no platô central.
 - **Rota B, Riptide** (magenta): duas rampas estreitas e íngremes em sequência, rápida e arriscada, termina no flanco direito (shotgun, SMG, velocidade).
 - **Rota C, Halo** (dourado): rampa longa que leva ao Poleiro elevado, com a sniper e visão do centro.
-- Centro com um pódio de arma forte, ponte aérea ligada ao Poleiro, teletransportadores de volta ao spawn, e uma camada de nuvens embaixo; quem cai abaixo do platô volta automaticamente para a própria base. O mapa não tem jump pads: o Poleiro e a ponte só são alcançados pela rota C. Os teletransportadores mantêm a velocidade de quem entra (girada para a direção de saída) e dão 0,45 s sem atrito no chão, então dá para sair embalado e emendar na rampa.
+- Centro com um pódio de arma forte, uma rampa central de surf que sai do Poleiro, passa por cima do platô e desce até o flanco (dá para andar e lutar por baixo dela), teletransportadores de volta ao spawn, e uma camada de nuvens embaixo; quem cai abaixo do platô volta automaticamente para a própria base. O mapa não tem jump pads: o Poleiro só é alcançado pela rota C. Do platô para o flanco há uma subida caminhável. Os teletransportadores mantêm a velocidade de quem entra (girada para a direção de saída) e dão 0,45 s sem atrito no chão, então dá para sair embalado e emendar na rampa.
 
 Cada rota foi validada por simulação: um bot sai do spawn e surfa até a área de combate sem cair (`tests/map.test.ts`).
 
@@ -111,7 +112,8 @@ Todos centralizados em `shared/config/`:
 
 - `physics.ts`: gravidade 800, aceleração no chão 10, aceleração aérea 150, teto de wishspeed aéreo 30, atrito 5.2, atrito de surf 0, velocidade máxima 3500/eixo, pulo 302, raio do jogador 16, sensibilidade de movimento, 100 ticks/s.
 - `physics.ts` → `SPRINT`: velocidade do sprint, stamina, recuperação, sprint-to-fire, impulso, duração e atrito do slide, trava de recuperação.
-- `weapons.ts`: dano, multiplicador de headshot, cadência, pente, recarga, spread no chão e no ar, recuo, queda de dano, zoom; faca (golpe leve 45, estocada 75, pelas costas 90/180, alcance); granadas e itens.
+- `weapons.ts` → `ACCURACY.spreadMul` (0,5: metade do spread de todas as armas) e `RELOAD.speedMul` (1,45: recarga 45% mais rápida).
+- `weapons.ts`: dano, multiplicador de headshot, cadência, pente, recarga, spread no chão e no ar, recuo, queda de dano, zoom; faca borboleta (golpe leve 45, estocada 75, pelas costas 90/180, alcance); granadas e itens.
 - `pickups.ts`: pools de itens sorteados por ponto do mapa e seus pesos.
 - Longbow: `preciseRange` (900 u) faz o tiro sem zoom ir exatamente na mira quando o alvo está perto; com zoom ela fica parada (sem balanço nem recuo visual) e continua no zoom depois do tiro.
 - `classes.ts`: cooldowns, durações e números das passivas.
@@ -151,6 +153,7 @@ O ambiente onde o projeto foi construído não tinha acesso ao registro npm nem 
 
 - Física de surf: rampas, projeção de velocidade, air-strafe, conservação de momentum, transições entre rampas, bunny hop com auto-bhop, colisão contínua, anti-travamento, recuperação de quedas
 - Sprint tático com stamina oculta e sprint-to-fire, slide a partir do sprint, slide cancel com pulo ou agachar
+- Faca borboleta com animação de sacar (o cabo se solta e a lâmina dá a volta) e de inspecionar (flips, giro e ponta para cima); inspeção de todas as armas no F
 - Taser de choque inicial (um disparo elimina de perto, recarga de 30 s), queda do mapa leva à base, teleportes com velocidade, slide automático acima de 450 u/s
 - Faca inicial com golpe leve, estocada e dano pelas costas; +25% de velocidade com ela na mão; bots lutam com faca até achar uma arma
 - Combate: hitscan com cabeça/corpo, 5 armas de fogo com dados próprios, recuo funcional e visual, spread baixo no ar, recarga, troca, zoom, muzzle flash, tracers, impactos, hitmarker, indicador de dano, kill feed, armas caem ao morrer, soltar arma
@@ -169,5 +172,5 @@ O ambiente onde o projeto foi construído não tinha acesso ao registro npm nem 
 
 ## Testes
 
-- `npm test`: 52 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots).
+- `npm test`: 58 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots).
 - `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint e slide pelo teclado, habilidade, eliminação e fim de round com placar.

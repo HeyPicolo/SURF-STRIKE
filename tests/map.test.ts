@@ -63,3 +63,50 @@ for (const team of ['blue', 'red'] as Team[]) {
     });
   });
 }
+
+import { CENTER_RAMP, facePoint } from '../shared/maps/clouds';
+import { V3 } from '../shared/math/vec3';
+import type { NavPoint } from '../shared/maps/types';
+
+test('the old sky bridge is gone and the center ramp is surfable (Perch → flank)', () => {
+  assert.equal(map.brushes.filter((b) => b.tag === 'bridge' || b.kind === 'glass').length, 0, 'no bridge');
+  assert.equal(map.brushes.filter((b) => b.tag === 'centerRamp').length, 1);
+  for (const side of [1, -1]) {
+    const m = new Mover(world);
+    const st = new PhysState();
+    st.pos.set(-1750, 1002, side * 100);
+    const pts: NavPoint[] = [
+      { p: new V3(-1470, 1000, side * 60), mode: 'walk', r: 40 },
+      ...[0.15, 0.45, 0.75, 0.97].map((f) => ({ p: facePoint(CENTER_RAMP, f, side, 0.35), mode: 'surf' as const, r: 250 })),
+      { p: new V3(1800, 150, side * 120), mode: 'air', r: 350 },
+    ];
+    const cmd = emptyCmd();
+    let idx = 0, maxSpeed = 0, surfed = 0, ok = false;
+    for (let t = 0; t < 20 / SIM_DT; t++) {
+      const r = steerToward(st, pts[idx], idx ? pts[idx - 1].p : null, cmd, SIM_DT, 30);
+      m.move(st, cmd, SIM_DT);
+      maxSpeed = Math.max(maxSpeed, Math.hypot(st.vel.x, st.vel.z));
+      if (st.surfing) surfed++;
+      if (r.reached && ++idx >= pts.length) { ok = true; break; }
+      if (st.pos.y < -500) break;
+    }
+    assert.ok(ok, `side ${side}: stopped at waypoint ${idx}, pos ${st.pos.toArray().map(Math.round)}`);
+    assert.ok(surfed > 100, `side ${side}: actually surfed (${surfed} ticks)`);
+    assert.ok(maxSpeed > 700, `side ${side}: builds speed (${Math.round(maxSpeed)})`);
+    assert.ok(st.pos.y > 100, 'lands on the flank');
+  }
+});
+
+test('players can still walk under the center ramp and up to the flank', () => {
+  // standing + jumping height clears the ramp base above the plateau items
+  for (const x of [-900, -240, 0, 300, 800, 1100]) {
+    const t = world.traceBox(new V3(x, 2, 0), new V3(x, 140, 0), new V3(-16, 0, -16), new V3(16, 72, 16));
+    assert.ok(t.fraction === 1 || t.endPos.y > 60, `head room at x=${x}`);
+  }
+  const m = new Mover(world);
+  const st = new PhysState();
+  st.pos.set(800, 2, 200); // beside the plateau cover, under the ramp face
+  const cmd = emptyCmd(); cmd.yaw = -Math.PI / 2; cmd.forward = 1; // walk toward +X
+  for (let i = 0; i < 300; i++) m.move(st, cmd, SIM_DT);
+  assert.ok(st.pos.x > 1500 && st.pos.y > 140, `reached the flank ${st.pos.toArray().map(Math.round)}`);
+});

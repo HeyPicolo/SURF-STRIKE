@@ -77,20 +77,8 @@ export function buildWeapon(r: Renderer, id: WeaponId): GpuMesh {
   const neon = id === 'sniper' ? 0x37ff9a : id === 'shotgun' ? 0xff8a3c : id === 'smg' ? 0xffd23c : id === 'rifle' ? 0x37c6ff : 0xc77dff;
   switch (id) {
     case 'knife': {
-      // cabo com guarda e lâmina angular de duas faces; filete luminoso no fio
-      m.box(-1.3, -1.6, -1, 1.3, 1.6, 7, 0x262b38);
-      m.box(-1.5, -1.2, 1.5, 1.5, -0.6, 2.2, 0x37e3ff, 1);
-      m.box(-2.4, -2.6, -2.2, 2.4, 2.6, -1, metal); // guarda
-      const blade = 0xd5dceb;
-      m.quad([0, 1.8, -2.2], [0, 1.5, -15], [0.5, 0, -15.5], [0.6, 0, -2.2], blade);
-      m.quad([0.6, 0, -2.2], [0.5, 0, -15.5], [0, -1.2, -14], [0, -1.6, -2.2], 0xb7c0d2);
-      m.quad([0, 1.8, -2.2], [-0.6, 0, -2.2], [-0.5, 0, -15.5], [0, 1.5, -15], blade);
-      m.quad([-0.6, 0, -2.2], [0, -1.6, -2.2], [0, -1.2, -14], [-0.5, 0, -15.5], 0xb7c0d2);
-      m.tri([0, 1.5, -15], [0.5, 0, -15.5], [0, -0.2, -19], blade);
-      m.tri([0, 1.5, -15], [0, -0.2, -19], [-0.5, 0, -15.5], blade);
-      m.tri([0.5, 0, -15.5], [0, -1.2, -14], [0, -0.2, -19], 0xb7c0d2);
-      m.tri([-0.5, 0, -15.5], [0, -0.2, -19], [0, -1.2, -14], 0xb7c0d2);
-      m.beam([0, -1.5, -2.6], [0, -1.15, -13.8], 0.25, 0x37e3ff, 1);
+      // faca borboleta aberta (terceira pessoa e itens): lâmina + os dois cabos juntos
+      addButterflyBlade(m); addButterflyHandle(m, 1); addButterflyHandle(m, -1);
       break;
     }
     case 'taser':
@@ -146,6 +134,48 @@ export function buildWeapon(r: Renderer, id: WeaponId): GpuMesh {
       break;
   }
   return r.createMesh(m.toArray());
+}
+
+// ---------------------------------------------------------------- faca borboleta (balisong)
+// Pinos de articulação na origem; lâmina aponta para −Z e os cabos para +Z quando aberta.
+// Os cabos giram em torno do eixo X (pitch) para abrir/fechar.
+const BF_STEEL = 0xd8dfec, BF_EDGE = 0xb5bfd2, BF_HANDLE = 0x2c3240, BF_ACCENT = 0x37e3ff;
+
+function addButterflyBlade(m: MeshBuilder) {
+  type P = [number, number, number];
+  const t = 0.32; // meia espessura
+  // perfil (y, z): espiga, dorso, ponta clip, fio
+  const prof: [number, number][] = [[1.1, 0.6], [1.25, -9.5], [0.4, -15.8], [-0.2, -16.6], [-1.15, -12], [-1.3, -1.5], [-0.9, 0.6]];
+  const L = prof.map(([y, z]) => [t, y, z] as P), R = prof.map(([y, z]) => [-t, y, z] as P);
+  m.poly(L, BF_STEEL); m.poly([...R].reverse(), BF_STEEL);
+  for (let i = 0; i < prof.length; i++) {
+    const j = (i + 1) % prof.length;
+    const edge = i >= 3 && i <= 4;
+    m.quad(L[i], R[i], R[j], L[j], edge ? 0xf2f6ff : BF_EDGE);
+  }
+  // furo de alívio e filete luminoso
+  m.box(-t - 0.02, 0.2, -6, t + 0.02, 0.6, -3, BF_ACCENT, 1);
+  m.cylinder(0, -0.2, 0, 0.55, 0.01, 6, 0x9aa3b5);
+}
+
+function addButterflyHandle(m: MeshBuilder, side: 1 | -1) {
+  const x0 = side > 0 ? 0.36 : -1.36, x1 = side > 0 ? 1.36 : -0.36;
+  m.box(x0, -1.25, -0.6, x1, 1.25, 13, BF_HANDLE);
+  // janelas (esqueletizado) com brilho
+  for (const z of [2.5, 6.5, 10.5]) m.box(side > 0 ? x1 - 0.02 : x0 - 0.04, -0.55, z, side > 0 ? x1 + 0.04 : x0 + 0.02, 0.55, z + 2.4, BF_ACCENT, 0.8);
+  // pino
+  m.box(x0 - 0.05, -0.35, -0.35, x1 + 0.05, 0.35, 0.35, 0x9aa3b5);
+  // trava no cabo "safe"
+  if (side > 0) m.box(x0, -0.5, 12.6, x1 + 0.5, 0.5, 13.6, 0x9aa3b5);
+}
+
+export interface ButterflyParts { blade: GpuMesh; safe: GpuMesh; bite: GpuMesh; }
+
+export function buildButterflyParts(r: Renderer): ButterflyParts {
+  const b = new MeshBuilder(); addButterflyBlade(b);
+  const s = new MeshBuilder(); addButterflyHandle(s, 1);
+  const t = new MeshBuilder(); addButterflyHandle(t, -1);
+  return { blade: r.createMesh(b.toArray()), safe: r.createMesh(s.toArray()), bite: r.createMesh(t.toArray()) };
 }
 
 export function buildPickup(r: Renderer, kind: PickupKind): GpuMesh {

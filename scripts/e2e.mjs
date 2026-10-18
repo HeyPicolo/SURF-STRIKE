@@ -113,6 +113,12 @@ const mag = await S(() => window.__surf.game.world.local.weapons[0].mag);
 await page.keyboard.press('Digit3'); await waitSim(0.1);
 const slot = await S(() => window.__surf.game.world.local.slot);
 check('8. recarrega e alterna armas (3 = faca)', mag === 30 && slot === 2, `mag=${mag} slot=${slot}`);
+await waitSim(0.7);
+await page.keyboard.press('KeyF'); await waitSim(0.3);
+const insp = await S(() => window.__surf.game.inspect);
+check('8b. inspecionar a faca borboleta no F', !!insp && insp.weapon === 'knife', JSON.stringify(insp));
+await page.mouse.down(); await waitSim(0.05); await page.mouse.up();
+
 
 // tactical sprint (Shift) + slide (Ctrl) + slide cancel (Space) pelo teclado
 await S(() => { const w = window.__surf.game.world, p = w.local; p.phys.pos.set(14200, 2, 760); p.phys.vel.set(0, 0, 0); window.__surf.input.yaw = 0; window.__surf.input.pitch = 0; });

@@ -1,19 +1,19 @@
 // Configurações do jogador (persistidas no localStorage quando disponível).
 export type Action =
   | 'forward' | 'back' | 'left' | 'right' | 'jump' | 'crouch' | 'sprint'
-  | 'reload' | 'use' | 'ability' | 'drop' | 'slot1' | 'slot2' | 'slot3' | 'slot4' | 'scoreboard'
+  | 'reload' | 'use' | 'ability' | 'drop' | 'inspect' | 'slot1' | 'slot2' | 'slot3' | 'slot4' | 'scoreboard'
   | 'resetPos' | 'fly' | 'saveCp' | 'loadCp';
 
 export const ACTION_LABELS: Record<Action, string> = {
   forward: 'Frente', back: 'Trás', left: 'Esquerda (strafe)', right: 'Direita (strafe)', jump: 'Pular / Bunny hop',
   crouch: 'Agachar / Slide (correndo)', sprint: 'Sprint tático', reload: 'Recarregar', use: 'Interagir / Coletar', ability: 'Habilidade da classe',
-  drop: 'Soltar equipamento', slot1: 'Arma primária', slot2: 'Pistola', slot3: 'Faca', slot4: 'Granadas', scoreboard: 'Placar',
+  drop: 'Soltar equipamento', inspect: 'Inspecionar arma', slot1: 'Arma primária', slot2: 'Pistola', slot3: 'Faca / taser', slot4: 'Granadas', scoreboard: 'Placar',
   resetPos: 'Treino: reiniciar posição', fly: 'Treino: voar (noclip)', saveCp: 'Treino: salvar checkpoint', loadCp: 'Treino: carregar checkpoint',
 };
 
 export const DEFAULT_KEYS: Record<Action, string> = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', crouch: 'ControlLeft', sprint: 'ShiftLeft',
-  reload: 'KeyR', use: 'KeyE', ability: 'KeyQ', drop: 'KeyG', slot1: 'Digit1', slot2: 'Digit2', slot3: 'Digit3', slot4: 'Digit4',
+  reload: 'KeyR', use: 'KeyE', ability: 'KeyQ', drop: 'KeyG', inspect: 'KeyF', slot1: 'Digit1', slot2: 'Digit2', slot3: 'Digit3', slot4: 'Digit4',
   scoreboard: 'Tab', resetPos: 'KeyT', fly: 'KeyV', saveCp: 'KeyZ', loadCp: 'KeyX',
 };
 
