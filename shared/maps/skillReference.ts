@@ -10,4 +10,10 @@ export const SKILL_REFERENCE: Record<string, { ticks: number; peak: number }> = 
   glacier_run: { ticks: 10618, peak: 2634 },
   iron_cathedral: { ticks: 12642, peak: 2719 },
   skywire: { ticks: 14817, peak: 2745 },
+  eclipse_bowl: { ticks: 19995, peak: 2410 },
+  rebel_signal: { ticks: 16324, peak: 2701 },
+  hollow_moon: { ticks: 19081, peak: 2915 },
+  thunderhead: { ticks: 23142, peak: 3198 },
+  obsidian_gauntlet: { ticks: 23560, peak: 3241 },
+  zenith: { ticks: 32340, peak: 3507 },
 };

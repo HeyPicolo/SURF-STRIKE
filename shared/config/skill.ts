@@ -101,10 +101,10 @@ const st = (name: string, k: number, y: number): SkillSegmentMeta => ({ name, sp
  * Stages dos desafios staged em grade (mantém as coordenadas dentro de ±40000):
  * colunas a cada 9000 u em X, linhas a cada 20000 u em Z; cada stage anda ~15000 u para −Z.
  */
-export function gridStages(names: string[], y: number, cols: number): SkillSegmentMeta[] {
+export function gridStages(names: string[], y: number, cols: number, colSpacing = 9000, xOffset = 0): SkillSegmentMeta[] {
   return names.map((name, k) => {
     const col = k % cols, row = Math.floor(k / cols);
-    return { name, spawn: [(col - (cols - 1) / 2) * 9000, y, 120 + 20000 - row * 20000], yaw: 0 };
+    return { name, spawn: [(col - (cols - 1) / 2) * colSpacing + xOffset, y, 120 + 20000 - row * 20000], yaw: 0 };
   });
 }
 const named = (names: string[]): SkillSegmentMeta[] => names.map((name) => ({ name }));
@@ -173,6 +173,42 @@ export const SKILL_MAPS: SkillMapMeta[] = [
     segmentColors: [0xa8fff0, 0x8ff5e0, 0xb8ffe8, 0x9cf0e8, 0xc4fff4, 0x88ecd8, 0xd0fff6],
     desc: 'Air control: gaps longos com curva no ar e pousos em rampas desalinhadas que exigem air strafe preciso.',
     segments: named(['Largada', 'Cabo 1', 'Cabo 2', 'Cabo 3', 'Cabo 4', 'Cabo 5', 'Cabo 6']),
+  },
+  {
+    id: 'eclipse_bowl', name: 'ECLIPSE BOWL', category: 'desafio', num: 7, tier: 5, format: 'staged', color: 0xb46bff,
+    segmentColors: [0xd2a8ff, 0xc497ff, 0xb98cff, 0xdcb8ff, 0xa983f2, 0xcfa2ff, 0xbe95ff, 0xe4c6ff],
+    desc: 'Curvas fechadas: 90°, rampas em bacia e retornos de 180° feitos na própria rampa. Chegue rápido demais e você sobe e sai da face.',
+    segments: gridStages(['Penumbra', 'Meia-lua', 'Bacia', 'Retorno', 'Anel', 'Ferradura', 'Coroa', 'Totalidade'], 9000, 3, 16000),
+  },
+  {
+    id: 'rebel_signal', name: 'REBEL SIGNAL', category: 'desafio', num: 8, tier: 5, format: 'staged', color: 0xff5f8f,
+    segmentColors: [0xffa3bf, 0xff8fb0, 0xffb8cc, 0xff7aa3, 0xffc4d6, 0xff99b7, 0xffadc6, 0xff85aa, 0xffd0de],
+    desc: 'Stages técnicos e variados: cada um pede uma técnica diferente — túnel, subida, curva fechada, bhop, cabos, faces alternadas e retorno.',
+    segments: gridStages(['Frequência', 'Subida', 'Interferência', 'Pulso', 'Antena', 'Estática', 'Retorno', 'Bunker', 'Sinal final'], 9500, 3, 16000),
+  },
+  {
+    id: 'hollow_moon', name: 'HOLLOW MOON', category: 'desafio', num: 9, tier: 5, format: 'linear', color: 0x9fb4ff,
+    segmentColors: [0xc6d2ff, 0xb3c3ff, 0xd6deff, 0xa9baf5, 0xcfd9ff, 0xbac8ff, 0xe2e8ff, 0xaebff7],
+    desc: 'Rampas de uma face só em lados alternados, espiral descendente e transições de descida bruscas.',
+    segments: named(['Largada', 'Cratera', 'Lado oculto', 'Mar da tranquilidade', 'Eclipse', 'Órbita', 'Poeira', 'Fase nova']),
+  },
+  {
+    id: 'thunderhead', name: 'THUNDERHEAD', category: 'desafio', num: 10, tier: 6, format: 'linear', color: 0x5d6bff,
+    segmentColors: [0x8f9cff, 0x7d8bff, 0xa3aeff, 0x6f7ef0, 0xb3bcff, 0x8593ff, 0x97a4ff, 0x7a88f5, 0xc0c8ff],
+    desc: 'Seções de velocidade mínima: gaps enormes que só passam acima de ~1700 u/s. Perder embalo antes deles significa cair.',
+    segments: named(['Largada', 'Frente fria', 'Bigorna', 'Corrente', 'Descarga', 'Granizo', 'Trovão', 'Olho', 'Raio final']),
+  },
+  {
+    id: 'obsidian_gauntlet', name: 'OBSIDIAN GAUNTLET', category: 'desafio', num: 11, tier: 6, format: 'staged', color: 0x8a5cff,
+    segmentColors: [0xb79cff, 0xa588ff, 0xc6b0ff, 0x9a7cf0, 0xd2c0ff, 0xab90ff, 0xbfa6ff, 0x9f82f5, 0xcab6ff, 0xb294ff, 0xdccdff],
+    desc: 'Todas as técnicas com rampas no limite de largura e inclinação: túnel, subidas, curvas, bhop, cabos, faces únicas, velocidade mínima e quedas.',
+    segments: gridStages(['Fenda', 'Escarpa', 'Vidro', 'Brasas', 'Fio negro', 'Lâmina', 'Retorno', 'Abismo', 'Desabamento', 'Espiral', 'Manopla'], 9500, 6, 12000, -5000),
+  },
+  {
+    id: 'zenith', name: 'ZENITH', category: 'desafio', num: 12, tier: 6, format: 'linear', color: 0xffd76a,
+    segmentColors: [0xffe7a3, 0xffdf8a, 0xffecb8, 0xffd470, 0xfff0c4, 0xffe196, 0xffe9ad, 0xffd77d, 0xfff3d0, 0xffdc8f, 0xffe4a0, 0xfff6dc],
+    desc: 'A maratona: a espiral mais longa, com todas as técnicas em rampas no limite, checkpoint a cada duas seções e chegada no cume.',
+    segments: named(['Largada', 'Estratosfera', 'Corrente de jato', 'Aurora', 'Vácuo', 'Meridiano', 'Rarefeito', 'Horizonte', 'Órbita alta', 'Silêncio', 'Último fôlego', 'Cume']),
   },
   {
     // mapa curtíssimo, fora do menu: usado pelos testes automáticos (corrida de teste e fantasma)

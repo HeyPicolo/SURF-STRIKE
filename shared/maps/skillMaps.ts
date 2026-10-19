@@ -10,6 +10,12 @@ import { buildLanternPass } from './desafios/lanternPass';
 import { buildGlacierRun } from './desafios/glacierRun';
 import { buildIronCathedral } from './desafios/ironCathedral';
 import { buildSkywire } from './desafios/skywire';
+import { buildEclipseBowl } from './desafios/eclipseBowl';
+import { buildRebelSignal } from './desafios/rebelSignal';
+import { buildHollowMoon } from './desafios/hollowMoon';
+import { buildThunderhead } from './desafios/thunderhead';
+import { buildObsidianGauntlet } from './desafios/obsidianGauntlet';
+import { buildZenith } from './desafios/zenith';
 
 export const SKILL_MAP_BUILDERS: Record<string, () => MapDef> = {
   sky_steps: buildSkySteps,
@@ -22,6 +28,12 @@ export const SKILL_MAP_BUILDERS: Record<string, () => MapDef> = {
   glacier_run: buildGlacierRun,
   iron_cathedral: buildIronCathedral,
   skywire: buildSkywire,
+  eclipse_bowl: buildEclipseBowl,
+  rebel_signal: buildRebelSignal,
+  hollow_moon: buildHollowMoon,
+  thunderhead: buildThunderhead,
+  obsidian_gauntlet: buildObsidianGauntlet,
+  zenith: buildZenith,
 };
 
 // só o último mapa construído fica em memória (o menu não precisa construir mapas: usa skillVersions.ts)

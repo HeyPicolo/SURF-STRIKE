@@ -37,6 +37,8 @@ export interface RampSeg {
   join?: boolean;
   /** túnel: teto a esta distância acima do cume, com paredes laterais */
   ceiling?: number;
+  /** peça lisa: biséis andáveis não viram chão (curvas muito rápidas) */
+  slick?: boolean;
 }
 
 export interface LocalNav { p: P3; mode: NavPoint['mode']; r?: number; jump?: boolean }
@@ -66,6 +68,8 @@ export interface LinearSpec {
   after?: Record<number, LocalNav[]>;
   end: StageSpec['end'];
   tail?: LocalNav[];
+  /** chegada de destaque (só visual): coluna de anéis e pilares ao redor da plataforma final */
+  finale?: { color: number };
 }
 
 const v = (x: number, y: number, z: number) => new V3(x, y, z);
@@ -171,7 +175,9 @@ function buildRamps(ramps: RampSeg[], L: (p: P3) => V3, color: number, glow: num
   let tunnel = false, ascending = false;
   ramps.forEach((r, i) => {
     const s = L(r.s), e = L(r.e);
-    brushes.push(rampBrush(s, e, r.hw, r.h, r.sides ?? 'both', { color, edgeGlow: glow, tag: `${tag}-${i + routeOffset}` }));
+    const rb = rampBrush(s, e, r.hw, r.h, r.sides ?? 'both', { color, edgeGlow: glow, tag: `${tag}-${i + routeOffset}` });
+    if (r.slick) rb.slick = true;
+    brushes.push(rb);
     if (r.join && i > 0) {
       const f = seamFiller(ramps[i - 1], r, L, color, glow, `${tag}-emenda-${i + routeOffset}`);
       if (f) brushes.push(f);
@@ -425,6 +431,11 @@ export function buildLinear(meta: SkillMapMeta, spec: LinearSpec): BuiltCourse {
   const lavaY = Math.min(b0[1], ec.y) - 600;
   brushes.push(box(v(Math.min(b0[0], sx) - pad, lavaY - 40, Math.min(b0[2], sz) - pad), v(Math.max(b1[0], sx) + pad, lavaY, Math.max(b1[2], sz) + pad), 0xe8502e, 0xffb02e, 'skill-lava', true));
   cloudsAround(decor, 7 + meta.id.length * 31, (b0[0] + b1[0]) / 2, (b0[2] + b1[2]) / 2, lavaY, Math.max(b1[0] - b0[0], b1[2] - b0[2]) + 8000, 40);
+  if (spec.finale) {
+    // coluna de anéis subindo da chegada e quatro pilares nos cantos da plataforma
+    for (let i = 0; i < 7; i++) decor.push({ kind: 'ring', pos: v(ec.x, ec.y + 600 + i * 520, ec.z), scale: 520 - i * 55, color: spec.finale.color, rot: i * 0.4 });
+    for (const [ax, az] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) decor.push({ kind: 'pylon', pos: v(ec.x + ax * (E.w / 2 + 160), ec.y, ec.z + az * (E.d / 2 + 160)), scale: 1.6, color: spec.finale.color });
+  }
   return { brushes, segments, decor };
 }
 
@@ -496,7 +507,7 @@ export function endAfter(r: RampSeg, dist: number, drop: number, w: number, d: n
   return { x: Math.round(r.e[0] + (dx / l) * dist), y: r.e[1] - drop, z: Math.round(r.e[2] + (dz / l) * dist), w, d };
 }
 
-export interface ChainOpts { gap?: number; drop?: number; turn?: number; yaw?: number; len: number; descent: number; hw?: number; h?: number; ride?: 1 | -1; sides?: RampSeg['sides']; q?: number; ceiling?: number }
+export interface ChainOpts { gap?: number; drop?: number; turn?: number; yaw?: number; len: number; descent: number; hw?: number; h?: number; ride?: 1 | -1; sides?: RampSeg['sides']; q?: number; ceiling?: number; slick?: boolean }
 
 /**
  * Montador de percursos: encadeia rampas a partir de uma primeira, com curvas contínuas,
@@ -518,6 +529,7 @@ export class Course {
     const l = this.last;
     const yawDeg = o.yaw ?? this.yaw + (o.turn ?? 0);
     this.ramps.push(chainRamp(l, { gap: o.gap ?? 300, drop: o.drop ?? 300, yawDeg, len: o.len, descent: o.descent, hw: o.hw ?? l.hw, h: o.h ?? l.h, ride: o.ride ?? l.ride, sides: o.sides, q: o.q, ceiling: o.ceiling }));
+    if (o.slick) this.last.slick = true;
     return this;
   }
 
@@ -533,6 +545,7 @@ export class Course {
       const a = (yaw * Math.PI) / 180;
       const p = this.last.e;
       const r: RampSeg = { s: [p[0], p[1], p[2]], e: [Math.round(p[0] + Math.sin(a) * segLen), p[1] - descentPerSeg, Math.round(p[2] - Math.cos(a) * segLen)], hw: l.hw, h: l.h, ride: l.ride, q: l.q, sides: l.sides, join: true };
+      if (l.slick) r.slick = true;
       if (o.ceiling ?? l.ceiling) r.ceiling = o.ceiling ?? l.ceiling;
       this.ramps.push(r);
     }
@@ -543,11 +556,13 @@ export class Course {
    * Curva contínua dimensionada para uma velocidade: o raio é o de uma curva "inclinada" em que a
    * face segura quem passa a `speed` (v² / (g·tan α)), com folga. Mais rápido que isso, sobe-se na face.
    */
-  curveFor(turn: number, speed: number, descentPerSeg = 110, o: { ceiling?: number; margin?: number } = {}): this {
+  curveFor(turn: number, speed: number, descentPerSeg = 110, o: { ceiling?: number; margin?: number; stepDeg?: number } = {}): this {
     const l = this.last;
     const tanA = l.h / l.hw;
     const R = ((speed * speed) / (PHYSICS.gravity * tanA)) * (o.margin ?? 1.3);
-    const steps = Math.max(2, Math.ceil(Math.abs(turn) / 10));
+    // na face de dentro, cada emenda deixa um degrau de ~q·hw·tanα·(1 − cos θ): passos menores para
+    // quem passa muito rápido (o degrau dispara o "subir degrau" do movimento e trava o surf)
+    const steps = Math.max(2, Math.ceil(Math.abs(turn) / (o.stepDeg ?? 10)));
     const seg = Math.round((R * Math.abs(turn) * Math.PI) / 180 / steps);
     return this.curve(turn, steps, seg, descentPerSeg, o);
   }
@@ -556,6 +571,7 @@ export class Course {
   straight(len: number, descent: number): this {
     const l = this.last, a = (this.yaw * Math.PI) / 180;
     const r: RampSeg = { s: [l.e[0], l.e[1], l.e[2]], e: [Math.round(l.e[0] + Math.sin(a) * len), l.e[1] - descent, Math.round(l.e[2] - Math.cos(a) * len)], hw: l.hw, h: l.h, ride: l.ride, q: l.q, sides: l.sides, join: true };
+    if (l.slick) r.slick = true;
     if (l.ceiling) r.ceiling = l.ceiling;
     this.ramps.push(r);
     return this;
@@ -565,7 +581,7 @@ export class Course {
   checkpoint(): this { this.checkpoints.push(this.ramps.length); return this; }
 
   /** Pista de bhop depois da última rampa: `pads` plataformas de `padLen` a cada `pitch` (ao longo da direção). */
-  bhop(o: { firstDist: number; drop: number; pads: number; pitch: number; padLen: number; width: number }): { lastPadEnd: P3; y: number } {
+  bhop(o: { firstDist: number; drop: number; pads: number; pitch: number; padLen: number; width: number; firstLen?: number }): { lastPadEnd: P3; y: number } {
     const l = this.last, d = dirOf(l);
     const side = [-d.z, d.x];
     const off = l.hw * (l.q ?? 0.35) * l.ride;
@@ -573,7 +589,9 @@ export class Course {
     const y = l.e[1] - o.drop;
     let end: P3 = [0, 0, 0];
     for (let i = 0; i < o.pads; i++) {
-      const c0 = o.firstDist + i * o.pitch, c1 = c0 + o.padLen;
+      // a primeira pista pode ser mais longa (é onde se pousa vindo da rampa)
+      const extra = (o.firstLen ?? o.padLen) - o.padLen;
+      const c0 = i === 0 ? o.firstDist : o.firstDist + extra + i * o.pitch, c1 = c0 + (i === 0 ? o.padLen + extra : o.padLen);
       const pa = [base[0] + d.x * c0, base[1] + d.z * c0], pb = [base[0] + d.x * c1, base[1] + d.z * c1];
       const w = o.width / 2;
       this.boxes.push({ min: [Math.min(pa[0], pb[0]) - w * Math.abs(side[0]) - 1, y - 80, Math.min(pa[1], pb[1]) - w * Math.abs(side[1]) - 1], max: [Math.max(pa[0], pb[0]) + w * Math.abs(side[0]) + 1, y, Math.max(pa[1], pb[1]) + w * Math.abs(side[1]) + 1] });
@@ -586,4 +604,16 @@ export class Course {
 
   stage(end: StageSpec['end']): StageSpec { return { ramps: this.ramps, boxes: this.boxes.length ? this.boxes : undefined, after: this.after, tail: this.tail.length ? this.tail : undefined, end }; }
   linear(start: P3, end: StageSpec['end']): LinearSpec { return { start, ramps: this.ramps, checkpoints: this.checkpoints, boxes: this.boxes.length ? this.boxes : undefined, after: this.after, tail: this.tail.length ? this.tail : undefined, end }; }
+}
+
+/**
+ * Queda de um gap para quem sai de `prev` a `speed` u/s: o arco começa na inclinação da saída
+ * (rampas que descem já saem caindo) e dura gap / speed. Com `margin` pequena, quem vier mais
+ * devagar que `speed` cai antes da rampa seguinte (seções de velocidade mínima).
+ */
+export function gapDrop(prev: RampSeg, gap: number, speed: number, margin = 60): number {
+  const d = dirOf(prev);
+  const slope = (prev.s[1] - prev.e[1]) / d.len; // > 0 quando desce
+  const t = gap / speed;
+  return Math.round(speed * slope * t + 0.5 * G * t * t + margin);
 }

@@ -1,6 +1,7 @@
 import { V3, forwardFromAngles, rightFromYaw } from '../math/vec3';
 import { PHYSICS } from '../config/physics';
 import { CollisionWorld, newTrace, TraceResult } from './trace';
+import type { Brush } from './brush';
 
 /** Input for one simulation tick (what a client would send to a server). */
 export interface MoveCmd {
@@ -108,6 +109,23 @@ export function applyFriction(st: PhysState, dt: number, friction: number = PHYS
 }
 
 /** Movement simulation (one fixed tick). Pure function of state + command + world. */
+/**
+ * Rampa lisa (`slick`, sem face andável): um contato com normal andável nela só pode vir de um plano
+ * de bisel (aresta da crista ou emenda de peças de curva vista por uma caixa alinhada aos eixos).
+ * Tratar isso como chão é o "ramp bug" — atrito no meio do surf; nessas peças o jogador continua no ar.
+ * Só vale para brushes marcados (as curvas da espiral do ZENITH); o resto do jogo não muda.
+ */
+const pureRampCache = new WeakMap<Brush, boolean>();
+function rampBevel(b: Brush | null): boolean {
+  if (!b || !b.slick || b.kind !== 'ramp') return false;
+  let v = pureRampCache.get(b);
+  if (v === undefined) {
+    v = b.planes.slice(0, b.faces.length).every((pl) => pl.n.y < PHYSICS.walkableNormalY);
+    pureRampCache.set(b, v);
+  }
+  return v;
+}
+
 export class Mover {
   private tr: TraceResult = newTrace();
   private tr2: TraceResult = newTrace();
@@ -246,7 +264,7 @@ export class Mover {
     if (st.vel.y > 180) { st.onGround = false; return; }
     const down = this.t1.copy(st.pos); down.y -= 2;
     const t = this.world.traceBox(st.pos, down, st.mins, st.maxs, this.tr);
-    if (t.fraction < 1 && t.normal.y >= PHYSICS.walkableNormalY) {
+    if (t.fraction < 1 && t.normal.y >= PHYSICS.walkableNormalY && !rampBevel(t.brush)) {
       st.onGround = true;
       st.groundNormal.copy(t.normal);
       if (!t.startSolid) st.pos.copy(t.endPos);

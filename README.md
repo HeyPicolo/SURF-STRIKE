@@ -116,7 +116,7 @@ Terceiro modo, ao lado de Partida e Treino, inspirado nos mapas de Surf Skill do
 ### Treino × Desafio
 
 - **Treino**: SKY STEPS (T1), DRIFT CANYON (T2) e STORM SPIRE (T3), para aprender.
-- **Desafio**: 12 mapas que testam de verdade o surf, do tier 2 ao 6, cada um mais difícil que o anterior. D1 a D6 já estão no jogo; D7 a D12 chegam na próxima entrega.
+- **Desafio**: 12 mapas (D1 a D12) que testam de verdade o surf, do tier 2 ao 6, cada um mais difícil que o anterior (D1–D2 T2, D3–D4 T3, D5–D6 T4, D7–D9 T5, D10–D12 T6).
 - Tiers de 1 a 6: T1 verde, T2 amarelo, T3 vermelho, T4 laranja escuro, T5 roxo, T6 preto com borda vermelha.
 - O menu tem as abas Treino e Desafio. Cada card mostra número, nome, tier, formato, quantidade de stages ou checkpoints, PB, Sum of Best, top 10 e o selo de concluído.
 - Desbloqueio progressivo (concluir um desafio libera o próximo): `SKILL.progressiveUnlock`, desligado por padrão.
@@ -130,7 +130,7 @@ Terceiro modo, ao lado de Partida e Treino, inspirado nos mapas de Surf Skill do
 ### Regras
 
 - Sozinho, sem bots, armas, itens, classes, habilidades ou dano. Só a faca no viewmodel, com o bônus de +25% de velocidade dela e o sprint automático (configurável em `shared/config/skill.ts`).
-- Cada mapa tem **5 stages** em sequência. Cada stage tem uma zona de início (paredes verdes), um percurso de rampas e uma zona de fim (paredes vermelhas) que leva direto à zona de início do próximo stage. O stage 5 termina na chegada (paredes douradas). O número do stage flutua logo à frente da plataforma de início.
+- Os mapas de treino têm **5 stages**; os desafios, de 6 a 12 segmentos (stages ou checkpoints). Cada stage tem uma zona de início (paredes verdes), um percurso de rampas e uma zona de fim (paredes vermelhas) que leva direto à zona de início do próximo stage. O último termina na chegada (paredes douradas). O número do stage flutua logo à frente da plataforma de início.
 - **Cronômetro**: começa quando você sai da zona de início do stage 1. É contado em ticks da simulação (100 Hz) e exibido como mm:ss.cc, sem relógio do sistema.
 - **Zona de início**: dá para pular (ajuda a se posicionar), mas a velocidade horizontal fica limitada a 420 u/s (prespeed cap) dentro da zona e no tick em que você sai dela, inclusive saindo no ar depois de um pulo. Pular não dá embalo extra. Vale para a zona de início de todo stage.
 - **Queda** na lava (ou abaixo dela): volta ao início do stage atual, parado. O cronômetro **não** zera: o tempo perdido é a punição. Isso é o checkpoint de stage.
@@ -175,6 +175,12 @@ Inspirados no estilo e na progressão de técnica dos mapas de surf skill mais c
 - **D4 · GLACIER RUN** (T3, linear, 6 checkpoints): rampas ascendentes (sobe-se com o embalo da anterior e sai-se lançado para cima) e gaps de mais tempo de ar, em voltas largas sobre a geleira.
 - **D5 · IRON CATHEDRAL** (T4, staged, 8 stages): túneis e tetos baixos (125–150 u acima do cume) com rampas estreitas; entre túneis o salto precisa ser baixo e controlado.
 - **D6 · SKYWIRE** (T4, linear, 6 checkpoints): air control, com gaps de 900–1360 u e curva de 14–22° no ar, pousando em rampas desalinhadas; subidas curtas seguram a velocidade.
+- **D7 · ECLIPSE BOWL** (T5, staged, 8 stages): curvas fechadas — 90°, bacias e U-turns de 180° feitos na própria rampa, com rampas de subida entre elas.
+- **D8 · REBEL SIGNAL** (T5, staged, 9 stages): cada stage pede uma técnica diferente (túnel, subidas, curvas de 90°, bhop, cabos com curva no ar, faces únicas alternadas, retorno de 180°); os dois últimos misturam tudo.
+- **D9 · HOLLOW MOON** (T5, linear, 7 checkpoints): rampas de uma face só (normal Y 0,50, meia-largura 110) em lados alternados, espiral descendente e quedas bruscas (gaps de 520–560 u caindo 700–860 u em rampas de pouso longas).
+- **D10 · THUNDERHEAD** (T6, linear, 8 checkpoints): seções de velocidade mínima — gaps de 1500–1860 u com pouca queda, calculados para ~1700 u/s: mais devagar, o arco acaba antes da rampa.
+- **D11 · OBSIDIAN GAUNTLET** (T6, staged, 11 stages): todas as técnicas com rampas no limite (meia-largura 100, normal Y 0,42–0,46) e pouca margem: túnel, subidas, curvas, bhop em pistas estreitas, cabos, faces únicas, U-turns, velocidade mínima, quedas bruscas e uma manopla final com tudo.
+- **D12 · ZENITH** (T6, linear, 11 checkpoints): a maratona. Uma espiral de ~78 000 u de altura com rampas de meia-largura 96 (normal Y 0,41), duas seções por checkpoint (faces alternadas, velocidade mínima, túnel, face única, queda brusca, subida) e curvas largas de 90° feitas para o teto de velocidade (3500 u/s). O último trecho sobe até o cume, marcado por uma coluna de anéis dourados e quatro pilares.
 
 ### Métricas dos mapas
 
@@ -191,6 +197,12 @@ Gerada por `npm run skill:metrics`, que corre o percurso de referência de cada 
 | D4 · GLACIER RUN | T3 | linear | 7 | 165 / 165 | 0.54–0.54 | 840 u | 869 u/s | 0.99 s | 43 | 50° | 01:46.18 | 2634 u/s | 148.8 |
 | D5 · IRON CATHEDRAL | T4 | staged | 8 | 132 / 137 | 0.52–0.54 | 320 u | 864 u/s | 0.95 s | 55 | 45° | 02:06.42 | 2719 u/s | 165.9 |
 | D6 · SKYWIRE | T4 | linear | 7 | 150 / 155 | 0.53–0.54 | 1359 u | 1027 u/s | 1.39 s | 50 | 75° | 02:28.17 | 2745 u/s | 189.8 |
+| D7 · ECLIPSE BOWL | T5 | staged | 8 | 125 / 125 | 0.52–0.52 | 320 u | 450 u/s | 0.96 s | 30 | 300° | 03:19.95 | 2410 u/s | 208.4 |
+| D8 · REBEL SIGNAL | T5 | staged | 9 | 122 / 124 | 0.51–0.68 | 1148 u | 1102 u/s | 1.22 s | 61 | 180° | 02:43.24 | 2701 u/s | 218.8 |
+| D9 · HOLLOW MOON | T5 | linear | 8 | 110 / 110 | 0.50–0.50 | 560 u | 471 u/s | 1.36 s | 72 | 90° | 03:10.81 | 2915 u/s | 223.6 |
+| D10 · THUNDERHEAD | T6 | linear | 9 | 115 / 117 | 0.50–0.52 | 1860 u | 1609 u/s | 1.19 s | 55 | 90° | 03:51.42 | 3198 u/s | 254.4 |
+| D11 · OBSIDIAN GAUNTLET | T6 | staged | 11 | 100 / 101 | 0.42–0.46 | 1800 u | 1627 u/s | 1.31 s | 97 | 180° | 03:55.60 | 3241 u/s | 304.5 |
+| D12 · ZENITH | T6 | linear | 12 | 96 / 141 | 0.41–0.50 | 1550 u | 1515 u/s | 1.36 s | 132 | 90° | 05:23.40 | 3507 u/s | 356.5 |
 
 O **índice de dificuldade** (`shared/maps/skillMetrics.ts`) é a soma ponderada das métricas, cada uma normalizada: 12 × (200 / meia-largura média) + 10 × ((0,7 − normal Y mínima) / 0,3) + 10 × (maior gap / 1000) + 10 × (velocidade mínima / 1000) + 8 × tempo de ar máximo + 15 × (transições / 20) + 10 × (curva máxima / 90°) + 30 × (tempo de referência / 1 min) + 10 × (pico / 2000). Pesa técnica e resistência (quanto mais longo, mais chances de errar). Um teste garante que ele cresce estritamente do D1 ao último desafio e que todo desafio fica acima do STORM SPIRE.
 
@@ -226,6 +238,10 @@ Onde o pedido deixava espaço, segui o mais próximo do Surf Skill do CS2:
 - Curvas: mudanças grandes de direção são feitas na própria rampa (segmentos curvos emendados, surfando a face de dentro), com o raio calculado para a velocidade esperada (`Course.curveFor`): acima dela o jogador sobe na face. Nos gaps, as curvas são menores, e surfa-se a face de fora da curva segurando para dentro.
 - Túneis: entre duas rampas de túnel a queda é curta (70–100 u); vindo de rampa aberta, a boca do túnel fica no meio da rampa e o teto do gap é horizontal (um teto inclinado empurraria o jogador para baixo). A queda é medida por trecho (abaixo da parte mais baixa do trecho), para não precisar cair até o fundo do mapa.
 - O fantasma do PB só é trocado quando a corrida vira PB (como no CS2): quem já tinha recorde da rodada 7 ganha o fantasma ao bater o próprio tempo.
+- Curvas rápidas: nas emendas da face de dentro sobra um degrau de ~q·meia-largura·tan α·(1 − cos θ). Os desafios D7, D8 e D11 usam passos de 5° (`curveFor(..., { stepDeg: 5 })`) para ele ficar abaixo do que o teste de emendas tolera a 2400 u/s.
+- ZENITH é surfado perto do teto de 3500 u/s. Nessa velocidade, a caixa do jogador (alinhada aos eixos) encosta nos planos de bisel da crista e das emendas das curvas, que têm normal "andável" — e o movimento tratava isso como chão (o "ramp bug": atrito no meio do surf). As rampas do ZENITH são marcadas como lisas (`slick`): nelas um contato com bisel andável não vira chão. O resto do jogo não muda (o teste de física e os tempos de referência dos outros mapas são os mesmos).
+- Para caber em ±40000, a maratona desce menos por rampa (descidas × 0,3, rampas × 1,9 de comprimento) e as transições comuns caem 190 u em vez de 300. O OBSIDIAN GAUNTLET fica em duas fileiras de 6 stages.
+- Os cabos (curva no ar) ficaram fora do ZENITH: na velocidade da maratona as viradas no ar não fecham; eles aparecem no D6, D8 e D11.
 
 ## Parâmetros
 
@@ -240,7 +256,7 @@ Todos centralizados em `shared/config/`:
 - Longbow: `preciseRange` (900 u) faz o tiro sem zoom ir exatamente na mira quando o alvo está perto; com zoom ela fica parada (sem balanço nem recuo visual) e continua no zoom depois do tiro.
 - `classes.ts`: cooldowns, durações e números das passivas.
 - `match.ts`: tempos de round, rounds para vencer, perfis de dificuldade dos bots (reação, velocidade de mira, erro, headshots, uso de habilidades).
-- `skill.ts`: regras do Surf Skill (faca, prespeed cap, bloqueio de pulo na zona, ranking) e metadados dos 3 mapas.
+- `skill.ts`: regras do Surf Skill (faca, prespeed cap, pulo na zona, ranking, fantasma) e metadados dos 15 mapas.
 
 ## Arquitetura
 
@@ -286,7 +302,7 @@ O ambiente onde o projeto foi construído não tinha acesso ao registro npm nem 
 - 4 classes com habilidades, cooldowns, efeitos visuais e passivas
 - Partidas contra bots de 1v1 a 5v5, 4 dificuldades, rounds, duelos 1v1 no fim do tempo, placar, tela de resultado
 - Modo treino com alvos, voo, checkpoints e reinício
-- Surf Skill: 3 mapas (tier 1 a 3) com 5 stages cada, cronômetro em ticks, splits contra o PB, quedas para o início do stage, prática com saveloc, recordes, Sum of Best e ranking local
+- Surf Skill: 3 mapas de treino (T1 a T3) e 12 de desafio (D1 a D12, T2 a T6) nos formatos staged e linear, cronômetro em ticks, splits contra o PB, quedas para o início do stage ou para o último checkpoint, prática com saveloc, recordes, Sum of Best, ranking local e fantasma do PB
 - HUD, menus, configurações (sensibilidade, FOV, volumes, qualidade, efeitos, auto-bhop, velocidade, teclas), áudio sintetizado
 
 ### Pendente
@@ -298,5 +314,5 @@ O ambiente onde o projeto foi construído não tinha acesso ao registro npm nem 
 
 ## Testes
 
-- `npm test`: 111 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots e, no Surf Skill, cronômetro, zonas, prespeed, splits, quedas, reinícios, prática, recordes, versão do mapa, formato linear com checkpoints, fantasma (gravação, compressão, PB, sincronia por segmento, tamanho), regras de projeto dos desafios (inclinação, largura mínima, zonas), cada segmento de cada mapa completado pelo percurso de referência (de ponta a ponta e a partir de cada stage/checkpoint), emendas das curvas a 2400 u/s e o índice de dificuldade crescente).
+- `npm test`: 123 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots e, no Surf Skill, cronômetro, zonas, prespeed, splits, quedas, reinícios, prática, recordes, versão do mapa, formato linear com checkpoints, fantasma (gravação, compressão, PB, sincronia por segmento, tamanho), regras de projeto dos desafios (inclinação, largura mínima, zonas), cada segmento de cada mapa completado pelo percurso de referência (de ponta a ponta e a partir de cada stage/checkpoint), emendas das curvas a 2400 u/s e o índice de dificuldade crescente).
 - `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint automático, caminhar e slide pelo teclado, habilidade, eliminação e fim de round com placar; no Surf Skill, menu dos mapas, cronômetro ao sair da zona, queda de volta ao início do stage, reinício do mapa e um stage completo com split; aba Desafio, entrar no D1 e pular na base sem passar do cap, completar um segmento do D1, uma corrida curta de teste até o fim e o fantasma aparecendo na tentativa seguinte.

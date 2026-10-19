@@ -30,6 +30,8 @@ export interface Brush {
   /** Only collidable, not rendered (clip). */
   invisible?: boolean;
   tag?: string;
+  /** Rampa sem "ramp bug": contatos com biséis andáveis não contam como chão (ver movement.ts). */
+  slick?: boolean;
 }
 
 let nextBrushId = 1;

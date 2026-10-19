@@ -76,7 +76,7 @@ for (const m of desafios) {
       assert.ok(p.phys.pos.distTo(sk.stageDef.spawn.pos) < 5, 'volta ao ponto certo');
       const d = new RouteDriver(sk.stageDef.route);
       let done = false;
-      for (let t = 0; t < 6000 && !done; t++) {
+      for (let t = 0; t < 9000 && !done; t++) { // trechos da maratona (D12) passam de 60 s saindo parado
         d.drive(p.phys, p.input.cmd, SIM_DT); w.step(SIM_DT);
         assert.ok(!w.drainEvents().some((e) => e.t === 'skillReset'), `${m.name}: caiu a partir do segmento ${k + 1}`);
         done = sk.stage > k || sk.state === 'finished';

@@ -11,4 +11,10 @@ export const SKILL_MAP_VERSIONS: Record<string, string> = {
   glacier_run: '8c9a58d7',
   iron_cathedral: '0b339f4d',
   skywire: '10e052be',
+  eclipse_bowl: '53c1cf1b',
+  rebel_signal: '8935cb65',
+  hollow_moon: 'e766d036',
+  thunderhead: '53f262d8',
+  obsidian_gauntlet: '903f3d5b',
+  zenith: '8d69770a',
 };
