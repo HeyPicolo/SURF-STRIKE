@@ -138,7 +138,8 @@ function tunnelPieces(s: V3, e: V3, hw: number, h: number, clear: number, color:
 function gapCeiling(a: V3, b: V3, hw: number, clear: number, color: number, tag: string): Brush | null {
   if (Math.hypot(b.x - a.x, b.z - a.z) < 1) return null;
   const W = hw + 90, T = 30;
-  return prismBrush(v(a.x, a.y + clear, a.z), v(b.x, b.y + clear, b.z), [[-W, 0], [W, 0], [W, T], [-W, T]], { color, tag });
+  // laje horizontal na altura do fim da rampa anterior (um teto inclinado empurraria o jogador para baixo)
+  return prismBrush(v(a.x, a.y + clear, a.z), v(b.x, a.y + clear, b.z), [[-W, 0], [W, 0], [W, T], [-W, T]], { color, tag });
 }
 
 /** Velocidade horizontal mínima (balística) para sair de `a` com inclinação θ e alcançar `b`. */
@@ -177,7 +178,12 @@ function buildRamps(ramps: RampSeg[], L: (p: P3) => V3, color: number, glow: num
     }
     if (r.ceiling) {
       tunnel = true;
-      brushes.push(...tunnelPieces(s, e, r.hw, r.h, r.ceiling, 0x5a6378, `${tag}-tunel-${i + routeOffset}`));
+      // a boca do túnel fica um pouco depois do início (dá para cair na rampa vindo de cima);
+      // se a anterior também é túnel, o teto continua sem buraco
+      const prevTunnel = i > 0 && !!ramps[i - 1].ceiling;
+      const f0 = prevTunnel ? 0 : 0.5;
+      const s1 = v(s.x + (e.x - s.x) * f0, s.y + (e.y - s.y) * f0, s.z + (e.z - s.z) * f0);
+      brushes.push(...tunnelPieces(s1, e, r.hw, r.h, r.ceiling, 0x5a6378, `${tag}-tunel-${i + routeOffset}`));
       const n = ramps[i + 1];
       if (n?.ceiling && !n.join) { const c = gapCeiling(e, L(n.s), Math.max(r.hw, n.hw), Math.min(r.ceiling, n.ceiling), 0x5a6378, `${tag}-teto-gap-${i + routeOffset}`); if (c) brushes.push(c); }
     }
@@ -355,7 +361,13 @@ export function buildLinear(meta: SkillMapMeta, spec: LinearSpec): BuiltCourse {
     } else {
       // plataforma de retorno: atrás do início da rampa, acima da linha de voo
       const P0 = rampFacePoint(s0, e0, r0.hw, r0.h, 0, r0.ride, r0.q ?? 0.35);
-      const top = s0.y + CHECKPOINT_LIFT;
+      // bem acima da linha de voo de quem chega embalado: a saída da rampa anterior (e o arco dela,
+      // se ela sobe) fica sempre pelo menos ~380 u abaixo do fundo da plataforma
+      const pr = spec.ramps[from - 1];
+      const pe = rampFacePoint(A(pr.s), A(pr.e), pr.hw, pr.h, 1, pr.ride, pr.q ?? 0.35);
+      const climbing = pr.e[1] - pr.s[1];
+      const lift = Math.max(CHECKPOINT_LIFT, pe.y - s0.y + 380 + (climbing > 0 ? 260 + climbing * 0.5 : 0));
+      const top = s0.y + lift;
       const back = v(P0.x - d0.x * 230, top - 24, P0.z - d0.z * 230), front = v(P0.x, top - 24, P0.z);
       brushes.push(prismBrush(back, front, [[-100, 0], [100, 0], [100, 24], [-100, 24]], { color: 0xe6f6ff, edgeGlow: 0x7fe9ff, tag: `skill-cp-${k}` }));
       const yaw = yawFromDir(d0.x, d0.z);
@@ -524,6 +536,28 @@ export class Course {
       if (o.ceiling ?? l.ceiling) r.ceiling = o.ceiling ?? l.ceiling;
       this.ramps.push(r);
     }
+    return this;
+  }
+
+  /**
+   * Curva contínua dimensionada para uma velocidade: o raio é o de uma curva "inclinada" em que a
+   * face segura quem passa a `speed` (v² / (g·tan α)), com folga. Mais rápido que isso, sobe-se na face.
+   */
+  curveFor(turn: number, speed: number, descentPerSeg = 110, o: { ceiling?: number; margin?: number } = {}): this {
+    const l = this.last;
+    const tanA = l.h / l.hw;
+    const R = ((speed * speed) / (PHYSICS.gravity * tanA)) * (o.margin ?? 1.3);
+    const steps = Math.max(2, Math.ceil(Math.abs(turn) / 10));
+    const seg = Math.round((R * Math.abs(turn) * Math.PI) / 180 / steps);
+    return this.curve(turn, steps, seg, descentPerSeg, o);
+  }
+
+  /** Reta emendada no fim da rampa atual (continua na mesma direção, sem gap). */
+  straight(len: number, descent: number): this {
+    const l = this.last, a = (this.yaw * Math.PI) / 180;
+    const r: RampSeg = { s: [l.e[0], l.e[1], l.e[2]], e: [Math.round(l.e[0] + Math.sin(a) * len), l.e[1] - descent, Math.round(l.e[2] - Math.cos(a) * len)], hw: l.hw, h: l.h, ride: l.ride, q: l.q, sides: l.sides, join: true };
+    if (l.ceiling) r.ceiling = l.ceiling;
+    this.ramps.push(r);
     return this;
   }
 

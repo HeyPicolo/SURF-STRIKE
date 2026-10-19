@@ -116,7 +116,7 @@ Terceiro modo, ao lado de Partida e Treino, inspirado nos mapas de Surf Skill do
 ### Treino × Desafio
 
 - **Treino**: SKY STEPS (T1), DRIFT CANYON (T2) e STORM SPIRE (T3), para aprender.
-- **Desafio**: 12 mapas que testam de verdade o surf, do tier 2 ao 6, cada um mais difícil que o anterior (chegam nas próximas entregas da rodada 8).
+- **Desafio**: 12 mapas que testam de verdade o surf, do tier 2 ao 6, cada um mais difícil que o anterior. D1 a D6 já estão no jogo; D7 a D12 chegam na próxima entrega.
 - Tiers de 1 a 6: T1 verde, T2 amarelo, T3 vermelho, T4 laranja escuro, T5 roxo, T6 preto com borda vermelha.
 - O menu tem as abas Treino e Desafio. Cada card mostra número, nome, tier, formato, quantidade de stages ou checkpoints, PB, Sum of Best, top 10 e o selo de concluído.
 - Desbloqueio progressivo (concluir um desafio libera o próximo): `SKILL.progressiveUnlock`, desligado por padrão.
@@ -165,6 +165,35 @@ A "velocidade mínima de projeto" é, para o pior gap de cada mapa, a velocidade
 
 Metadados (nome, tier, cores, stages com nome e spawn) ficam em `shared/config/skill.ts`; os construtores dos mapas ficam em `shared/maps/skySteps.ts`, `driftCanyon.ts` e `stormSpire.ts`, usando o kit `shared/maps/skillKit.ts`.
 
+### Mapas de desafio
+
+Inspirados no estilo e na progressão de técnica dos mapas de surf skill mais conhecidos do CS:GO/CS2, mas com nomes, layouts e geometria originais, no visual low-poly do jogo e com paleta própria em cada mapa. Construtores em `shared/maps/desafios/`.
+
+- **D1 · CORAL RUSH** (T2, staged, 6 stages): stages curtos e limpos, rampas médias e retas, transições simples. Cada stage começa com um salto grande da plataforma até a primeira rampa: largar caminhando faz cair antes dela.
+- **D2 · VELVET DUNES** (T2, linear, 5 checkpoints): rampas longas em sequência com curvas abertas de 18–24° numa grande espiral descendente. Ensina a manter a velocidade por bastante tempo.
+- **D3 · LANTERN PASS** (T3, staged, 7 stages): linhas mais apertadas, curvas de 25 a 35° feitas na própria rampa e trocas de face rápidas entre rampas curtas.
+- **D4 · GLACIER RUN** (T3, linear, 6 checkpoints): rampas ascendentes (sobe-se com o embalo da anterior e sai-se lançado para cima) e gaps de mais tempo de ar, em voltas largas sobre a geleira.
+- **D5 · IRON CATHEDRAL** (T4, staged, 8 stages): túneis e tetos baixos (125–150 u acima do cume) com rampas estreitas; entre túneis o salto precisa ser baixo e controlado.
+- **D6 · SKYWIRE** (T4, linear, 6 checkpoints): air control, com gaps de 900–1360 u e curva de 14–22° no ar, pousando em rampas desalinhadas; subidas curtas seguram a velocidade.
+
+### Métricas dos mapas
+
+Gerada por `npm run skill:metrics`, que corre o percurso de referência de cada mapa (só física, sem assistência) e grava o tempo e o pico em `shared/maps/skillReference.ts`.
+
+| Mapa | Tier | Formato | Segmentos | Meia-largura mín/média | Normal Y | Maior gap | Vel. mínima | Tempo de ar | Transições | Curva máx. | Referência | Pico | Índice |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| SKY STEPS | T1 | staged | 5 | 300 / 300 | 0.62–0.62 | 306 u | 424 u/s | 0.91 s | 8 | 15° | 00:33.69 | 1558 u/s | 57.6 |
+| DRIFT CANYON | T2 | staged | 5 | 170 / 176 | 0.55–0.57 | 902 u | 870 u/s | 1.11 s | 10 | 34° | 00:40.53 | 1820 u/s | 86 |
+| STORM SPIRE | T3 | staged | 5 | 110 / 129 | 0.45–0.68 | 1300 u | 1197 u/s | 1.27 s | 17 | 33° | 00:42.26 | 2357 u/s | 111.5 |
+| D1 · CORAL RUSH | T2 | staged | 6 | 195 / 195 | 0.52–0.52 | 460 u | 552 u/s | 0.93 s | 32 | 12° | 01:22.22 | 2340 u/s | 114 |
+| D2 · VELVET DUNES | T2 | linear | 6 | 210 / 210 | 0.54–0.54 | 356 u | 469 u/s | 0.99 s | 42 | 24° | 01:23.17 | 2317 u/s | 120.4 |
+| D3 · LANTERN PASS | T3 | staged | 7 | 150 / 157 | 0.51–0.54 | 300 u | 383 u/s | 0.94 s | 31 | 60° | 02:13.27 | 2541 u/s | 145.1 |
+| D4 · GLACIER RUN | T3 | linear | 7 | 165 / 165 | 0.54–0.54 | 840 u | 869 u/s | 0.99 s | 43 | 50° | 01:46.18 | 2634 u/s | 148.8 |
+| D5 · IRON CATHEDRAL | T4 | staged | 8 | 132 / 137 | 0.52–0.54 | 320 u | 864 u/s | 0.95 s | 55 | 45° | 02:06.42 | 2719 u/s | 165.9 |
+| D6 · SKYWIRE | T4 | linear | 7 | 150 / 155 | 0.53–0.54 | 1359 u | 1027 u/s | 1.39 s | 50 | 75° | 02:28.17 | 2745 u/s | 189.8 |
+
+O **índice de dificuldade** (`shared/maps/skillMetrics.ts`) é a soma ponderada das métricas, cada uma normalizada: 12 × (200 / meia-largura média) + 10 × ((0,7 − normal Y mínima) / 0,3) + 10 × (maior gap / 1000) + 10 × (velocidade mínima / 1000) + 8 × tempo de ar máximo + 15 × (transições / 20) + 10 × (curva máxima / 90°) + 30 × (tempo de referência / 1 min) + 10 × (pico / 2000). Pesa técnica e resistência (quanto mais longo, mais chances de errar). Um teste garante que ele cresce estritamente do D1 ao último desafio e que todo desafio fica acima do STORM SPIRE.
+
 ### Fantasma
 
 - Toda corrida válida é gravada por tick (posição, olhar, no chão/agachado). Quando ela vira PB, a gravação vira o fantasma daquele mapa; cada stage/checkpoint que vira o melhor segmento guarda também o seu trecho.
@@ -193,7 +222,9 @@ Onde o pedido deixava espaço, segui o mais próximo do Surf Skill do CS2:
 - Cair no stage 1 depois de largar não zera o cronômetro (só o R zera), para manter a regra "cair não zera o tempo".
 - Na tela de fim, a comparação de cada stage é com o stage da corrida PB anterior (estrela dourada quando o stage virou o melhor da história).
 - Rodada 8: o pulo na zona de início foi liberado; o cap continua igual, então os recordes antigos continuam valendo (a geometria dos mapas de treino não mudou: os hashes são os mesmos).
-- Nos mapas linear, a plataforma de retorno de cada checkpoint fica atrás do portal e bem acima da linha de voo (430 u acima do cume), para não atrapalhar quem passa embalado. A queda é medida por trecho (abaixo da parte mais baixa do trecho), para não precisar cair até o fundo do mapa.
+- Nos mapas linear, a plataforma de retorno de cada checkpoint fica atrás do portal e bem acima da linha de voo (pelo menos 430 u acima do cume, mais se a rampa anterior lança para cima), para não atrapalhar quem passa embalado.
+- Curvas: mudanças grandes de direção são feitas na própria rampa (segmentos curvos emendados, surfando a face de dentro), com o raio calculado para a velocidade esperada (`Course.curveFor`): acima dela o jogador sobe na face. Nos gaps, as curvas são menores, e surfa-se a face de fora da curva segurando para dentro.
+- Túneis: entre duas rampas de túnel a queda é curta (70–100 u); vindo de rampa aberta, a boca do túnel fica no meio da rampa e o teto do gap é horizontal (um teto inclinado empurraria o jogador para baixo). A queda é medida por trecho (abaixo da parte mais baixa do trecho), para não precisar cair até o fundo do mapa.
 - O fantasma do PB só é trocado quando a corrida vira PB (como no CS2): quem já tinha recorde da rodada 7 ganha o fantasma ao bater o próprio tempo.
 
 ## Parâmetros
@@ -267,5 +298,5 @@ O ambiente onde o projeto foi construído não tinha acesso ao registro npm nem 
 
 ## Testes
 
-- `npm test`: 93 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots e, no Surf Skill, cronômetro, zonas, prespeed, splits, quedas, reinícios, prática, recordes, versão do mapa, formato linear com checkpoints, fantasma (gravação, compressão, PB, sincronia por segmento, tamanho) e os mapas atravessados de ponta a ponta pelo percurso de referência, só com física, sem assistência).
-- `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint automático, caminhar e slide pelo teclado, habilidade, eliminação e fim de round com placar; no Surf Skill, menu dos mapas, cronômetro ao sair da zona, queda de volta ao início do stage, reinício do mapa e um stage completo com split; pulo na base sem passar do cap, aba Desafio, uma corrida curta de teste até o fim e o fantasma aparecendo na tentativa seguinte.
+- `npm test`: 111 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots e, no Surf Skill, cronômetro, zonas, prespeed, splits, quedas, reinícios, prática, recordes, versão do mapa, formato linear com checkpoints, fantasma (gravação, compressão, PB, sincronia por segmento, tamanho), regras de projeto dos desafios (inclinação, largura mínima, zonas), cada segmento de cada mapa completado pelo percurso de referência (de ponta a ponta e a partir de cada stage/checkpoint), emendas das curvas a 2400 u/s e o índice de dificuldade crescente).
+- `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint automático, caminhar e slide pelo teclado, habilidade, eliminação e fim de round com placar; no Surf Skill, menu dos mapas, cronômetro ao sair da zona, queda de volta ao início do stage, reinício do mapa e um stage completo com split; aba Desafio, entrar no D1 e pular na base sem passar do cap, completar um segmento do D1, uma corrida curta de teste até o fim e o fantasma aparecendo na tentativa seguinte.

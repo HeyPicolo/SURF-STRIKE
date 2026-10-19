@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "tsx --test tests/*.test.ts",
     "test:e2e": "node scripts/e2e.mjs",
-    "skill:versions": "tsx scripts/skill-versions.ts"
+    "skill:versions": "tsx scripts/skill-versions.ts",
+    "skill:metrics": "tsx scripts/skill-metrics.ts"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",

@@ -18,3 +18,32 @@ export class RouteDriver {
     if (r.reached) this.idx++;
   }
 }
+
+import type { World } from '../sim/world';
+
+export interface ReferenceRunResult { finished: boolean; ticks: number; peak: number; falls: number; fail?: { segment: number; pos: [number, number, number] } }
+
+/**
+ * Corrida completa de um mapa do Surf Skill pelo percurso de referência, só com a física do jogo
+ * (sem assistência). Nos mapas linear segue embalado pelos portais. Para no primeiro tombo
+ * (`stopOnFall`) ou depois de `maxFalls` quedas.
+ */
+export function referenceRun(w: World, opts: { maxTicks?: number; stopOnFall?: boolean } = {}): ReferenceRunResult {
+  const sk = w.skill!, p = w.local;
+  const maxTicks = opts.maxTicks ?? 100 * 60 * 8;
+  let drv = new RouteDriver(sk.stageDef.route), stage = sk.stage, peak = 0, falls = 0;
+  for (let t = 0; t < maxTicks && sk.state !== 'finished'; t++) {
+    if (sk.stage !== stage) { drv = new RouteDriver(sk.stageDef.route); if (sk.stage === stage + 1) drv.idx = sk.stageDef.flowFrom; stage = sk.stage; }
+    drv.drive(p.phys, p.input.cmd, 1 / 100);
+    w.step(1 / 100);
+    peak = Math.max(peak, Math.hypot(p.phys.vel.x, p.phys.vel.z));
+    for (const e of w.drainEvents()) {
+      if (e.t !== 'skillReset') continue;
+      falls++;
+      if (opts.stopOnFall) return { finished: false, ticks: sk.ticks, peak, falls, fail: { segment: sk.stage, pos: p.phys.pos.toArray() as [number, number, number] } };
+      drv = new RouteDriver(sk.stageDef.route);
+    }
+  }
+  p.input.cmd.forward = 0; p.input.cmd.side = 0; p.input.cmd.jump = false;
+  return { finished: sk.state === 'finished', ticks: sk.ticks, peak: Math.round(peak), falls };
+}

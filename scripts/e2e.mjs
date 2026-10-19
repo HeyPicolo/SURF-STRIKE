@@ -212,28 +212,38 @@ await page.screenshot({ path: join(shots, '11-skill-split.png') });
 await S(() => { window.__surf.game.autopilot = false; });
 check('20. completa o stage 1 pelo percurso de referência e mostra o split', sk4.stage === 1 && sk4.split > 0 && sk4.splitHud.includes('on') && sk4.splitText.includes('STAGE 1') && sk4.stageHud.startsWith('STAGE 2/5'), JSON.stringify(sk4));
 
-// --- Surf Skill (rodada 8): pulo na base, aba Desafio, corrida curta e fantasma
-await S(() => { window.__surf.game.autopilot = false; window.__surf.input.keys.clear(); });
-await page.keyboard.press('KeyR'); await waitSim(0.2);
-const cap = await S(() => window.__surf.game.world.skill.state);
-await page.keyboard.down('KeyW'); await waitSim(0.35); await page.keyboard.down('Space');
-let maxZone = 0, exitV = -1;
-for (let i = 0; i < 80; i++) {
-  await waitSim(0.05);
-  const r = await S(() => { const w = window.__surf.game.world; return { st: w.skill.state, v: Math.hypot(w.local.phys.vel.x, w.local.phys.vel.z), air: !w.local.phys.onGround }; });
-  if (r.st === 'zone') maxZone = Math.max(maxZone, r.v); else { exitV = r.v; break; }
-}
-const jumped = await S(() => window.__surf.game.world.skill.state);
-await page.keyboard.up('Space'); await page.keyboard.up('KeyW');
-check('21. pula na base sem passar do prespeed cap', cap === 'zone' && jumped === 'running' && maxZone <= 420.5 && exitV <= 470, `maxNaZona=${maxZone.toFixed(0)} saida=${exitV.toFixed(0)}`);
-await S(() => window.__surf.menu.act.quitToMenu());
+// --- Surf Skill (rodada 8): aba Desafio, D1, pulo na base, segmento completo, corrida curta e fantasma
+await S(() => { window.__surf.game.autopilot = false; window.__surf.input.keys.clear(); window.__surf.menu.act.quitToMenu(); });
 await wait(300);
 await page.click('button[data-go=skill]');
 await wait(200);
 await page.click('[data-tab=desafio]');
 await wait(200);
-check('22. abre a aba Desafio', await S(() => document.querySelector('[data-tab=desafio]').classList.contains('on')));
+const tab = await S(() => ({ on: document.querySelector('[data-tab=desafio]').classList.contains('on'), cards: document.querySelectorAll('.skill-card').length, first: document.querySelector('.skill-card h3')?.textContent }));
+check('22. abre a aba Desafio com os mapas de desafio', tab.on && tab.cards >= 6 && tab.first === 'CORAL RUSH', JSON.stringify(tab));
 await page.screenshot({ path: join(shots, '12-skill-desafio.png') });
+await page.click('[data-skill=coral_rush]');
+await wait(800);
+await S(() => { window.__surf.input.enabled = true; window.__surf.game.paused = false; document.getElementById('panel').classList.add('hidden'); });
+const d1 = await S(() => ({ map: window.__surf.game.world.map.name, state: window.__surf.game.world.skill.state }));
+await page.keyboard.down('KeyW'); await waitSim(0.35); await page.keyboard.down('Space');
+let maxZone = 0, exitV = -1;
+for (let i = 0; i < 80; i++) {
+  await waitSim(0.05);
+  const r = await S(() => { const w = window.__surf.game.world; return { st: w.skill.state, v: Math.hypot(w.local.phys.vel.x, w.local.phys.vel.z) }; });
+  if (r.st === 'zone') maxZone = Math.max(maxZone, r.v); else { exitV = r.v; break; }
+}
+const jumped = await S(() => ({ state: window.__surf.game.world.skill.state, jumps: true }));
+await page.keyboard.up('Space'); await page.keyboard.up('KeyW');
+check('21. entra no D1 e pula na base sem passar do prespeed cap', d1.map === 'CORAL RUSH' && d1.state === 'zone' && jumped.state === 'running' && maxZone <= 420.5 && exitV <= 420.5, `maxNaZona=${maxZone.toFixed(0)} saida=${exitV.toFixed(0)}`);
+// completa o stage 1 do D1 pelo percurso de referência
+await page.keyboard.press('KeyR'); await waitSim(0.2);
+await S(() => { window.__surf.game.autopilot = true; });
+for (let i = 0; i < 400; i++) { await waitSim(0.25); if (await S(() => window.__surf.game.world.skill.stage >= 1)) break; }
+const d1s = await S(() => { const w = window.__surf.game.world; return { stage: w.skill.stage, split: w.skill.lastSplit && w.skill.lastSplit.total, hud: document.getElementById('skill-stage').textContent }; });
+await page.screenshot({ path: join(shots, '12b-skill-d1.png') });
+await S(() => { window.__surf.game.autopilot = false; });
+check('25. completa um segmento do D1 e vê o split', d1s.stage === 1 && d1s.split > 0 && d1s.hud.startsWith('STAGE 2/6'), JSON.stringify(d1s));
 // corrida curta de teste até o fim
 await S(() => { window.__surf.menu.act.startSkill('teste_curto'); window.__surf.input.enabled = true; window.__surf.game.paused = false; document.getElementById('panel').classList.add('hidden'); window.__surf.game.autopilot = true; });
 for (let i = 0; i < 200; i++) { await waitSim(0.25); if (await S(() => window.__surf.game.world?.skill?.state === 'finished')) break; }

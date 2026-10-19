@@ -170,6 +170,7 @@ export class Game {
     this.world = new World(map, cfg);
     this.skillMenuOpen = false; this.pendingGoto = null; this.pendingRestart = false;
     this.ghosts = null; this.ghostDiff = null; this.ghostHint = -1;
+    this.apDriver = null; this.apStage = -1;
     if (cfg.mode !== 'skill') this.skillMeta = null;
     this.hud.skillMode(cfg.mode === 'skill');
     this.hud.clearTransient();

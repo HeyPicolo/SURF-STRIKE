@@ -3,7 +3,7 @@
 Registro vivo das decisões, do estado atual e das pendências. **Atualizado a cada rodada de mudanças, no mesmo commit.**
 Serve para qualquer sessão (de código ou de apoio) entender o projeto sem reler o histórico inteiro.
 
-- **Última rodada:** 8a (de 8a/8b/8c) · 19/10/2026
+- **Última rodada:** 8b (de 8a/8b/8c) · 19/10/2026 · 8a = `a615840`
 - **No ar:** https://surf-strike.vercel.app (deploy automático da Vercel a cada push na `main`)
 - **Repositório:** github.com/HeyPicolo/SURF-STRIKE
 
@@ -20,10 +20,11 @@ Serve para qualquer sessão (de código ou de apoio) entender o projeto sem rele
 npm install
 npm run dev            # servidor local com rebuild
 npm run build          # gera dist/ (o que a Vercel publica)
-npm test               # 93 testes unitários (node:test via tsx)
+npm test               # 111 testes unitários (node:test via tsx, ~10 s)
+npm run skill:metrics  # corre o percurso de referência de todos os mapas, grava skillReference.ts e imprime a tabela de métricas
 npm run skill:versions # regrava shared/maps/skillVersions.ts depois de mudar um mapa do Surf Skill
 npx tsc --noEmit -p tsconfig.json
-CHROME_PATH=/opt/pw-browsers/chromium node scripts/e2e.mjs   # 24 verificações no navegador
+CHROME_PATH=/opt/pw-browsers/chromium node scripts/e2e.mjs   # 25 verificações no navegador
 ```
 
 ## O jogo hoje
@@ -60,6 +61,8 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 - **Fantasma** (`shared/sim/ghost.ts`): gravação por tick na sim (`SkillRun.recorder`), 50 Hz com keyframes + deltas Int16 (~12 B/amostra; limite `GHOST.maxBytes5min` = 256 KB), `GhostStore` no IndexedDB (`client/src/skill/ghostStore.ts`), PB substitui o fantasma da corrida, melhores segmentos guardam o seu trecho, sincronia "corrida inteira" ou "por segmento", diferença ao vivo no HUD. Prática não grava.
 - Versões estáticas: `shared/maps/skillVersions.ts` (o menu não constrói mapas; só o mapa escolhido é construído e fica em cache). Os hashes dos mapas de treino continuam os da rodada 7.
 - Mapa oculto `teste_curto` (linear, 1 checkpoint) só para testes/e2e.
+- **Rodada 8b — desafios D1–D6** (`shared/maps/desafios/`): CORAL RUSH (T2 staged 6, salto inicial que pune largada lenta), VELVET DUNES (T2 linear 5 cp, espiral de curvas abertas), LANTERN PASS (T3 staged 7, curvas de 25–35° na rampa), GLACIER RUN (T3 linear 6 cp, rampas ascendentes), IRON CATHEDRAL (T4 staged 8, túneis), SKYWIRE (T4 linear 6 cp, gaps longos com curva no ar). Métricas e índice em `skillMetrics.ts`; tempos de referência em `skillReference.ts` (gerado). Índices: D1 114 · D2 120 · D3 145 · D4 149 · D5 166 · D6 190 (STORM SPIRE 111,5).
+- Como projetar um mapa que o percurso de referência completa: curvas grandes na rampa (`curveFor`, face de dentro); curvas em gaps ≤ ~24° com a face de fora; queda do gap proporcional ao tempo de ar na velocidade esperada (ver `dropFor` no SKYWIRE); túneis com queda curta; checkpoint sempre seguido de uma descida longa (quem volta dele começa devagar); chegadas generosas; espiral para caber em ±40000. Depois de mudar um mapa: `npm run skill:versions` e `npm run skill:metrics`.
 - Kit (`skillKit.ts`): `Course` (encadeia rampas: `next`, `curve` contínua com emendas fechadas por cunha, `checkpoint`, `bhop`), rampas ascendentes, túneis (`ceiling`), rampas de uma face, `buildLinear` e métricas de projeto por segmento (meia-largura, inclinação, gaps, velocidade mínima balística, tempo de ar, transições, curva máxima).
 - Percurso de referência: `shared/bots/routeDriver.ts` (usa o `steerToward` com `idealStrafe`, sem assistência). Completa os 15 stages só com física; também existe `game.autopilot` no cliente para testes.
 
@@ -99,7 +102,8 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 | 5 · `5ef55f7` | Colete ao nascer, vida 150, rampa central reta e mais alta, flancos nivelados, 4 jump pads sem perda de velocidade. |
 | 6 · `4adcdcb` | Dano ×1,4, Kestrel mais precisa, sprint automático, Shift caminha (silencioso), sons de passos, slide em movimento, hitbox maior de faca/taser. |
 | 7 · `e9a4c25` | **Surf Skill**: 3 mapas com 5 stages, cronômetro em ticks, splits contra o PB, quedas para o início do stage, prática, recordes locais, Sum of Best, ranking, menu, HUD, sons, 16 testes e 6 verificações e2e novas. |
-| 8a | Infraestrutura do Surf Skill para os desafios: Treino × Desafio, tiers 1–6, formatos staged/linear com checkpoints, segmentos genéricos, fantasma do PB (gravação, IndexedDB, sincronia, diferença ao vivo), pulo nas bases, menu com abas, versões estáticas dos mapas, kit estendido. |
+| 8a · `a615840` | Infraestrutura do Surf Skill para os desafios: Treino × Desafio, tiers 1–6, formatos staged/linear com checkpoints, segmentos genéricos, fantasma do PB (gravação, IndexedDB, sincronia, diferença ao vivo), pulo nas bases, menu com abas, versões estáticas dos mapas, kit estendido. |
+| 8b | Desafios D1–D6, métricas e índice de dificuldade, tabela no README, testes de cada segmento, das emendas das curvas e do índice crescente. |
 
 ## Decisões tomadas (não desfazer sem pedido)
 
@@ -120,7 +124,7 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 
 ## Pendências e ideias
 
-- **Rodada 8b:** desafios D1–D6. **Rodada 8c:** D7–D12, índice de dificuldade crescente e tabela de métricas no README.
+- **Rodada 8c:** D7–D12 (T5 e T6, 2:30–5:00), índice crescente até o D12, calibração final.
 - Multiplayer online (a simulação já é separada do cliente; recordes e fantasmas já têm as interfaces `RecordStore` e `GhostStore` para um backend).
 - Calibrar jogando: gaps do STORM SPIRE (stages 3 e 5, feitos no limite do percurso de referência), ritmo da pista de bhop do DRIFT CANYON (stage 4, espaçada para ~1170 u/s), prespeed cap (420), atraso da tela de fim (1,8 s), dano ×1,4 e caminhar ×0,55.
 - Renderização por software nos testes roda a ~15 FPS; em GPU real é normal.

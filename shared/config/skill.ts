@@ -97,6 +97,18 @@ export interface SkillMapMeta {
 export const STAGE_SPACING = 9000;
 const st = (name: string, k: number, y: number): SkillSegmentMeta => ({ name, spawn: [k * STAGE_SPACING, y, 120], yaw: 0 });
 
+/**
+ * Stages dos desafios staged em grade (mantém as coordenadas dentro de ±40000):
+ * colunas a cada 9000 u em X, linhas a cada 20000 u em Z; cada stage anda ~15000 u para −Z.
+ */
+export function gridStages(names: string[], y: number, cols: number): SkillSegmentMeta[] {
+  return names.map((name, k) => {
+    const col = k % cols, row = Math.floor(k / cols);
+    return { name, spawn: [(col - (cols - 1) / 2) * 9000, y, 120 + 20000 - row * 20000], yaw: 0 };
+  });
+}
+const named = (names: string[]): SkillSegmentMeta[] => names.map((name) => ({ name }));
+
 export const SKILL_MAPS: SkillMapMeta[] = [
   {
     id: 'sky_steps', name: 'SKY STEPS', category: 'treino', tier: 1, format: 'staged', color: 0x3ddc84,
@@ -124,6 +136,43 @@ export const SKILL_MAPS: SkillMapMeta[] = [
       st('Relâmpago', 0, 3800), st('Alternância', 1, 3800), st('Fenda', 2, 3800),
       st('Espiral', 3, 3800), st('Olho da tempestade', 4, 3800),
     ],
+  },
+  // ---------------------------------------------------------------- DESAFIOS
+  {
+    id: 'coral_rush', name: 'CORAL RUSH', category: 'desafio', num: 1, tier: 2, format: 'staged', color: 0xff8a6b,
+    segmentColors: [0xffb3a0, 0xff9e8a, 0xffc7a8, 0xffd0c2, 0xffa6b8, 0xffbfa0],
+    desc: 'Stages curtos e limpos, rampas médias e retas. O primeiro salto de cada stage pune largada preguiçosa.',
+    segments: gridStages(['Recife', 'Correnteza', 'Atol', 'Maré alta', 'Coral vermelho', 'Arrebentação'], 6000, 3),
+  },
+  {
+    id: 'velvet_dunes', name: 'VELVET DUNES', category: 'desafio', num: 2, tier: 2, format: 'linear', color: 0xe0b46c,
+    segmentColors: [0xf0d4a0, 0xe8c48c, 0xf4dcb4, 0xdcb98a, 0xf0cfa0, 0xe6c79c],
+    desc: 'Linear longo e fluido: rampas longas em sequência e curvas abertas. Ensina a manter a velocidade por muito tempo.',
+    segments: named(['Largada', 'Duna alta', 'Vale de veludo', 'Vento sul', 'Miragem', 'Oásis']),
+  },
+  {
+    id: 'lantern_pass', name: 'LANTERN PASS', category: 'desafio', num: 3, tier: 3, format: 'staged', color: 0xff9f3d,
+    segmentColors: [0xffc27a, 0xffb466, 0xffd08f, 0xffa95a, 0xffcf8a, 0xffbd73, 0xffe0a6],
+    desc: 'Um degrau acima: linhas mais apertadas, curvas de 25 a 35° e trocas de face mais rápidas.',
+    segments: gridStages(['Primeira lanterna', 'Beco', 'Ponte de papel', 'Vielas', 'Telhados', 'Festival', 'Portão'], 6500, 4),
+  },
+  {
+    id: 'glacier_run', name: 'GLACIER RUN', category: 'desafio', num: 4, tier: 3, format: 'linear', color: 0x7fd8ff,
+    segmentColors: [0xbfeaff, 0xa8e1ff, 0xd6f3ff, 0x9fd9f5, 0xc4ecff, 0xb1e4ff, 0xe0f7ff],
+    desc: 'Introduz rampas ascendentes: suba usando o embalo da anterior. Gaps com mais tempo de ar.',
+    segments: named(['Largada', 'Geleira', 'Fenda azul', 'Subida', 'Cristais', 'Avalanche', 'Iceberg']),
+  },
+  {
+    id: 'iron_cathedral', name: 'IRON CATHEDRAL', category: 'desafio', num: 5, tier: 4, format: 'staged', color: 0xb08bff,
+    segmentColors: [0x9aa3b8, 0xa8a0c4, 0x8f9bb5, 0xb2a7cc, 0x98a6bf, 0xa79cc2, 0x8e98b0, 0xbbb0d6],
+    desc: 'Túneis e tetos baixos: rampas estreitas dentro de corredores fechados, onde o arco do salto precisa ser baixo.',
+    segments: gridStages(['Nave', 'Cripta', 'Claustro', 'Abóbada', 'Órgão', 'Vitral', 'Campanário', 'Altar'], 7000, 4),
+  },
+  {
+    id: 'skywire', name: 'SKYWIRE', category: 'desafio', num: 6, tier: 4, format: 'linear', color: 0x5ff0c8,
+    segmentColors: [0xa8fff0, 0x8ff5e0, 0xb8ffe8, 0x9cf0e8, 0xc4fff4, 0x88ecd8, 0xd0fff6],
+    desc: 'Air control: gaps longos com curva no ar e pousos em rampas desalinhadas que exigem air strafe preciso.',
+    segments: named(['Largada', 'Cabo 1', 'Cabo 2', 'Cabo 3', 'Cabo 4', 'Cabo 5', 'Cabo 6']),
   },
   {
     // mapa curtíssimo, fora do menu: usado pelos testes automáticos (corrida de teste e fantasma)

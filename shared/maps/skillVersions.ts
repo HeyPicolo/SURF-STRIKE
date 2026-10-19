@@ -4,5 +4,11 @@ export const SKILL_MAP_VERSIONS: Record<string, string> = {
   sky_steps: '0f22f531',
   drift_canyon: '430069a2',
   storm_spire: '57badaf3',
-  teste_curto: '7977b4d0',
+  teste_curto: 'c12460ee',
+  coral_rush: '2626ff2e',
+  velvet_dunes: '158219b6',
+  lantern_pass: '7b6ae358',
+  glacier_run: '8c9a58d7',
+  iron_cathedral: '0b339f4d',
+  skywire: '10e052be',
 };
