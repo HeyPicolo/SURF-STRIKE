@@ -4,6 +4,8 @@ FPS 3D competitivo para navegador, inspirado no Combat Surf: duas equipes, rampa
 
 Tudo aqui é original: modelos gerados por código, sons sintetizados com WebAudio, mapa CLOUDS desenhado para as trajetórias de surf da física implementada.
 
+Decisões, estado atual e pendências de cada rodada ficam em [`CONTEXTO.md`](CONTEXTO.md).
+
 ## Requisitos
 
 - Node.js 18 ou superior
