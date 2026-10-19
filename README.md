@@ -28,7 +28,7 @@ Outros comandos:
 
 ## Como jogar
 
-No menu: **Jogar contra bots** (escolha 1v1 a 5v5, dificuldade, equipe e classe) ou **Treinamento** (sozinho, com alvos, voo e checkpoints). Clique na arena para capturar o mouse; **Esc** pausa.
+No menu: **Jogar contra bots** (escolha 1v1 a 5v5, dificuldade, equipe e classe), **Surf Skill** (percursos contra o cronômetro, sem combate, veja abaixo) ou **Treinamento** (sozinho, com alvos, voo e checkpoints). Clique na arena para capturar o mouse; **Esc** pausa.
 
 ### Surf em 30 segundos
 
@@ -107,6 +107,66 @@ Arena flutuante simétrica no eixo Z (Azul em +Z, Vermelho em −Z):
 
 Cada rota foi validada por simulação: um bot sai do spawn e surfa até a área de combate sem cair (`tests/map.test.ts`).
 
+## Surf Skill
+
+Terceiro modo, ao lado de Partida e Treino, inspirado nos mapas de Surf Skill do CS2. Não há combate: só você, a faca e a mesma física de surf do jogo (`PHYSICS`, air strafe, `clipVelocity`, bhop), contra o cronômetro. Nenhum valor do modo principal muda.
+
+### Regras
+
+- Sozinho, sem bots, armas, itens, classes, habilidades ou dano. Só a faca no viewmodel, com o bônus de +25% de velocidade dela e o sprint automático (configurável em `shared/config/skill.ts`).
+- Cada mapa tem **5 stages** em sequência. Cada stage tem uma zona de início (paredes verdes), um percurso de rampas e uma zona de fim (paredes vermelhas) que leva direto à zona de início do próximo stage. O stage 5 termina na chegada (paredes douradas). O número do stage flutua logo à frente da plataforma de início.
+- **Cronômetro**: começa quando você sai da zona de início do stage 1. É contado em ticks da simulação (100 Hz) e exibido como mm:ss.cc, sem relógio do sistema.
+- **Zona de início**: velocidade horizontal limitada a 420 u/s (prespeed cap) e pulo bloqueado, para ninguém sair embalado de bhop. Vale para a zona de início de todo stage.
+- **Queda** na lava (ou abaixo dela): volta ao início do stage atual, parado. O cronômetro **não** zera: o tempo perdido é a punição. Isso é o checkpoint de stage.
+- **Splits**: ao entrar na zona de início de cada stage (e na chegada) o HUD mostra o tempo acumulado e o tempo do stage, com a diferença para o recorde pessoal em verde (melhor) ou vermelho (pior).
+- **Prática**: salvar posição + velocidade (Z) e voltar a ela (X). Usar qualquer um dos dois marca a corrida como prática (o HUD mostra PRÁTICA) e ela não conta para recordes. Ir para outro stage pelo menu (M) também é prática e só funciona fora de uma corrida cronometrada.
+
+### Teclas (remapeáveis)
+
+| Tecla | Ação |
+|---|---|
+| R | Reiniciar mapa: volta ao stage 1 e zera o cronômetro |
+| Backspace | Reiniciar stage: volta ao início do stage atual (o tempo continua) |
+| M | Menu de stages (1 a 5 escolhe; só fora de uma corrida cronometrada) |
+| Z / X | Salvar posição / voltar a ela (prática) |
+
+R, Z e X são as mesmas teclas de recarregar e dos checkpoints do treino: cada modo só usa as suas.
+
+### Mapas e tiers
+
+| Mapa | Tier | Rampas | Inclinação (normal Y) | Velocidade mínima de projeto | Maior gap | Percurso de referência |
+|---|---|---|---|---|---|---|
+| SKY STEPS | 1 · iniciante (verde) | meia-largura 300, uma ou duas por stage | 52° (0,62), sempre igual | até 353 u/s | 306 u | 33,4 s, pico de 1560 u/s |
+| DRIFT CANYON | 2 · intermediário (amarelo) | meia-largura 170–180, até 3 por stage | 55–57° (0,55–0,57) | até 619 u/s | 902 u | 40,4 s, pico de 1820 u/s |
+| STORM SPIRE | 3 · avançado (vermelho) | meia-largura 110–140, até 4 por stage, algumas com uma face só | 47° no limite (0,68) e 63° íngreme (0,45) | até 794 u/s | 1300 u | 42,1 s, pico de 2360 u/s |
+
+- **SKY STEPS**: 1 Primeiro contato (uma rampa reta), 2 Reta longa, 3 Degraus (duas rampas alinhadas), 4 Dupla (troca de face entre duas rampas), 5 Curva leve (a segunda rampa vira 15°). Chegadas grandes logo depois do fim de cada rampa.
+- **DRIFT CANYON**: 1 Garganta (três rampas trocando de face), 2 Zigue (curva para a direita e de volta), 3 Desfiladeiro (descida forte, gap de 900 u e uma rampa quase plana que só mantém a velocidade), 4 Saltos (pista com buracos: atravessa no bhop), 5 Cânion final (curva, mudança de altura e bhop até a chegada).
+- **STORM SPIRE**: 1 Relâmpago (três rampas no limite, trocando de face), 2 Alternância (quatro rampas de uma face só em lados alternados, gaps curtos), 3 Fenda (descida íngreme e gap de 1300 u), 4 Espiral (curvas de 28°, −5° e 25°), 5 Olho da tempestade (íngreme, gap longo com curva, transições rápidas e chegada estreita).
+
+A "velocidade mínima de projeto" é, para o pior gap de cada mapa, a velocidade horizontal abaixo da qual quem sai da rampa sem impulso vertical cai antes de alcançar o próximo apoio. As rampas de cada stage têm a cor do stage, e cada mapa tem sua cor de destaque.
+
+Metadados (nome, tier, cores, stages com nome e spawn) ficam em `shared/config/skill.ts`; os construtores dos mapas ficam em `shared/maps/skySteps.ts`, `driftCanyon.ts` e `stormSpire.ts`, usando o kit `shared/maps/skillKit.ts`.
+
+### Recordes e ranking
+
+Tudo local por enquanto (localStorage), mas a lógica fica em `shared/sim/records.ts` para ser reaproveitada no multiplayer:
+
+- Por mapa: recorde pessoal (PB) com os splits da corrida PB, melhor tempo de cada stage (melhor segmento), **Sum of Best**, tentativas e conclusões.
+- Ranking local: top 10 com nome e data. O nome é pedido na primeira vez e pode ser trocado em Configurações.
+- A chave de armazenamento leva um hash da geometria e das zonas do mapa: mudar o mapa invalida os recordes antigos em vez de deixá-los inconsistentes.
+- O armazenamento é a interface `RecordStore` (hoje `client/src/skill/localStore.ts`); trocar por um backend não mexe no resto.
+
+### Decisões de design
+
+Onde o pedido deixava espaço, segui o mais próximo do Surf Skill do CS2:
+
+- O fim de cada stage leva direto (sem teleporte com velocidade) para a zona de início do stage seguinte, parado. É o formato dos mapas "staged".
+- O tempo de cada stage vai de um split ao próximo, então os 5 stages somam exatamente o tempo total, e o Sum of Best faz sentido.
+- O prespeed cap (420 u/s) fica um pouco acima da corrida com faca + sprint (406 u/s): andar não é afetado, só o embalo extra.
+- Cair no stage 1 depois de largar não zera o cronômetro (só o R zera), para manter a regra "cair não zera o tempo".
+- Na tela de fim, a comparação de cada stage é com o stage da corrida PB anterior (estrela dourada quando o stage virou o melhor da história).
+
 ## Parâmetros
 
 Todos centralizados em `shared/config/`:
@@ -120,6 +180,7 @@ Todos centralizados em `shared/config/`:
 - Longbow: `preciseRange` (900 u) faz o tiro sem zoom ir exatamente na mira quando o alvo está perto; com zoom ela fica parada (sem balanço nem recuo visual) e continua no zoom depois do tiro.
 - `classes.ts`: cooldowns, durações e números das passivas.
 - `match.ts`: tempos de round, rounds para vencer, perfis de dificuldade dos bots (reação, velocidade de mira, erro, headshots, uso de habilidades).
+- `skill.ts`: regras do Surf Skill (faca, prespeed cap, bloqueio de pulo na zona, ranking) e metadados dos 3 mapas.
 
 ## Arquitetura
 
@@ -128,8 +189,9 @@ shared/            lógica sem DOM (roda igual no cliente e, futuramente, no ser
   math/            vetores, PRNG determinístico
   config/          física, armas, classes, regras
   physics/         brushes convexos, sweep de caixa contínuo (sem tunelamento), movimento estilo Source
-  maps/            CLOUDS (geometria, pickups, triggers, rotas de bots, arenas de duelo)
-  sim/             World autoritativo: jogadores, combate hitscan, granadas, pickups, habilidades, máquina de estados
+  maps/            CLOUDS (geometria, pickups, triggers, rotas de bots, arenas de duelo) e os 3 mapas do Surf Skill
+  sim/             World autoritativo: jogadores, combate hitscan, granadas, pickups, habilidades, máquina de estados;
+                   skill.ts (zonas, cronômetro, splits, prática) e records.ts (PB, Sum of Best, ranking)
   bots/            IA que gera o mesmo input de um humano (olhar + teclas)
 client/
   index.html, styles.css
@@ -164,6 +226,7 @@ O ambiente onde o projeto foi construído não tinha acesso ao registro npm nem 
 - 4 classes com habilidades, cooldowns, efeitos visuais e passivas
 - Partidas contra bots de 1v1 a 5v5, 4 dificuldades, rounds, duelos 1v1 no fim do tempo, placar, tela de resultado
 - Modo treino com alvos, voo, checkpoints e reinício
+- Surf Skill: 3 mapas (tier 1 a 3) com 5 stages cada, cronômetro em ticks, splits contra o PB, quedas para o início do stage, prática com saveloc, recordes, Sum of Best e ranking local
 - HUD, menus, configurações (sensibilidade, FOV, volumes, qualidade, efeitos, auto-bhop, velocidade, teclas), áudio sintetizado
 
 ### Pendente
@@ -175,5 +238,5 @@ O ambiente onde o projeto foi construído não tinha acesso ao registro npm nem 
 
 ## Testes
 
-- `npm test`: 65 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots).
-- `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint automático, caminhar e slide pelo teclado, habilidade, eliminação e fim de round com placar.
+- `npm test`: 81 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots e, no Surf Skill, cronômetro, zonas, prespeed, splits, quedas, reinícios, prática, recordes, versão do mapa e os 3 mapas atravessados de ponta a ponta pelo percurso de referência, só com física, sem assistência).
+- `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint automático, caminhar e slide pelo teclado, habilidade, eliminação e fim de round com placar; no Surf Skill, menu dos mapas, cronômetro ao sair da zona, queda de volta ao início do stage, reinício do mapa e um stage completo com split.

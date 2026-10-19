@@ -4,6 +4,7 @@ import { PHYSICS, SPRINT } from '../config/physics';
 import { WEAPONS, WeaponId, NadeKind, SLOT_KNIFE, SLOT_NADES, ITEMS } from '../config/weapons';
 import { CLASSES, ClassId } from '../config/classes';
 import type { Team } from '../maps/types';
+import { SkillInput, emptySkillInput } from './skill';
 
 export interface WeaponState { id: WeaponId; mag: number; reserve: number; /** segundos até recarregar a carga (taser) */ recharge?: number; }
 
@@ -17,10 +18,12 @@ export interface PlayerInput {
   drop: boolean;
   /** 0..3 = slot selected this tick (keys 1/2/3/4), null = no change */
   slot: number | null;
+  /** comandos do Surf Skill (reiniciar, stage, saveloc) */
+  skill: SkillInput;
 }
 
 export function emptyInput(): PlayerInput {
-  return { cmd: emptyCmd(), fire: false, alt: false, reload: false, use: false, ability: false, drop: false, slot: null };
+  return { cmd: emptyCmd(), fire: false, alt: false, reload: false, use: false, ability: false, drop: false, slot: null, skill: emptySkillInput() };
 }
 
 export interface PlayerStats { kills: number; deaths: number; damage: number; headshots: number; assists: number; }

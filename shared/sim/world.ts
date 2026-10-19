@@ -17,8 +17,10 @@ import { computeDamage, weaponHitDamage, computeSpread, fireInterval } from './c
 import { ABILITIES, tryUseAbility } from './abilities';
 import { MatchMachine, MatchTransition, MatchConfig } from './match';
 import { BotBrain } from '../bots/brain';
+import { SkillRun, SkillEvent, SkillPb } from './skill';
+import { SKILL } from '../config/skill';
 
-export type GameMode = 'training' | 'bots';
+export type GameMode = 'training' | 'bots' | 'skill';
 
 export interface WorldConfig {
   mode: GameMode;
@@ -30,6 +32,8 @@ export interface WorldConfig {
   match?: Partial<MatchConfig>;
   /** Classes chosen for bots (random if absent). */
   botClasses?: ClassId[];
+  /** Surf Skill: corrida de comparação (recorde pessoal) para os splits. */
+  skillPb?: SkillPb | null;
 }
 
 export interface PickupRuntime {
@@ -66,7 +70,8 @@ export type SimEvent =
   | { t: 'land'; pid: number; speed: number }
   | { t: 'match'; tr: MatchTransition }
   | { t: 'duel'; a: number; b: number; weapon: WeaponId; arena: number }
-  | { t: 'message'; text: string };
+  | { t: 'message'; text: string }
+  | SkillEvent;
 
 export const NOBODY = -1;
 
@@ -88,15 +93,22 @@ export class World {
   private checkpoints = new Map<number, { pos: V3; vel: V3; yaw: number; pitch: number }>();
   private duelQueue: number[] = [];
   duelArenaBusy: (number[] | null)[] = [];
+  /** Surf Skill (só no modo 'skill') */
+  skill: SkillRun | null = null;
 
   constructor(public map: MapDef, public config: WorldConfig) {
     this.collision = new CollisionWorld(map.brushes);
     this.mover = new Mover(this.collision);
     this.rng = makeRng(config.seed);
     this.match = new MatchMachine({ ...MATCH, ...(config.match ?? {}) });
+    if (config.mode === 'skill') {
+      if (!map.skill) throw new Error('modo Surf Skill precisa de um mapa com stages');
+      this.skill = new SkillRun(map.skill, (e) => this.emit(e));
+      this.skill.pb = config.skillPb ?? null;
+    }
     this.setupPlayers();
     this.resetPickups();
-    if (config.mode === 'training') {
+    if (config.mode === 'training' || config.mode === 'skill') {
       this.match.phase = 'active';
       this.match.timer = Infinity;
     } else {
@@ -120,6 +132,15 @@ export class World {
     this.players.push(local);
     const names = [...BOT_NAMES].sort(() => this.rng() - 0.5);
     let ni = 0;
+    if (c.mode === 'skill') {
+      // sozinho, sem bots/itens/classes: só a faca (com o bônus de velocidade dela)
+      local.resetForRound();
+      local.armor = 0;
+      local.noAbilities = true;
+      if (SKILL.knifeOnly) { local.weapons = [null, null, null, null]; local.giveWeapon('knife'); local.slot = SLOT_KNIFE; }
+      this.skill!.place(local, this.map.skill!.stages[0]);
+      return;
+    }
     if (c.mode === 'training') {
       this.map.trainingTargets.forEach((sp, i) => {
         const d = new Player(this.nextId++, `ALVO ${i + 1}`, 'red', 'runner', true);
@@ -295,7 +316,7 @@ export class World {
     this.updateSmokes(dt);
     this.updatePickups();
 
-    if (this.config.mode !== 'training') {
+    if (this.config.mode === 'bots') {
       this.handleTransitions(this.match.update(dt, this.aliveCount(), () => this.tiebreak()));
     }
   }
@@ -332,10 +353,13 @@ export class World {
     // look
     p.yaw = inp.cmd.yaw;
     p.pitch = Math.max(-89 * DEG, Math.min(89 * DEG, inp.cmd.pitch));
+    const skill = this.skill && p.id === this.localId ? this.skill : null;
+    if (skill) skill.actions(p, inp.skill);
 
     // movement
-    const frozen = p.frozen || (this.match.frozen && this.config.mode !== 'training');
-    const rawCmd = frozen ? { ...inp.cmd, forward: 0, side: 0, jump: false, up: 0 } : inp.cmd;
+    const frozen = p.frozen || (this.match.frozen && this.config.mode === 'bots');
+    let rawCmd = frozen ? { ...inp.cmd, forward: 0, side: 0, jump: false, up: 0 } : inp.cmd;
+    if (skill) rawCmd = skill.filterCmd(p, rawCmd);
     const cmd = this.updateSprintSlide(p, rawCmd, dt);
     const mods: MoveModifiers = {
       speedMul: p.speedMul(),
@@ -343,8 +367,9 @@ export class World {
       sliding: p.slideTime > 0,
       noFriction: p.teleportGlide > 0,
       slideFriction: SPRINT.slideFriction,
-      airAccelMul: (p.classId === 'runner' ? CLASSES.runner.params.airAccelMul : 1) * (p.speedBoost > 0 ? ITEMS.speedAirMul : 1),
-      airCapMul: p.classId === 'runner' ? CLASSES.runner.params.airCapMul : 1,
+      // no Surf Skill não há classes: física pura do jogo
+      airAccelMul: skill ? 1 : (p.classId === 'runner' ? CLASSES.runner.params.airAccelMul : 1) * (p.speedBoost > 0 ? ITEMS.speedAirMul : 1),
+      airCapMul: skill ? 1 : p.classId === 'runner' ? CLASSES.runner.params.airCapMul : 1,
       autoBhop: p.autoBhop,
       fly: p.fly,
     };
@@ -354,10 +379,11 @@ export class World {
     if (ev.landed > 250) this.emit({ t: 'land', pid: p.id, speed: ev.landed });
 
     this.checkTriggers(p);
-    if (p.phys.pos.y < this.map.fallY) this.sendToBase(p);
+    if (skill) skill.postMove(p);
+    else if (p.phys.pos.y < this.map.fallY) this.sendToBase(p);
 
     // weapons / actions — disabled while frozen in prep
-    const canAct = !frozen && (this.match.combatEnabled || this.config.mode === 'training' || this.match.phase === 'roundEnd');
+    const canAct = !frozen && (this.match.combatEnabled || this.config.mode !== 'bots' || this.match.phase === 'roundEnd');
     if (canAct) this.handleActions(p, dt);
     this.recoverRecoil(p, dt);
     this.autoPickups(p);
@@ -697,6 +723,7 @@ export class World {
 
   applyDamage(victim: Player, attacker: Player | null, base: number, head: boolean, explosion: boolean, weaponLabel: string, pos?: V3) {
     if (!victim.alive || base <= 0) return;
+    if (this.config.mode === 'skill') return; // Surf Skill: sem dano
     if (attacker && attacker !== victim && attacker.team === victim.team) return; // sem fogo amigo
     if (this.config.mode !== 'training' && !this.match.combatEnabled) return;
     const res = computeDamage({

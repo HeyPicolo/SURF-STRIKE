@@ -4,6 +4,8 @@ import type { Player } from '../../../shared/sim/player';
 import { WEAPONS, NADES, NadeKind, SLOT_NADES, SLOT_KEYS, reloadDuration, ITEMS } from '../../../shared/config/weapons';
 import { CLASSES } from '../../../shared/config/classes';
 import { forwardFromAngles } from '../../../shared/math/vec3';
+import { SkillMapMeta, TIER_COLORS, formatTicks, formatDiff } from '../../../shared/config/skill';
+import type { SkillEvent } from '../../../shared/sim/skill';
 
 const $ = (id: string) => document.getElementById(id)!;
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
@@ -26,6 +28,40 @@ export class Hud {
   }
 
   show(on: boolean) { this.root.classList.toggle('hidden', !on); }
+
+  // ------------------------------------------------------------------ Surf Skill
+  private splitTimer = 0;
+  skillMode(on: boolean) { this.root.classList.toggle('mode-skill', on); if (!on) this.splitTimer = 0; }
+
+  /** Mostra o último split (diferença verde/vermelha contra o PB, como no CS2). */
+  skillSplit(e: Extract<SkillEvent, { t: 'skillSplit' }>, stageCount: number) {
+    const cls = (d: number | null) => (d === null ? 'even' : d < 0 ? 'better' : d > 0 ? 'worse' : 'even');
+    const last = e.stage === stageCount - 1;
+    const label = last ? 'CHEGADA' : `STAGE ${e.stage + 1} CONCLUÍDO`;
+    const diff = e.diffTotal !== null ? ` <span class="${cls(e.diffTotal)}">${formatDiff(e.diffTotal)}</span>` : '';
+    const sd = e.diffStage !== null ? ` <span class="${cls(e.diffStage)}">(${formatDiff(e.diffStage)})</span>` : '';
+    this.set('skill-split', 'html', `<span class="lbl">${label}${e.practice ? ' · PRÁTICA' : ''}</span>${formatTicks(e.total)}${diff}<br><span style="font-size:14px">stage ${formatTicks(e.stageTicks)}${sd}</span>`);
+    this.set('skill-split', 'class', 'on');
+    this.splitTimer = last ? 6 : 3.5;
+  }
+
+  skillUpdate(w: World, meta: SkillMapMeta, dt: number, help: string, menu: string | null) {
+    const sk = w.skill!;
+    this.set('skill-top', 'style', TIER_COLORS[meta.tier], '--skill-c');
+    this.set('skill-map', 'text', `${meta.name} · TIER ${meta.tier}`);
+    this.set('skill-stage', 'text', `STAGE ${sk.stage + 1}/${sk.stageCount} · ${sk.stageDef.name}`);
+    this.set('skill-timer', 'text', formatTicks(sk.ticks));
+    this.set('skill-timer', 'class', sk.state === 'zone' ? 'zone' : sk.state === 'finished' ? 'done' : '');
+    const sub = sk.state === 'zone'
+      ? (sk.stage === 0 ? 'Saia da zona verde para começar' : 'Saia da zona verde para começar o stage')
+      : sk.state === 'finished' ? 'Percurso concluído' : `stage ${formatTicks(sk.stageTicks)}${sk.falls ? ` · ${sk.falls} queda${sk.falls > 1 ? 's' : ''}` : ''}`;
+    this.set('skill-sub', 'text', sub);
+    this.set('skill-tag', 'class', sk.practice ? 'on' : '');
+    if (this.splitTimer > 0) { this.splitTimer -= dt; if (this.splitTimer <= 0) this.set('skill-split', 'class', ''); }
+    this.set('skill-help', 'html', help);
+    this.set('skill-menu', 'html', menu ?? '');
+    this.set('skill-menu', 'class', menu ? 'on' : '');
+  }
 
   update(w: World, viewed: Player, opts: { showSpeed: boolean; training: boolean; dt: number; spectating: boolean; nearPrompt: string | null }) {
     const p = viewed;
@@ -196,6 +232,13 @@ export class Hud {
     box.appendChild(el);
     while (box.children.length > 4) box.firstChild!.remove();
     setTimeout(() => el.remove(), 1900);
+  }
+
+  /** Limpa avisos da partida anterior (banner, toasts, split). */
+  clearTransient() {
+    this.bannerTimer = 0; $('banner').className = '';
+    $('toasts').innerHTML = '';
+    this.splitTimer = 0; this.set('skill-split', 'class', '');
   }
 
   banner(title: string, sub = '', team: string = '', seconds = 2.5) {

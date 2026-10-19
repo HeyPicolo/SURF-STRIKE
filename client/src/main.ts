@@ -8,6 +8,11 @@ import { Sfx } from './audio/sfx';
 import { buildClouds } from '../../shared/maps/clouds';
 import type { ClassId } from '../../shared/config/classes';
 import type { World } from '../../shared/sim/world';
+import type { SkillEvent } from '../../shared/sim/skill';
+import { getSkillMap } from '../../shared/maps/skillMaps';
+import { skillMapMeta } from '../../shared/config/skill';
+import { addAttempt, applyFinish, mapVersion, MapRecords } from '../../shared/sim/records';
+import { LocalRecordStore } from './skill/localStore';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const settings = loadSettings();
@@ -32,6 +37,51 @@ const input = new Input(canvas, settings);
 const map = buildClouds();
 let game: Game;
 
+// ---- Surf Skill: recordes locais (a lógica fica em shared/sim/records.ts) ----
+const records = new LocalRecordStore();
+let skillMapId: string | null = null;
+function skillRecords(id: string): MapRecords {
+  const m = getSkillMap(id);
+  return records.load(id, mapVersion(m), m.skill!.stages.length);
+}
+function startSkill(id: string) {
+  sfx.ensure();
+  menu.hideAll();
+  const m = getSkillMap(id);
+  const rec = skillRecords(id);
+  skillMapId = id;
+  game.skillMeta = skillMapMeta(id);
+  game.start({
+    mode: 'skill', teamSize: 1, difficulty: 'easy',
+    local: { name: settings.playerName, team: 'blue', classId: 'runner' },
+    seed: 1, autoBhop: settings.autoBhop,
+    skillPb: rec.pb ? { ticks: rec.pb.ticks, splits: rec.pb.splits, stages: rec.pb.stages } : null,
+  }, m);
+  resume();
+}
+function onSkillEvent(w: World, e: SkillEvent) {
+  if (!skillMapId) return;
+  const id = skillMapId;
+  if (e.t === 'skillStart' && !e.practice) records.save(addAttempt(skillRecords(id)));
+  if (e.t !== 'skillFinish') return;
+  const before = skillRecords(id);
+  let res = null;
+  let rec = before;
+  if (!e.practice) {
+    res = applyFinish(before, { ticks: e.total, splits: e.splits, stages: e.stages, name: settings.playerName, date: new Date().toISOString() });
+    rec = res.rec;
+    records.save(rec);
+    if (rec.pb) w.skill!.pb = { ticks: rec.pb.ticks, splits: rec.pb.splits, stages: rec.pb.stages };
+    game.skillRecordFeedback(res.newPb, res.rank);
+  }
+  // tela de fim depois de um instante (dá tempo de ver a chegada)
+  setTimeout(() => {
+    if (game.world !== w) return;
+    game.paused = true; input.enabled = false; input.unlock();
+    menu.showSkillFinish(skillMapMeta(id), e, before.pb, res, rec);
+  }, 1800);
+}
+
 const menu = new Menu(settings, {
   startBots: (s: MatchSetup) => startGame('bots', s.classId, s),
   startTraining: (cls: ClassId) => startGame('training', cls),
@@ -39,16 +89,21 @@ const menu = new Menu(settings, {
   quitToMenu: () => { game.stop(); input.enabled = false; input.unlock(); menu.showMain(); },
   settingsChanged: () => game.applySettings(),
   click: () => { sfx.ensure(); sfx.uiClick(); },
+  startSkill: (id: string) => startSkill(id),
+  skillRecords: (id: string) => skillRecords(id),
+  skillRestart: () => { game.skillRestart(); resume(); },
 });
 
 game = new Game(renderer, input, hud, sfx, settings, map, {
   onPause: () => pause(),
   onMatchEnd: (w: World) => { input.enabled = false; input.unlock(); menu.showResults(w); },
+  onSkillEvent: (w: World, e: SkillEvent) => onSkillEvent(w, e),
 });
 
 function startGame(mode: 'bots' | 'training', classId: ClassId, s?: MatchSetup) {
   sfx.ensure();
   menu.hideAll();
+  skillMapId = null;
   game.start({
     mode,
     teamSize: s?.teamSize ?? 1,
@@ -94,7 +149,7 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 // expose for automated browser tests / debugging
-(window as unknown as { __surf: unknown }).__surf = { game, input, menu, settings };
+(window as unknown as { __surf: unknown }).__surf = { game, input, menu, settings, records, skillRecords };
 
 let last = performance.now();
 function loop(now: number) {

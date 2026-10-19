@@ -20,9 +20,14 @@ import type { Settings } from './settings';
 import { keyLabel } from './settings';
 import { Hud, esc } from '../ui/hud';
 import { Sfx } from '../audio/sfx';
+import type { SkillEvent } from '../../../shared/sim/skill';
+import { RouteDriver } from '../../../shared/bots/routeDriver';
+import { SkillMapMeta, formatTicks } from '../../../shared/config/skill';
+
+interface MapMeshes { world: GpuMesh; glass: GpuMesh; zones: GpuMesh }
 
 interface Assets {
-  world: GpuMesh; glass: GpuMesh;
+  maps: Map<string, MapMeshes>;
   chars: Map<string, CharacterMeshes>;
   weapons: Map<WeaponId, GpuMesh>;
   pickups: Map<PickupKind, GpuMesh>;
@@ -35,6 +40,8 @@ interface Assets {
 export interface GameCallbacks {
   onPause: () => void;
   onMatchEnd: (w: World) => void;
+  /** Surf Skill: eventos do cronômetro (recordes ficam por conta de quem criou o jogo) */
+  onSkillEvent?: (w: World, e: SkillEvent) => void;
 }
 
 export class Game {
@@ -64,15 +71,39 @@ export class Game {
   private tmpM = mat4(); private tmpM2 = mat4(); private tmpM3 = mat4();
   private scoreboardHeld = false;
   private lastEnded = false;
+  /** mapa da partida atual (o do construtor é o do menu) */
+  private activeMap: MapDef;
+  // ---- Surf Skill ----
+  skillMeta: SkillMapMeta | null = null;
+  skillMenuOpen = false;
+  private pendingGoto: number | null = null;
+  private pendingRestart = false;
+  /** percurso de referência dirigindo o jogador (testes automáticos / depuração) */
+  autopilot = false;
+  private apDriver: RouteDriver | null = null;
+  private apStage = -1;
 
   constructor(
     public r: Renderer, public input: Input, public hud: Hud, public sfx: Sfx,
     public settings: Settings, public map: MapDef, public cb: GameCallbacks,
   ) {
+    this.activeMap = map;
+    input.onKey = (code) => {
+      // menu de stages aberto: 1–9 escolhe o stage
+      if (!this.skillMenuOpen || !this.world?.skill) return false;
+      const m = /^(?:Digit|Numpad)(\d)$/.exec(code);
+      if (m) {
+        const n = Number(m[1]) - 1;
+        if (n >= 0 && n < this.world.skill.stageCount) { this.pendingGoto = n; this.skillMenuOpen = false; return true; }
+      }
+      if (code === this.settings.keys.skillMenu || code === 'Escape') { this.skillMenuOpen = false; return true; }
+      return false;
+    };
     input.onAction = (a) => {
       if (!this.world || this.paused) return;
       const w = this.world, p = w.local;
       if (a === 'inspect') this.startInspect();
+      if (w.config.mode === 'skill' && a === 'skillMenu') this.skillMenuOpen = !this.skillMenuOpen;
       if (w.config.mode === 'training') {
         if (a === 'resetPos') { w.resetPosition(p); this.syncView(); this.hud.toast('Posição reiniciada'); }
         if (a === 'fly') { p.fly = !p.fly; this.hud.toast(p.fly ? 'Voo ativado' : 'Voo desativado'); }
@@ -86,16 +117,26 @@ export class Game {
   loadAssets() {
     if (this.assets) return;
     const r = this.r;
-    const wm = buildWorldMesh(this.map);
     const weapons = new Map<WeaponId, GpuMesh>();
     for (const id of Object.keys(WEAPONS) as WeaponId[]) weapons.set(id, buildWeapon(r, id));
     const pickups = new Map<PickupKind, GpuMesh>();
     for (const k of ['ammo', 'medkit', 'armor', 'nade_he', 'nade_smoke', 'nade_impulse', 'shield', 'speed'] as PickupKind[]) pickups.set(k, buildPickup(r, k));
     const handMb = buildCube(r, 0x262b38, 0);
     this.assets = {
-      world: r.createMesh(wm.opaque), glass: r.createMesh(wm.glass), chars: new Map(), weapons, pickups,
+      maps: new Map(), chars: new Map(), weapons, pickups,
       grenade: buildGrenade(r), flash: buildCube(r, 0xffe3a0, 1), hand: handMb, butterfly: buildButterflyParts(r),
     };
+  }
+
+  /** Malhas estáticas de um mapa (criadas uma vez por mapa). */
+  private mapMeshes(map: MapDef): MapMeshes {
+    let m = this.assets!.maps.get(map.name);
+    if (!m) {
+      const wm = buildWorldMesh(map);
+      m = { world: this.r.createMesh(wm.opaque), glass: this.r.createMesh(wm.glass), zones: this.r.createMesh(wm.zones) };
+      this.assets!.maps.set(map.name, m);
+    }
+    return m;
   }
 
   private charMeshes(team: Team, cls: ClassId): CharacterMeshes {
@@ -105,9 +146,15 @@ export class Game {
     return c;
   }
 
-  start(cfg: WorldConfig) {
+  start(cfg: WorldConfig, map: MapDef = this.map) {
     this.loadAssets();
-    this.world = new World(this.map, cfg);
+    this.activeMap = map;
+    this.mapMeshes(map);
+    this.world = new World(map, cfg);
+    this.skillMenuOpen = false; this.pendingGoto = null; this.pendingRestart = false;
+    if (cfg.mode !== 'skill') this.skillMeta = null;
+    this.hud.skillMode(cfg.mode === 'skill');
+    this.hud.clearTransient();
     this.acc = 0;
     this.fx.clear();
     this.applySettings();
@@ -121,6 +168,8 @@ export class Game {
 
   stop() {
     this.world = null;
+    this.hud.skillMode(false);
+    this.skillMenuOpen = false;
     this.hud.show(false);
     this.clearLabels();
     this.sfx.setWind(0);
@@ -192,7 +241,22 @@ export class Game {
       inp.drop = i.consume('drop');
       inp.slot = i.consume('slot1') ? 0 : i.consume('slot2') ? 1 : i.consume('slot3') ? 2 : i.consume('slot4') ? SLOT_NADES : null;
     } else { inp.reload = inp.use = inp.ability = inp.drop = false; inp.slot = null; }
+    const sk = inp.skill;
+    if (first && w.config.mode === 'skill') {
+      sk.restartMap = i.consume('skillRestart') || this.pendingRestart;
+      sk.restartStage = i.consume('skillStage');
+      sk.saveLoc = i.consume('skillSave');
+      sk.loadLoc = i.consume('skillLoad');
+      sk.gotoStage = this.pendingGoto;
+      this.pendingRestart = false; this.pendingGoto = null;
+    } else { sk.restartMap = sk.restartStage = sk.saveLoc = sk.loadLoc = false; sk.gotoStage = null; }
     p.autoBhop = this.settings.autoBhop;
+    if (this.autopilot && w.skill) {
+      if (!this.apDriver || this.apStage !== w.skill.stage) { this.apDriver = new RouteDriver(w.skill.stageDef.route); this.apStage = w.skill.stage; }
+      this.apDriver.drive(p.phys, inp.cmd, SIM_DT);
+      inp.cmd.walk = false; inp.cmd.crouch = false;
+      this.input.yaw = inp.cmd.yaw; this.input.pitch = inp.cmd.pitch = 0;
+    }
   }
 
   // ------------------------------------------------------------------ events
@@ -302,6 +366,35 @@ export class Game {
           break;
         }
         case 'message': this.hud.toast(e.text); break;
+        case 'skillStart': this.sfx.skillStart(); this.cb.onSkillEvent?.(w, e); break;
+        case 'skillSplit': {
+          const n = w.skill!.stageCount;
+          this.hud.skillSplit(e, n);
+          if (e.stage < n - 1) {
+            this.sfx.skillSplit(e.diffTotal === null ? null : e.diffTotal <= 0);
+            this.syncView();
+            this.fx.emit(me.phys.pos.x, me.phys.pos.y + 40, me.phys.pos.z, 26, { color: 0x3ddc84, size: 18, speed: 220, max: 0.6, add: true });
+          }
+          this.cb.onSkillEvent?.(w, e);
+          break;
+        }
+        case 'skillReset':
+          this.apDriver = null;
+          this.syncView();
+          this.sfx.skillReset(e.reason === 'fall');
+          if (e.reason === 'fall') this.hud.toast(`CAIU — DE VOLTA AO STAGE ${e.stage + 1}`, '#ff9f5a');
+          else if (e.reason === 'map') this.hud.toast('MAPA REINICIADO', '#9cc2ff');
+          else if (e.reason === 'goto') this.hud.toast(`STAGE ${e.stage + 1} · PRÁTICA`, '#ffd23c');
+          else if (e.reason === 'loadloc') this.hud.toast('POSIÇÃO CARREGADA · PRÁTICA', '#ffd23c');
+          this.cb.onSkillEvent?.(w, e);
+          break;
+        case 'skillFinish':
+          this.sfx.skillFinish();
+          this.hud.banner(e.practice ? 'CONCLUÍDO (PRÁTICA)' : 'CONCLUÍDO', formatTicks(e.total), '', 3);
+          this.cb.onSkillEvent?.(w, e);
+          break;
+        case 'skillSave': this.hud.toast('POSIÇÃO SALVA · PRÁTICA', '#ffd23c'); break;
+        case 'skillDenied': this.hud.toast(e.text, '#ff9f5a'); break;
         case 'match': this.onMatch(e.tr);
       }
     }
@@ -438,7 +531,8 @@ export class Game {
     r.beginFrame({ x: vpos.x, y: vpos.y + this.eyeSmooth + bob + land, z: vpos.z, yaw: camYaw, pitch: camPitch, roll: this.settings.viewBob ? this.slideRoll : 0, fovY }, this.time);
 
     // world
-    r.drawMesh(A.world, null, { grid: 1 });
+    const MM = this.mapMeshes(w.map);
+    r.drawMesh(MM.world, null, { grid: 1 });
 
     // pickups
     const t = this.time;
@@ -513,7 +607,8 @@ export class Game {
     this.updateLabels(w, viewer, alpha);
 
     this.fx.draw(r);
-    r.drawMesh(A.glass, null, { alpha: 0.28, emissive: 0.4 });
+    r.drawMesh(MM.glass, null, { alpha: 0.28, emissive: 0.4 });
+    if (w.skill) r.drawMesh(MM.zones, null, { alpha: 0.16 + 0.05 * Math.sin(this.time * 3), emissive: 1 });
     r.flushEffects();
 
     // first-person weapon (viewmodel)
@@ -525,13 +620,37 @@ export class Game {
       const k = w.nearestWeaponPickup(me);
       if (k && k.weapon) prompt = `<kbd>${keyLabel(this.settings.keys.use)}</kbd>Pegar ${esc(WEAPONS[k.weapon].name)}`;
     }
-    this.hud.update(w, viewer, { showSpeed: this.settings.showSpeed || w.config.mode === 'training', training: w.config.mode === 'training', dt, spectating: !isMe, nearPrompt: prompt });
-    this.hud.scoreboard(w, this.input.held('scoreboard') || w.match.phase === 'matchEnd', me.id);
+    this.hud.update(w, viewer, { showSpeed: this.settings.showSpeed || w.config.mode !== 'bots', training: w.config.mode === 'training', dt, spectating: !isMe, nearPrompt: prompt });
+    if (w.skill && this.skillMeta) this.hud.skillUpdate(w, this.skillMeta, dt, this.skillHelp(), this.skillMenuOpen ? this.skillMenuHtml() : null);
+    else this.hud.scoreboard(w, this.input.held('scoreboard') || w.match.phase === 'matchEnd', me.id);
     if (w.config.mode === 'training') {
       const K = (a: keyof Settings['keys']) => `<span class="kbd">${keyLabel(this.settings.keys[a])}</span>`;
       this.hud.trainingHelp(true, `${K('resetPos')} reiniciar posição &nbsp; ${K('fly')} voar ${me.fly ? '(ligado)' : ''}<br>${K('saveCp')} salvar checkpoint &nbsp; ${K('loadCp')} carregar<br>Pickups reaparecem em ${ITEMS.respawnTrainingSeconds}s. Alvos ressurgem em 3s.`);
     } else this.hud.trainingHelp(false, '');
     this.sfx.setWind(this.paused ? 0 : Math.hypot(viewer.phys.vel.x, viewer.phys.vel.y * 0.5, viewer.phys.vel.z));
+  }
+
+  private skillHelp(): string {
+    const K = (a: keyof Settings['keys']) => `<span class="kbd">${keyLabel(this.settings.keys[a])}</span>`;
+    return `${K('skillRestart')} reiniciar mapa &nbsp; ${K('skillStage')} reiniciar stage<br>${K('skillMenu')} menu de stages<br>`
+      + `${K('skillSave')} salvar posição &nbsp; ${K('skillLoad')} voltar a ela <span style="opacity:.7">(prática)</span>`;
+  }
+
+  private skillMenuHtml(): string {
+    const sk = this.world!.skill!;
+    const locked = sk.state === 'running' && !sk.practice;
+    const rows = sk.course.stages.map((st, i) => `<div class="row"><span class="kbd">${i + 1}</span><span>Stage ${i + 1} · ${esc(st.name)}</span></div>`).join('');
+    return `<h3>Stages</h3>${rows}<div class="muted">${locked
+      ? 'Ir para um stage só vale fora de uma corrida cronometrada. Reinicie o mapa ou use a prática.'
+      : 'Escolha um número. Começar de um stage que não é o 1 conta como prática (sem recorde).'}</div>`;
+  }
+
+  /** Reinicia o mapa no próximo tick (tela de fim → Reiniciar). */
+  skillRestart() { this.pendingRestart = true; }
+
+  /** Avisos de recorde vindos de quem guarda os recordes. */
+  skillRecordFeedback(newPb: boolean, rank: number | null) {
+    if (newPb) { this.sfx.skillRecord(); this.hud.banner('NOVO RECORDE', rank ? `#${rank} no ranking local` : '', '', 3.5); }
   }
 
   private groundRing(x: number, y: number, z: number, rad: number, color: number, a: number) {
@@ -738,13 +857,14 @@ export class Game {
     const x = Math.sin(t) * 8200, z = Math.cos(t) * 9000;
     const yaw = Math.atan2(x, z);
     this.r.beginFrame({ x, y: 3900, z, yaw, pitch: -0.3, roll: 0, fovY: 0.95 }, this.time);
-    this.r.drawMesh(this.assets!.world, null, { grid: 1 });
+    const MM = this.mapMeshes(this.map);
+    this.r.drawMesh(MM.world, null, { grid: 1 });
     for (const tg of this.map.triggers) {
       if (tg.kind !== 'teleport') continue;
       const cx = (tg.min.x + tg.max.x) / 2, cz = (tg.min.z + tg.max.z) / 2;
       this.r.ribbon(cx, tg.min.y, cz, cx, tg.min.y + 140, cz, 18, tg.color, 0.35, true);
     }
-    this.r.drawMesh(this.assets!.glass, null, { alpha: 0.28, emissive: 0.4 });
+    this.r.drawMesh(MM.glass, null, { alpha: 0.28, emissive: 0.4 });
     this.r.flushEffects();
   }
 }

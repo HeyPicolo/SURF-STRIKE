@@ -177,6 +177,41 @@ await page.keyboard.down('Tab'); await wait(200);
 await page.screenshot({ path: join(shots, '07-scoreboard.png') });
 await page.keyboard.up('Tab');
 
+// --- Surf Skill
+await S(() => window.__surf.menu.act.quitToMenu());
+await wait(300);
+await page.click('button[data-go=skill]');
+await wait(200);
+check('15. menu do Surf Skill mostra os 3 mapas com tiers', await S(() => document.querySelectorAll('.skill-card').length === 3 && document.querySelector('.skill-card .tier').textContent.includes('TIER 1')));
+await page.screenshot({ path: join(shots, '09-skill-menu.png') });
+if (await page.isVisible('#skname')) await page.fill('#skname', 'Tester');
+await page.click('[data-skill=sky_steps]');
+await wait(800);
+await S(() => { window.__surf.input.enabled = true; window.__surf.game.paused = false; document.getElementById('panel').classList.add('hidden'); });
+const sk0 = await S(() => { const w = window.__surf.game.world; return { mode: w.config.mode, state: w.skill.state, ticks: w.skill.ticks, hud: document.getElementById('hud').classList.contains('mode-skill'), knifeOnly: w.local.weapons.filter(Boolean).map((x) => x.id).join(','), timer: document.getElementById('skill-timer').textContent, vitals: getComputedStyle(document.getElementById('vitals')).display }; });
+check('16. Surf Skill abre no mapa 1, só com a faca e HUD próprio', sk0.mode === 'skill' && sk0.state === 'zone' && sk0.ticks === 0 && sk0.hud && sk0.knifeOnly === 'knife' && sk0.timer === '00:00.00' && sk0.vitals === 'none', JSON.stringify(sk0));
+await page.keyboard.down('KeyW'); await waitSim(1.4); await page.keyboard.up('KeyW'); await waitSim(0.3);
+const sk1 = await S(() => { const w = window.__surf.game.world; return { state: w.skill.state, ticks: w.skill.ticks, timer: document.getElementById('skill-timer').textContent }; });
+check('17. sair da zona de início liga o cronômetro', sk1.state === 'running' && sk1.ticks > 0 && sk1.timer !== '00:00.00', JSON.stringify(sk1));
+await page.screenshot({ path: join(shots, '10-skill-running.png') });
+// queda: joga o jogador na lava do stage 1
+const before = await S(() => window.__surf.game.world.skill.ticks);
+await S(() => { const w = window.__surf.game.world, st = w.skill.stageDef; w.local.phys.pos.set(st.spawn.pos.x, st.fallY + 50, -2000); w.local.phys.vel.set(0, -500, 0); });
+await waitSim(0.2);
+const sk2 = await S(() => { const w = window.__surf.game.world, p = w.local, sp = w.skill.stageDef.spawn.pos; return { state: w.skill.state, ticks: w.skill.ticks, stage: w.skill.stage, dist: Math.hypot(p.phys.pos.x - sp.x, p.phys.pos.z - sp.z), falls: w.skill.falls }; });
+check('18. cair volta ao início do stage e o tempo continua', sk2.state === 'running' && sk2.ticks > before && sk2.stage === 0 && sk2.dist < 60 && sk2.falls === 1, JSON.stringify(sk2));
+await page.keyboard.press('KeyR'); await waitSim(0.1);
+const sk3 = await S(() => { const w = window.__surf.game.world; return { state: w.skill.state, ticks: w.skill.ticks, timer: document.getElementById('skill-timer').textContent }; });
+check('19. R reinicia o mapa e zera o cronômetro', sk3.state === 'zone' && sk3.ticks === 0 && sk3.timer === '00:00.00', JSON.stringify(sk3));
+// percurso de referência completa o stage 1
+await S(() => { window.__surf.game.autopilot = true; });
+for (let i = 0; i < 400; i++) { await waitSim(0.25); if (await S(() => window.__surf.game.world.skill.stage >= 1)) break; }
+await waitSim(0.2);
+const sk4 = await S(() => { const w = window.__surf.game.world; return { stage: w.skill.stage, split: w.skill.lastSplit && w.skill.lastSplit.total, splitHud: document.getElementById('skill-split').className, splitText: document.getElementById('skill-split').textContent, stageHud: document.getElementById('skill-stage').textContent }; });
+await page.screenshot({ path: join(shots, '11-skill-split.png') });
+await S(() => { window.__surf.game.autopilot = false; });
+check('20. completa o stage 1 pelo percurso de referência e mostra o split', sk4.stage === 1 && sk4.split > 0 && sk4.splitHud.includes('on') && sk4.splitText.includes('STAGE 1') && sk4.stageHud.startsWith('STAGE 2/5'), JSON.stringify(sk4));
+
 const fps = await S(() => new Promise((res) => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 2000) requestAnimationFrame(f); else res(n / 2); }; requestAnimationFrame(f); }));
 console.log(`fps (software renderer): ${fps}`);
 check('sem erros no console', errors.length === 0, errors.slice(0, 5).join(' | '));

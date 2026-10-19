@@ -5,12 +5,14 @@ import { V3, yawFromDir, angleDiff } from '../math/vec3';
 import type { MoveCmd } from '../physics/movement';
 import type { PhysState } from '../physics/movement';
 import type { NavPoint } from '../maps/types';
+import { PHYSICS } from '../config/physics';
 
 export interface SteerResult { reached: boolean; }
 
 const tmp = new V3();
 
-export function steerToward(st: PhysState, target: NavPoint, prev: V3 | null, cmd: MoveCmd, dt: number, assistDegPerSec: number): SteerResult {
+/** idealStrafe: ângulo de strafe ótimo no ar (percursos de referência do Surf Skill). Os bots usam o antigo. */
+export function steerToward(st: PhysState, target: NavPoint, prev: V3 | null, cmd: MoveCmd, dt: number, assistDegPerSec: number, idealStrafe = false): SteerResult {
   const dx = target.p.x - st.pos.x, dz = target.p.z - st.pos.z;
   const dist = Math.hypot(dx, dz);
   const r = target.r ?? 80;
@@ -62,8 +64,10 @@ export function steerToward(st: PhysState, target: NavPoint, prev: V3 | null, cm
     // air strafe: look along velocity, strafe toward the turn
     const turn = angleDiff(velYaw, desiredYaw);
     if (Math.abs(turn) > 0.05) {
+      // strafe ideal: a direção desejada fica um pouco menos de 90° da velocidade (ganha e vira)
       cmd.side = turn > 0 ? -1 : 1; // positive yaw = left turn → hold A
-      cmd.yaw = velYaw + (turn > 0 ? 1 : -1) * 0.12;
+      const lead = idealStrafe ? -(Math.PI / 2 - Math.acos(Math.min(1, PHYSICS.airWishSpeedCap * 0.5 / Math.max(hs, 1)))) : 0.12;
+      cmd.yaw = velYaw + (turn > 0 ? 1 : -1) * lead;
     } else {
       cmd.yaw = velYaw;
     }

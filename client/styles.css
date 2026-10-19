@@ -217,3 +217,47 @@ button { font: inherit; }
   #vitals { width: 260px; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ================= SURF SKILL ================= */
+#skill-hud { display: none; }
+#hud.mode-skill #skill-hud { display: block; }
+#hud.mode-skill #vitals, #hud.mode-skill #ability, #hud.mode-skill #weapon-panel, #hud.mode-skill #topbar,
+#hud.mode-skill #killfeed, #hud.mode-skill #scoreboard, #hud.mode-skill #damage-dirs, #hud.mode-skill #damage-vignette { display: none !important; }
+#skill-top { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); text-align: center; background: var(--panel); padding: 8px 26px 10px; border-bottom: 2px solid var(--skill-c, var(--mint)); min-width: 260px; }
+#skill-map { font-family: var(--display); font-size: 11px; letter-spacing: .14em; opacity: .7; }
+#skill-stage { font-family: var(--display); font-weight: 700; font-size: 15px; letter-spacing: .08em; color: var(--skill-c, var(--mint)); }
+#skill-timer { font-family: var(--display); font-weight: 700; font-size: 46px; line-height: 1.05; font-variant-numeric: tabular-nums; text-shadow: 0 3px 14px rgba(0, 20, 60, .45); }
+#skill-timer.zone { opacity: .55; }
+#skill-timer.done { color: #ffd23c; }
+#skill-sub { font-size: 12px; opacity: .8; font-variant-numeric: tabular-nums; min-height: 15px; }
+#skill-split { position: absolute; top: 150px; left: 50%; transform: translateX(-50%); font-family: var(--display); font-weight: 700; font-size: 20px; text-align: center; opacity: 0; transition: opacity .3s; font-variant-numeric: tabular-nums; text-shadow: 0 2px 8px rgba(0, 20, 60, .6); }
+#skill-split.on { opacity: 1; }
+#skill-split .lbl { font-size: 12px; opacity: .75; letter-spacing: .1em; display: block; }
+.better { color: #4dff8f; } .worse { color: #ff5b6b; } .even { color: #e8eefc; }
+#skill-tag { position: absolute; top: 22px; right: 22px; font-family: var(--display); font-weight: 700; font-size: 16px; padding: 4px 14px; background: #ffd23c; color: var(--ink); transform: skewX(var(--slant)); display: none; }
+#skill-tag.on { display: block; }
+#skill-help { position: absolute; left: 22px; top: 18px; background: var(--panel); padding: 10px 14px; font-size: 12px; line-height: 1.75; max-width: 300px; }
+#skill-menu { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(10, 22, 48, .9); padding: 16px 22px; min-width: 320px; display: none; }
+#skill-menu.on { display: block; }
+#skill-menu h3 { margin: 0 0 10px; font-family: var(--display); font-size: 18px; }
+#skill-menu .row { display: flex; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
+#skill-menu .row .kbd { min-width: 22px; text-align: center; }
+#skill-menu .muted { font-size: 12px; opacity: .7; margin-top: 10px; }
+.menu-list button.skill-btn { background: linear-gradient(90deg, rgba(61, 220, 132, .35), rgba(255, 210, 60, .25), rgba(255, 71, 87, .3)); }
+.skill-maps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 12px 0; }
+.skill-card { background: rgba(255, 255, 255, .06); padding: 14px 16px; border-top: 3px solid var(--c); display: flex; flex-direction: column; gap: 6px; }
+.skill-card h3 { margin: 0; font-family: var(--display); font-size: 22px; }
+.skill-card .tier { font-family: var(--display); font-weight: 700; font-size: 12px; color: var(--c); letter-spacing: .08em; }
+.skill-card p { margin: 0; font-size: 13px; opacity: .85; }
+.skill-card .stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.skill-card .stats b { font-family: var(--display); }
+.skill-card table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.skill-card td { padding: 2px 4px; border-top: 1px solid var(--line); }
+.skill-card .btn { margin-top: auto; align-self: flex-start; }
+.skill-name { display: flex; gap: 10px; align-items: center; margin: 8px 0 4px; }
+.skill-name input { font: inherit; padding: 8px 10px; background: rgba(255, 255, 255, .1); color: #fff; border: 1px solid var(--line); min-width: 200px; }
+table.skill-res { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; margin: 10px 0; }
+table.skill-res td, table.skill-res th { padding: 6px 8px; border-top: 1px solid var(--line); text-align: left; }
+table.skill-res th { font-weight: 500; font-size: 12px; opacity: .6; }
+.skill-total { font-family: var(--display); font-size: 48px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.skill-record { font-family: var(--display); font-weight: 700; color: #ffd23c; font-size: 22px; letter-spacing: .06em; }

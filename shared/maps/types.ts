@@ -56,10 +56,38 @@ export interface NavPoint {
   mode: 'walk' | 'surf' | 'air';
   /** radius to consider reached */
   r?: number;
+  /** Segurar o pulo (bhop) enquanto vai até este ponto (percursos de referência do Surf Skill). */
+  jump?: boolean;
 }
 export interface BotRoute { name: string; points: NavPoint[]; }
 
 export interface DuelArena { center: V3; a: SpawnPoint; b: SpawnPoint; }
+
+/** Um stage do Surf Skill: zona de início, percurso e zona de fim. */
+export interface SkillStageDef {
+  index: number;
+  name: string;
+  spawn: SpawnPoint;
+  /** Sair desta zona inicia o cronômetro (stage 1) / o stage. Dentro dela: prespeed cap e sem pulo. */
+  startZone: TriggerVolume;
+  /** Fim do stage: leva ao início do próximo (ou é a chegada, no último stage). */
+  endZone: TriggerVolume;
+  /** "Lava": tocar volta ao início do stage atual com velocidade zero. */
+  fall: TriggerVolume[];
+  /** Segurança: abaixo desta altura também conta como queda. */
+  fallY: number;
+  color: number;
+  /** Percurso de referência (testes, e2e): pontos para o steer.ts atravessar o stage. */
+  route: NavPoint[];
+  /** Dados de projeto do stage (documentação e testes de dificuldade). */
+  design: { minHalfWidth: number; maxNormalY: number; minNormalY: number; ramps: number; bhop: boolean; minSpeed: number; maxGap: number };
+}
+
+export interface SkillCourseDef {
+  id: string;
+  tier: 1 | 2 | 3;
+  stages: SkillStageDef[];
+}
 
 export interface MapDef {
   name: string;
@@ -79,4 +107,6 @@ export interface MapDef {
   fallY: number;
   trainingSpawn: SpawnPoint;
   trainingTargets: SpawnPoint[];
+  /** Presente nos mapas do Surf Skill. */
+  skill?: SkillCourseDef;
 }

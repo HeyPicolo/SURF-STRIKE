@@ -7,6 +7,9 @@ import type { World } from '../../../shared/sim/world';
 import type { Team } from '../../../shared/maps/types';
 import { Settings, saveSettings, ACTION_LABELS, Action, keyLabel, DEFAULT_KEYS } from '../game/settings';
 import { esc } from './hud';
+import { SKILL_MAPS, SkillMapMeta, TIER_COLORS, TIER_LABELS, SKILL, formatTicks, formatDiff } from '../../../shared/config/skill';
+import { MapRecords, FinishResult, sumOfBest } from '../../../shared/sim/records';
+import type { SkillEvent } from '../../../shared/sim/skill';
 
 const $ = (id: string) => document.getElementById(id)!;
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
@@ -20,6 +23,9 @@ export interface MenuActions {
   quitToMenu(): void;
   settingsChanged(): void;
   click(): void;
+  startSkill(mapId: string): void;
+  skillRecords(mapId: string): MapRecords;
+  skillRestart(): void;
 }
 
 export class Menu {
@@ -37,6 +43,7 @@ export class Menu {
       const go = b.dataset.go!;
       if (go === 'play') this.showPlay();
       else if (go === 'training') this.showTraining();
+      else if (go === 'skill') this.showSkill();
       else if (go === 'create' || go === 'join') this.showMultiplayer(go);
       else if (go === 'classes') this.showClasses();
       else if (go === 'settings') this.showSettings();
@@ -132,6 +139,73 @@ export class Menu {
     $('go').onclick = () => { this.act.click(); this.act.startTraining(this.setup.classId); };
   }
 
+  // ------------------------------------------------------------------ Surf Skill
+  showSkill() {
+    const s = this.settings;
+    const t = (ticks: number | null | undefined) => (ticks === null || ticks === undefined ? '—' : formatTicks(ticks));
+    const cards = SKILL_MAPS.map((m) => {
+      const rec = this.act.skillRecords(m.id);
+      const sob = sumOfBest(rec);
+      const top = rec.top.length
+        ? `<table>${rec.top.map((e, i) => `<tr><td>${i + 1}</td><td>${esc(e.name)}</td><td>${formatTicks(e.ticks)}</td><td style="opacity:.6">${new Date(e.date).toLocaleDateString('pt-BR')}</td></tr>`).join('')}</table>`
+        : '<p class="muted" style="font-size:12px">Nenhum tempo ainda. Seja o primeiro.</p>';
+      return `<div class="skill-card" style="--c:${TIER_COLORS[m.tier]}">
+        <div class="tier">${TIER_LABELS[m.tier]}</div>
+        <h3>${m.name}</h3>
+        <p>${m.desc}</p>
+        <div class="stats">
+          <span>Recorde pessoal</span><b>${t(rec.pb?.ticks)}</b>
+          <span>Sum of Best</span><b>${t(sob)}</b>
+          <span>Tentativas</span><b>${rec.attempts} · ${rec.completions} concluídas</b>
+        </div>
+        <h4 style="margin:6px 0 2px">Top ${SKILL.topN} local</h4>${top}
+        <button class="btn primary" data-skill="${m.id}">Jogar ${m.name}</button>
+      </div>`;
+    }).join('');
+    const askName = !s.skillNameSet;
+    this.panel(`<h2>Surf Skill</h2>
+      <p>Sem combate: só você, a faca e a física do surf contra o cronômetro. Cada mapa tem 5 stages. O tempo começa quando você sai da zona verde e termina na zona dourada. Cair na lava leva de volta ao início do stage, mas o relógio continua correndo.</p>
+      ${askName ? `<div class="skill-name"><span>Seu nome no ranking</span><input type="text" id="skname" maxlength="16" value="${esc(s.playerName === 'Jogador' ? '' : s.playerName)}" placeholder="Jogador"></div><p class="muted" style="font-size:12px;margin-top:0">Dá para trocar depois em Configurações.</p>` : `<p class="muted">Jogando como <b>${esc(s.playerName)}</b> (troque em Configurações).</p>`}
+      <div class="skill-maps">${cards}</div>
+      <div class="panel-actions"><button class="btn" data-back>Voltar</button></div>`);
+    $('panel-body').querySelectorAll<HTMLButtonElement>('[data-skill]').forEach((b) => b.onclick = () => {
+      this.act.click();
+      if (askName) {
+        const v = ($('skname') as HTMLInputElement).value.trim();
+        s.playerName = v || 'Jogador';
+        s.skillNameSet = true;
+        saveSettings(s);
+      }
+      this.act.startSkill(b.dataset.skill!);
+    });
+  }
+
+  /** Tela de fim: tempo total, os 5 stages (tempo, PB, diferença) e Reiniciar / Voltar. */
+  showSkillFinish(meta: SkillMapMeta, e: Extract<SkillEvent, { t: 'skillFinish' }>, prevPb: MapRecords['pb'], res: FinishResult | null, rec: MapRecords) {
+    this.inGame = true;
+    const cls = (d: number | null) => (d === null ? '' : d < 0 ? 'better' : d > 0 ? 'worse' : 'even');
+    const rows = meta.stages.map((st, i) => {
+      const time = e.stages[i];
+      const pbStage = prevPb?.stages[i] ?? null;
+      const diff = pbStage !== null && time !== undefined ? time - pbStage : null;
+      const gold = res?.goldStages[i] ? ' <span style="color:#ffd23c">★</span>' : '';
+      return `<tr><td>${i + 1} · ${esc(st.name)}</td><td>${time !== undefined ? formatTicks(time) : '—'}${gold}</td><td>${pbStage !== null ? formatTicks(pbStage) : '—'}</td><td class="${cls(diff)}">${diff !== null ? formatDiff(diff) : '—'}</td></tr>`;
+    }).join('');
+    const sob = sumOfBest(rec);
+    const head = e.practice
+      ? '<div class="skill-record" style="color:#ffd23c">PRÁTICA — tempo não conta para recordes</div>'
+      : res?.newPb ? `<div class="skill-record">NOVO RECORDE${res.rank ? ` · #${res.rank} no ranking local` : ''}</div>`
+      : e.diff !== null ? `<div class="${cls(e.diff)}" style="font-family:var(--display);font-weight:700;font-size:20px">${formatDiff(e.diff)} do seu recorde</div>` : '';
+    this.panel(`<h2>${meta.name} concluído</h2>
+      <div class="skill-total">${formatTicks(e.total)}</div>
+      ${head}
+      <table class="skill-res"><tr><th>Stage</th><th>Tempo</th><th>PB</th><th>Diferença</th></tr>${rows}</table>
+      <p class="muted">Recorde pessoal: <b>${rec.pb ? formatTicks(rec.pb.ticks) : '—'}</b> · Sum of Best: <b>${sob !== null ? formatTicks(sob) : '—'}</b> · ${rec.attempts} tentativas, ${rec.completions} concluídas</p>
+      <div class="panel-actions"><button class="btn primary" id="skagain">Reiniciar</button><button class="btn" id="sktomenu">Voltar ao menu</button></div>`);
+    $('skagain').onclick = () => { this.act.click(); this.hidePanel(); this.act.skillRestart(); };
+    $('sktomenu').onclick = () => { this.act.click(); this.inGame = false; this.act.quitToMenu(); };
+  }
+
   showMultiplayer(kind: 'create' | 'join') {
     this.panel(`<h2>${kind === 'create' ? 'Criar sala' : 'Entrar em sala'}</h2>
       <p>O multiplayer online ainda não está disponível nesta versão. A simulação do jogo já roda separada do cliente e é autoritativa sobre vida, dano, pickups, timers e placar, que é a base para o servidor de salas.</p>
@@ -192,7 +266,7 @@ export class Menu {
     bindCheck('fslock', (v) => (s.fullscreenLock = v));
     bindCheck('fx', (v) => (s.effects = v));
     ($('quality') as HTMLSelectElement).onchange = (e) => { s.quality = (e.target as HTMLSelectElement).value as Settings['quality']; this.changed(); };
-    ($('pname') as HTMLInputElement).oninput = (e) => { s.playerName = (e.target as HTMLInputElement).value.trim() || 'Jogador'; this.changed(); };
+    ($('pname') as HTMLInputElement).oninput = (e) => { s.playerName = (e.target as HTMLInputElement).value.trim() || 'Jogador'; s.skillNameSet = true; this.changed(); };
     $('panel-body').querySelectorAll<HTMLButtonElement>('.keybind').forEach((b) => b.onclick = () => {
       if (this.listening) { this.listening.btn.classList.remove('listening'); this.listening.btn.textContent = keyLabel(s.keys[this.listening.action]); }
       this.listening = { action: b.dataset.action as Action, btn: b };

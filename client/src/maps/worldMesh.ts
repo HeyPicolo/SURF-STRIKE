@@ -10,7 +10,7 @@ function shade(c: number, k: number): [number, number, number] {
   return [Math.min(1, r * k), Math.min(1, g * k), Math.min(1, b * k)];
 }
 
-export interface WorldMeshes { opaque: Float32Array; glass: Float32Array; }
+export interface WorldMeshes { opaque: Float32Array; glass: Float32Array; zones: Float32Array; }
 
 export function buildWorldMesh(map: MapDef): WorldMeshes {
   const mb = new MeshBuilder();
@@ -18,7 +18,7 @@ export function buildWorldMesh(map: MapDef): WorldMeshes {
   for (const b of map.brushes) {
     if (b.invisible) continue;
     const target = b.kind === 'glass' ? glass : mb;
-    addBrush(target, b);
+    addBrush(target, b, b.tag?.startsWith('skill-lava') ? 0.45 : 0);
     if (b.edgeGlow !== undefined) addTrims(mb, b);
   }
   for (const d of map.decor) {
@@ -54,10 +54,50 @@ export function buildWorldMesh(map: MapDef): WorldMeshes {
       }
     }
   }
-  return { opaque: mb.toArray(), glass: glass.toArray() };
+  // Surf Skill: paredes translúcidas das zonas (verde = início, vermelho = fim, dourado = chegada)
+  // e o número do stage flutuando sobre a plataforma de início
+  const zones = new MeshBuilder();
+  const stages = map.skill?.stages ?? [];
+  stages.forEach((st, i) => {
+    zoneWalls(zones, st.startZone, 0x3ddc84);
+    zoneWalls(zones, st.endZone, i === stages.length - 1 ? 0xffd23c : 0xff4757);
+    const c = st.spawn.pos;
+    // flutua logo depois da borda da plataforma, na altura do olhar
+    const sz = st.startZone.min.z - 330;
+    digit(mb, i + 1, c.x, c.y + 210, sz, 60, st.color);
+    mb.box(c.x - 70, c.y + 128, sz - 6, c.x + 70, c.y + 136, sz + 2, 0x2d3446);
+  });
+  return { opaque: mb.toArray(), glass: glass.toArray(), zones: zones.toArray() };
 }
 
-function addBrush(mb: MeshBuilder, b: Brush) {
+function zoneWalls(mb: MeshBuilder, z: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }, color: number) {
+  const { min: a, max: b } = z;
+  const y0 = a.y + 1, y1 = b.y;
+  mb.poly([[a.x, y0, a.z], [b.x, y0, a.z], [b.x, y1, a.z], [a.x, y1, a.z]], color, 1);
+  mb.poly([[b.x, y0, b.z], [a.x, y0, b.z], [a.x, y1, b.z], [b.x, y1, b.z]], color, 1);
+  mb.poly([[a.x, y0, b.z], [a.x, y0, a.z], [a.x, y1, a.z], [a.x, y1, b.z]], color, 1);
+  mb.poly([[b.x, y0, a.z], [b.x, y0, b.z], [b.x, y1, b.z], [b.x, y1, a.z]], color, 1);
+  // os dois lados de cada parede ficam visíveis
+  mb.poly([[a.x, y1, a.z], [b.x, y1, a.z], [b.x, y0, a.z], [a.x, y0, a.z]], color, 1);
+  mb.poly([[b.x, y1, b.z], [a.x, y1, b.z], [a.x, y0, b.z], [b.x, y0, b.z]], color, 1);
+  mb.poly([[a.x, y1, b.z], [a.x, y1, a.z], [a.x, y0, a.z], [a.x, y0, b.z]], color, 1);
+  mb.poly([[b.x, y1, a.z], [b.x, y1, b.z], [b.x, y0, b.z], [b.x, y0, a.z]], color, 1);
+}
+
+/** Algarismo de 7 segmentos (plano XY, virado para +Z) feito de feixes luminosos. */
+function digit(mb: MeshBuilder, n: number, cx: number, cy: number, z: number, h: number, color: number) {
+  const segs: Record<string, [number, number, number, number]> = {
+    a: [-0.5, 1, 0.5, 1], b: [0.5, 1, 0.5, 0], c: [0.5, 0, 0.5, -1], d: [-0.5, -1, 0.5, -1],
+    e: [-0.5, 0, -0.5, -1], f: [-0.5, 1, -0.5, 0], g: [-0.5, 0, 0.5, 0],
+  };
+  const on: Record<number, string> = { 0: 'abcdef', 1: 'bc', 2: 'abged', 3: 'abgcd', 4: 'fgbc', 5: 'afgcd', 6: 'afgedc', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg' };
+  for (const k of on[n % 10]) {
+    const [x0, y0, x1, y1] = segs[k];
+    mb.beam([cx + x0 * h, cy + y0 * h, z], [cx + x1 * h, cy + y1 * h, z], 9, color, 1);
+  }
+}
+
+function addBrush(mb: MeshBuilder, b: Brush, emissive = 0) {
   for (const f of b.faces) {
     const pts = f.idx.map((i) => [b.verts[i].x, b.verts[i].y, b.verts[i].z] as P);
     // face normal (outward) — color variation by orientation gives the low-poly look
@@ -68,7 +108,7 @@ function addBrush(mb: MeshBuilder, b: Brush) {
     let col = shade(b.color, 1);
     if (ny < -0.5) col = shade(b.color, 0.72);
     else if (b.kind === 'ramp' && ny > 0.05 && ny < 0.7) col = shade(b.color, 1.04);
-    mb.poly(pts, col, 0);
+    mb.poly(pts, col, emissive);
   }
 }
 

@@ -159,6 +159,35 @@ export class Sfx {
   teleport() { const d = this.out(0, 0.5); if (!d) return; const t = this.ctx!.currentTime; this.tone(d, t, 0.3, 300, 1800, 0.3, 'sine'); this.noise(d, t, 0.3, 5000, 1000, 2, 0.3); }
   jumppad() { const d = this.out(0, 0.5); if (!d) return; const t = this.ctx!.currentTime; this.tone(d, t, 0.25, 180, 720, 0.5, 'square'); }
   beep(high = false) { const d = this.out(0, 0.5); if (!d) return; this.tone(d, this.ctx!.currentTime, high ? 0.35 : 0.15, high ? 1320 : 880, high ? 1320 : 880, 0.35, 'square'); }
+  // ---------- Surf Skill ----------
+  /** cronômetro começou (saiu da zona de início) */
+  skillStart() {
+    const d = this.out(0, 0.5); if (!d) return; const t = this.ctx!.currentTime;
+    this.tone(d, t, 0.09, 660, 660, 0.3, 'square'); this.tone(d, t + 0.08, 0.16, 990, 1320, 0.3, 'square');
+  }
+  /** split: verde (melhor que o PB) sobe, vermelho desce, sem PB neutro */
+  skillSplit(better: boolean | null) {
+    const d = this.out(0, 0.5); if (!d) return; const t = this.ctx!.currentTime;
+    const notes = better === null ? [880, 1175] : better ? [988, 1319, 1568] : [784, 659];
+    notes.forEach((f, i) => this.tone(d, t + i * 0.07, 0.22, f, f, 0.26, 'triangle'));
+  }
+  /** caiu / voltou ao início do stage */
+  skillReset(fall: boolean) {
+    const d = this.out(0, 0.5); if (!d) return; const t = this.ctx!.currentTime;
+    if (fall) { this.noise(d, t, 0.35, 1800, 200, 1.5, 0.5, 'bandpass'); this.tone(d, t, 0.35, 520, 130, 0.25, 'sawtooth'); }
+    else this.tone(d, t, 0.18, 700, 350, 0.25, 'triangle');
+  }
+  /** chegada */
+  skillFinish() {
+    const d = this.out(0, 0.6); if (!d) return; const t = this.ctx!.currentTime;
+    [523, 659, 784, 1046, 1318].forEach((f, i) => this.tone(d, t + i * 0.09, 0.4, f, f, 0.26, 'triangle'));
+  }
+  /** novo recorde pessoal */
+  skillRecord() {
+    const d = this.out(0, 0.7); if (!d) return; const t = this.ctx!.currentTime;
+    [784, 988, 1175, 1568, 1976].forEach((f, i) => { this.tone(d, t + 0.5 + i * 0.08, 0.5, f, f, 0.22, 'square'); this.tone(d, t + 0.5 + i * 0.08, 0.6, f * 2, f * 2, 0.08, 'sine'); });
+    this.noise(d, t + 0.5, 0.8, 6000, 2000, 0.8, 0.25, 'highpass');
+  }
   victory() {
     const d = this.out(0, 0.6); if (!d) return; const t = this.ctx!.currentTime;
     [523, 659, 784, 1046].forEach((f, i) => this.tone(d, t + i * 0.12, 0.4, f, f, 0.3, 'triangle'));

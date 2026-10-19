@@ -81,20 +81,24 @@ export class Input {
 
   private blur = () => { this.keys.clear(); this.mouse = [false, false, false]; };
 
-  private actionFor(code: string): Action | null {
-    for (const [a, k] of Object.entries(this.settings.keys)) if (k === code) return a as Action;
-    return null;
+  /** Uma tecla pode servir a mais de uma ação (modos diferentes reaproveitam R, Z, X). */
+  private actionsFor(code: string): Action[] {
+    const out: Action[] = [];
+    for (const [a, k] of Object.entries(this.settings.keys)) if (k === code) out.push(a as Action);
+    return out;
   }
+  /** Tecla crua pressionada (menus dentro do jogo, ex.: escolher stage com 1–5). */
+  onKey: ((code: string) => boolean) | null = null;
 
   private kd = (e: KeyboardEvent) => {
     if (!this.enabled) return;
     // Ctrl é a tecla de agachar: bloqueia os atalhos do navegador que dá para bloquear (Ctrl+S, Ctrl+D,
     // Ctrl+F...). Ctrl+W/T/N só podem ser capturados em tela cheia com Keyboard Lock (ver lock()).
-    if (e.code === 'Tab' || e.code === 'Space' || e.ctrlKey || e.metaKey || (e.code.startsWith('Digit') && this.locked)) e.preventDefault();
+    if (e.code === 'Tab' || e.code === 'Space' || e.code === 'Backspace' || e.ctrlKey || e.metaKey || (e.code.startsWith('Digit') && this.locked)) e.preventDefault();
     if (e.repeat) return;
+    if (this.onKey?.(e.code)) return;
     this.keys.add(e.code);
-    const a = this.actionFor(e.code);
-    if (a) { this.pressedActions.add(a); this.onAction?.(a); }
+    for (const a of this.actionsFor(e.code)) { this.pressedActions.add(a); this.onAction?.(a); }
   };
   private ku = (e: KeyboardEvent) => { this.keys.delete(e.code); };
   private md = (e: MouseEvent) => {
