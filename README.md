@@ -113,12 +113,26 @@ Cada rota foi validada por simulação: um bot sai do spawn e surfa até a área
 
 Terceiro modo, ao lado de Partida e Treino, inspirado nos mapas de Surf Skill do CS2. Não há combate: só você, a faca e a mesma física de surf do jogo (`PHYSICS`, air strafe, `clipVelocity`, bhop), contra o cronômetro. Nenhum valor do modo principal muda.
 
+### Treino × Desafio
+
+- **Treino**: SKY STEPS (T1), DRIFT CANYON (T2) e STORM SPIRE (T3), para aprender.
+- **Desafio**: 12 mapas que testam de verdade o surf, do tier 2 ao 6, cada um mais difícil que o anterior (chegam nas próximas entregas da rodada 8).
+- Tiers de 1 a 6: T1 verde, T2 amarelo, T3 vermelho, T4 laranja escuro, T5 roxo, T6 preto com borda vermelha.
+- O menu tem as abas Treino e Desafio. Cada card mostra número, nome, tier, formato, quantidade de stages ou checkpoints, PB, Sum of Best, top 10 e o selo de concluído.
+- Desbloqueio progressivo (concluir um desafio libera o próximo): `SKILL.progressiveUnlock`, desligado por padrão.
+
+### Formatos: staged e linear
+
+- **Staged**: stages separados, cada um com zona de início e de fim. A zona de fim leva, parado, à zona de início do próximo stage.
+- **Linear**: um percurso contínuo dividido por **checkpoints**. Cada checkpoint é um portal (paredes ciano) no começo de uma rampa: passar por ele gera um split, sem parar. Cair leva ao último checkpoint tocado, parado, numa plataforma de retorno acima da rampa; o tempo continua. Backspace volta ao último checkpoint e o menu (M) lista os checkpoints.
+- Recordes, melhores segmentos, Sum of Best e splits funcionam igual para stages e checkpoints ("segmentos").
+
 ### Regras
 
 - Sozinho, sem bots, armas, itens, classes, habilidades ou dano. Só a faca no viewmodel, com o bônus de +25% de velocidade dela e o sprint automático (configurável em `shared/config/skill.ts`).
 - Cada mapa tem **5 stages** em sequência. Cada stage tem uma zona de início (paredes verdes), um percurso de rampas e uma zona de fim (paredes vermelhas) que leva direto à zona de início do próximo stage. O stage 5 termina na chegada (paredes douradas). O número do stage flutua logo à frente da plataforma de início.
 - **Cronômetro**: começa quando você sai da zona de início do stage 1. É contado em ticks da simulação (100 Hz) e exibido como mm:ss.cc, sem relógio do sistema.
-- **Zona de início**: velocidade horizontal limitada a 420 u/s (prespeed cap) e pulo bloqueado, para ninguém sair embalado de bhop. Vale para a zona de início de todo stage.
+- **Zona de início**: dá para pular (ajuda a se posicionar), mas a velocidade horizontal fica limitada a 420 u/s (prespeed cap) dentro da zona e no tick em que você sai dela, inclusive saindo no ar depois de um pulo. Pular não dá embalo extra. Vale para a zona de início de todo stage.
 - **Queda** na lava (ou abaixo dela): volta ao início do stage atual, parado. O cronômetro **não** zera: o tempo perdido é a punição. Isso é o checkpoint de stage.
 - **Splits**: ao entrar na zona de início de cada stage (e na chegada) o HUD mostra o tempo acumulado e o tempo do stage, com a diferença para o recorde pessoal em verde (melhor) ou vermelho (pior).
 - **Prática**: salvar posição + velocidade (Z) e voltar a ela (X). Usar qualquer um dos dois marca a corrida como prática (o HUD mostra PRÁTICA) e ela não conta para recordes. Ir para outro stage pelo menu (M) também é prática e só funciona fora de uma corrida cronometrada.
@@ -129,8 +143,9 @@ Terceiro modo, ao lado de Partida e Treino, inspirado nos mapas de Surf Skill do
 |---|---|
 | R | Reiniciar mapa: volta ao stage 1 e zera o cronômetro |
 | Backspace | Reiniciar stage: volta ao início do stage atual (o tempo continua) |
-| M | Menu de stages (1 a 5 escolhe; só fora de uma corrida cronometrada) |
+| M | Menu de stages ou checkpoints (o número escolhe; só fora de uma corrida cronometrada) |
 | Z / X | Salvar posição / voltar a ela (prática) |
+| H | Mostrar/esconder o fantasma |
 
 R, Z e X são as mesmas teclas de recarregar e dos checkpoints do treino: cada modo só usa as suas.
 
@@ -138,17 +153,26 @@ R, Z e X são as mesmas teclas de recarregar e dos checkpoints do treino: cada m
 
 | Mapa | Tier | Rampas | Inclinação (normal Y) | Velocidade mínima de projeto | Maior gap | Percurso de referência |
 |---|---|---|---|---|---|---|
-| SKY STEPS | 1 · iniciante (verde) | meia-largura 300, uma ou duas por stage | 52° (0,62), sempre igual | até 353 u/s | 306 u | 33,4 s, pico de 1560 u/s |
-| DRIFT CANYON | 2 · intermediário (amarelo) | meia-largura 170–180, até 3 por stage | 55–57° (0,55–0,57) | até 619 u/s | 902 u | 40,4 s, pico de 1820 u/s |
-| STORM SPIRE | 3 · avançado (vermelho) | meia-largura 110–140, até 4 por stage, algumas com uma face só | 47° no limite (0,68) e 63° íngreme (0,45) | até 794 u/s | 1300 u | 42,1 s, pico de 2360 u/s |
+| SKY STEPS | 1 · iniciante (verde) | meia-largura 300, uma ou duas por stage | 52° (0,62), sempre igual | até 424 u/s | 306 u | 33,4 s, pico de 1560 u/s |
+| DRIFT CANYON | 2 · intermediário (amarelo) | meia-largura 170–180, até 3 por stage | 55–57° (0,55–0,57) | até 870 u/s | 902 u | 40,4 s, pico de 1820 u/s |
+| STORM SPIRE | 3 · avançado (vermelho) | meia-largura 110–140, até 4 por stage, algumas com uma face só | 47° no limite (0,68) e 63° íngreme (0,45) | até 1197 u/s | 1300 u | 42,1 s, pico de 2360 u/s |
 
 - **SKY STEPS**: 1 Primeiro contato (uma rampa reta), 2 Reta longa, 3 Degraus (duas rampas alinhadas), 4 Dupla (troca de face entre duas rampas), 5 Curva leve (a segunda rampa vira 15°). Chegadas grandes logo depois do fim de cada rampa.
 - **DRIFT CANYON**: 1 Garganta (três rampas trocando de face), 2 Zigue (curva para a direita e de volta), 3 Desfiladeiro (descida forte, gap de 900 u e uma rampa quase plana que só mantém a velocidade), 4 Saltos (pista com buracos: atravessa no bhop), 5 Cânion final (curva, mudança de altura e bhop até a chegada).
 - **STORM SPIRE**: 1 Relâmpago (três rampas no limite, trocando de face), 2 Alternância (quatro rampas de uma face só em lados alternados, gaps curtos), 3 Fenda (descida íngreme e gap de 1300 u), 4 Espiral (curvas de 28°, −5° e 25°), 5 Olho da tempestade (íngreme, gap longo com curva, transições rápidas e chegada estreita).
 
-A "velocidade mínima de projeto" é, para o pior gap de cada mapa, a velocidade horizontal abaixo da qual quem sai da rampa sem impulso vertical cai antes de alcançar o próximo apoio. As rampas de cada stage têm a cor do stage, e cada mapa tem sua cor de destaque.
+A "velocidade mínima de projeto" é, para o pior gap de cada mapa, a velocidade abaixo da qual quem sai da rampa (na inclinação da saída) cai antes de alcançar o próximo apoio, pela balística com a gravidade do jogo. As rampas de cada stage têm a cor do stage, e cada mapa tem sua cor de destaque.
 
 Metadados (nome, tier, cores, stages com nome e spawn) ficam em `shared/config/skill.ts`; os construtores dos mapas ficam em `shared/maps/skySteps.ts`, `driftCanyon.ts` e `stormSpire.ts`, usando o kit `shared/maps/skillKit.ts`.
+
+### Fantasma
+
+- Toda corrida válida é gravada por tick (posição, olhar, no chão/agachado). Quando ela vira PB, a gravação vira o fantasma daquele mapa; cada stage/checkpoint que vira o melhor segmento guarda também o seu trecho.
+- Durante a corrida o fantasma corre ao lado, sincronizado pelo cronômetro (começa quando o seu começa), interpolado entre as amostras. Personagem translúcido ciano, sem colisão e sem passos, com a plaquinha "PB 01:23.45"; some suavemente perto da câmera.
+- O HUD mostra a diferença ao vivo para o fantasma (à frente/atrás, em segundos), além dos splits.
+- Configurações: mostrar fantasma (tecla H), opacidade e sincronia "corrida inteira" (padrão) ou "por segmento" (em cada stage/checkpoint o fantasma recomeça daquele ponto com o melhor segmento).
+- Prática (saveloc, menu de stages) não grava.
+- Armazenamento: 50 Hz, keyframes absolutos a cada 50 amostras e deltas em Int16 (1/8 u) entre eles, cerca de 12 bytes por amostra (uma corrida de 5 min fica em ~180 KB; o limite em config é 256 KB). Fica no IndexedDB pela interface `GhostStore` (`shared/sim/ghost.ts`), com a mesma chave (mapa + hash da geometria) dos recordes.
 
 ### Recordes e ranking
 
@@ -156,7 +180,7 @@ Tudo local por enquanto (localStorage), mas a lógica fica em `shared/sim/record
 
 - Por mapa: recorde pessoal (PB) com os splits da corrida PB, melhor tempo de cada stage (melhor segmento), **Sum of Best**, tentativas e conclusões.
 - Ranking local: top 10 com nome e data. O nome é pedido na primeira vez e pode ser trocado em Configurações.
-- A chave de armazenamento leva um hash da geometria e das zonas do mapa: mudar o mapa invalida os recordes antigos em vez de deixá-los inconsistentes.
+- A chave de armazenamento leva um hash da geometria e das zonas do mapa: mudar o mapa invalida os recordes antigos em vez de deixá-los inconsistentes. Os hashes ficam em `shared/maps/skillVersions.ts` (gerado por `npm run skill:versions`; um teste confere), então o menu lê os recordes sem construir os mapas. Só o mapa escolhido é construído.
 - O armazenamento é a interface `RecordStore` (hoje `client/src/skill/localStore.ts`); trocar por um backend não mexe no resto.
 
 ### Decisões de design
@@ -168,6 +192,9 @@ Onde o pedido deixava espaço, segui o mais próximo do Surf Skill do CS2:
 - O prespeed cap (420 u/s) fica um pouco acima da corrida com faca + sprint (406 u/s): andar não é afetado, só o embalo extra.
 - Cair no stage 1 depois de largar não zera o cronômetro (só o R zera), para manter a regra "cair não zera o tempo".
 - Na tela de fim, a comparação de cada stage é com o stage da corrida PB anterior (estrela dourada quando o stage virou o melhor da história).
+- Rodada 8: o pulo na zona de início foi liberado; o cap continua igual, então os recordes antigos continuam valendo (a geometria dos mapas de treino não mudou: os hashes são os mesmos).
+- Nos mapas linear, a plataforma de retorno de cada checkpoint fica atrás do portal e bem acima da linha de voo (430 u acima do cume), para não atrapalhar quem passa embalado. A queda é medida por trecho (abaixo da parte mais baixa do trecho), para não precisar cair até o fundo do mapa.
+- O fantasma do PB só é trocado quando a corrida vira PB (como no CS2): quem já tinha recorde da rodada 7 ganha o fantasma ao bater o próprio tempo.
 
 ## Parâmetros
 
@@ -240,5 +267,5 @@ O ambiente onde o projeto foi construído não tinha acesso ao registro npm nem 
 
 ## Testes
 
-- `npm test`: 81 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots e, no Surf Skill, cronômetro, zonas, prespeed, splits, quedas, reinícios, prática, recordes, versão do mapa e os 3 mapas atravessados de ponta a ponta pelo percurso de referência, só com física, sem assistência).
-- `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint automático, caminhar e slide pelo teclado, habilidade, eliminação e fim de round com placar; no Surf Skill, menu dos mapas, cronômetro ao sair da zona, queda de volta ao início do stage, reinício do mapa e um stage completo com split.
+- `npm test`: 93 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots e, no Surf Skill, cronômetro, zonas, prespeed, splits, quedas, reinícios, prática, recordes, versão do mapa, formato linear com checkpoints, fantasma (gravação, compressão, PB, sincronia por segmento, tamanho) e os mapas atravessados de ponta a ponta pelo percurso de referência, só com física, sem assistência).
+- `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint automático, caminhar e slide pelo teclado, habilidade, eliminação e fim de round com placar; no Surf Skill, menu dos mapas, cronômetro ao sair da zona, queda de volta ao início do stage, reinício do mapa e um stage completo com split; pulo na base sem passar do cap, aba Desafio, uma corrida curta de teste até o fim e o fantasma aparecendo na tentativa seguinte.

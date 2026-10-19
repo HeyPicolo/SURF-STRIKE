@@ -17,11 +17,13 @@ import { ViewPose, REST, butterflyDraw, butterflyInspect, gunInspect, nadeInspec
 import { Effects } from './effects';
 import { Input } from './input';
 import type { Settings } from './settings';
-import { keyLabel } from './settings';
+import { keyLabel, saveSettings } from './settings';
 import { Hud, esc } from '../ui/hud';
 import { Sfx } from '../audio/sfx';
 import type { SkillEvent } from '../../../shared/sim/skill';
 import { RouteDriver } from '../../../shared/bots/routeDriver';
+import { GhostSet, GhostTrack, GhostFrame, sampleTrack, nearestTick, GF_DUCK, GF_GROUND } from '../../../shared/sim/ghost';
+import { GHOST, segmentWord } from '../../../shared/config/skill';
 import { SkillMapMeta, formatTicks } from '../../../shared/config/skill';
 
 interface MapMeshes { world: GpuMesh; glass: GpuMesh; zones: GpuMesh }
@@ -82,6 +84,17 @@ export class Game {
   autopilot = false;
   private apDriver: RouteDriver | null = null;
   private apStage = -1;
+  // ---- fantasma ----
+  ghosts: GhostSet | null = null;
+  /** o fantasma está sendo desenhado neste quadro (testes automáticos) */
+  ghostVisible = false;
+  private ghostPlayer = new Player(-77, 'PB', 'blue', 'runner', true);
+  private ghostFrame: GhostFrame = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, flags: 0, seg: 0, ended: false };
+  private ghostPrev = new V3();
+  private ghostLabel: HTMLDivElement | null = null;
+  private ghostHint = -1;
+  /** diferença ao vivo para o fantasma (ticks; positivo = atrás) */
+  ghostDiff: number | null = null;
 
   constructor(
     public r: Renderer, public input: Input, public hud: Hud, public sfx: Sfx,
@@ -104,6 +117,10 @@ export class Game {
       const w = this.world, p = w.local;
       if (a === 'inspect') this.startInspect();
       if (w.config.mode === 'skill' && a === 'skillMenu') this.skillMenuOpen = !this.skillMenuOpen;
+      if (w.config.mode === 'skill' && a === 'ghostToggle') {
+        this.settings.ghostShow = !this.settings.ghostShow; saveSettings(this.settings);
+        this.hud.toast(this.settings.ghostShow ? 'FANTASMA LIGADO' : 'FANTASMA DESLIGADO', '#7fe9ff');
+      }
       if (w.config.mode === 'training') {
         if (a === 'resetPos') { w.resetPosition(p); this.syncView(); this.hud.toast('Posição reiniciada'); }
         if (a === 'fly') { p.fly = !p.fly; this.hud.toast(p.fly ? 'Voo ativado' : 'Voo desativado'); }
@@ -152,6 +169,7 @@ export class Game {
     this.mapMeshes(map);
     this.world = new World(map, cfg);
     this.skillMenuOpen = false; this.pendingGoto = null; this.pendingRestart = false;
+    this.ghosts = null; this.ghostDiff = null; this.ghostHint = -1;
     if (cfg.mode !== 'skill') this.skillMeta = null;
     this.hud.skillMode(cfg.mode === 'skill');
     this.hud.clearTransient();
@@ -168,6 +186,8 @@ export class Game {
 
   stop() {
     this.world = null;
+    this.ghosts = null; this.ghostVisible = false;
+    this.ghostLabel?.remove(); this.ghostLabel = null;
     this.hud.skillMode(false);
     this.skillMenuOpen = false;
     this.hud.show(false);
@@ -252,7 +272,13 @@ export class Game {
     } else { sk.restartMap = sk.restartStage = sk.saveLoc = sk.loadLoc = false; sk.gotoStage = null; }
     p.autoBhop = this.settings.autoBhop;
     if (this.autopilot && w.skill) {
-      if (!this.apDriver || this.apStage !== w.skill.stage) { this.apDriver = new RouteDriver(w.skill.stageDef.route); this.apStage = w.skill.stage; }
+      if (!this.apDriver || this.apStage !== w.skill.stage) {
+        // chegou embalado pelo portal de um checkpoint: segue a rota sem a saída da plataforma
+        const flowing = !!this.apDriver && this.apStage === w.skill.stage - 1;
+        this.apDriver = new RouteDriver(w.skill.stageDef.route);
+        if (flowing) this.apDriver.idx = w.skill.stageDef.flowFrom;
+        this.apStage = w.skill.stage;
+      }
       this.apDriver.drive(p.phys, inp.cmd, SIM_DT);
       inp.cmd.walk = false; inp.cmd.crouch = false;
       this.input.yaw = inp.cmd.yaw; this.input.pitch = inp.cmd.pitch = 0;
@@ -369,7 +395,7 @@ export class Game {
         case 'skillStart': this.sfx.skillStart(); this.cb.onSkillEvent?.(w, e); break;
         case 'skillSplit': {
           const n = w.skill!.stageCount;
-          this.hud.skillSplit(e, n);
+          this.hud.skillSplit(e, n, w.skill!.course.format);
           if (e.stage < n - 1) {
             this.sfx.skillSplit(e.diffTotal === null ? null : e.diffTotal <= 0);
             this.syncView();
@@ -380,6 +406,7 @@ export class Game {
         }
         case 'skillReset':
           this.apDriver = null;
+          if (e.reason === 'map' || e.reason === 'goto') { this.hud.clearTransient(); this.ghostHint = -1; }
           this.syncView();
           this.sfx.skillReset(e.reason === 'fall');
           if (e.reason === 'fall') this.hud.toast(`CAIU — DE VOLTA AO STAGE ${e.stage + 1}`, '#ff9f5a');
@@ -609,6 +636,7 @@ export class Game {
     this.fx.draw(r);
     r.drawMesh(MM.glass, null, { alpha: 0.28, emissive: 0.4 });
     if (w.skill) r.drawMesh(MM.zones, null, { alpha: 0.16 + 0.05 * Math.sin(this.time * 3), emissive: 1 });
+    if (w.skill) this.drawGhost(w, vpos, alpha, dt); else this.ghostVisible = false;
     r.flushEffects();
 
     // first-person weapon (viewmodel)
@@ -621,7 +649,7 @@ export class Game {
       if (k && k.weapon) prompt = `<kbd>${keyLabel(this.settings.keys.use)}</kbd>Pegar ${esc(WEAPONS[k.weapon].name)}`;
     }
     this.hud.update(w, viewer, { showSpeed: this.settings.showSpeed || w.config.mode !== 'bots', training: w.config.mode === 'training', dt, spectating: !isMe, nearPrompt: prompt });
-    if (w.skill && this.skillMeta) this.hud.skillUpdate(w, this.skillMeta, dt, this.skillHelp(), this.skillMenuOpen ? this.skillMenuHtml() : null);
+    if (w.skill && this.skillMeta) this.hud.skillUpdate(w, this.skillMeta, dt, this.skillHelp(), this.skillMenuOpen ? this.skillMenuHtml() : null, this.ghostDiff, this.ghostVisible || (this.settings.ghostShow && !!this.ghosts?.pb));
     else this.hud.scoreboard(w, this.input.held('scoreboard') || w.match.phase === 'matchEnd', me.id);
     if (w.config.mode === 'training') {
       const K = (a: keyof Settings['keys']) => `<span class="kbd">${keyLabel(this.settings.keys[a])}</span>`;
@@ -632,17 +660,87 @@ export class Game {
 
   private skillHelp(): string {
     const K = (a: keyof Settings['keys']) => `<span class="kbd">${keyLabel(this.settings.keys[a])}</span>`;
-    return `${K('skillRestart')} reiniciar mapa &nbsp; ${K('skillStage')} reiniciar stage<br>${K('skillMenu')} menu de stages<br>`
+    const linear = this.world?.skill?.linear;
+    return `${K('skillRestart')} reiniciar mapa &nbsp; ${K('skillStage')} ${linear ? 'último checkpoint' : 'reiniciar stage'}<br>${K('skillMenu')} menu de ${linear ? 'checkpoints' : 'stages'} &nbsp; ${K('ghostToggle')} fantasma<br>`
       + `${K('skillSave')} salvar posição &nbsp; ${K('skillLoad')} voltar a ela <span style="opacity:.7">(prática)</span>`;
   }
 
   private skillMenuHtml(): string {
     const sk = this.world!.skill!;
     const locked = sk.state === 'running' && !sk.practice;
-    const rows = sk.course.stages.map((st, i) => `<div class="row"><span class="kbd">${i + 1}</span><span>Stage ${i + 1} · ${esc(st.name)}</span></div>`).join('');
-    return `<h3>Stages</h3>${rows}<div class="muted">${locked
-      ? 'Ir para um stage só vale fora de uma corrida cronometrada. Reinicie o mapa ou use a prática.'
-      : 'Escolha um número. Começar de um stage que não é o 1 conta como prática (sem recorde).'}</div>`;
+    const linear = sk.linear;
+    const label = (i: number) => (linear ? (i === 0 ? 'Largada' : `Checkpoint ${i}`) : `Stage ${i + 1}`);
+    const rows = sk.course.segments.map((st, i) => `<div class="row"><span class="kbd">${i + 1}</span><span>${label(i)} · ${esc(st.name)}</span></div>`).join('');
+    return `<h3>${linear ? 'Checkpoints' : 'Stages'}</h3>${rows}<div class="muted">${locked
+      ? `Ir para um ${segmentWord(sk.course.format)} só vale fora de uma corrida cronometrada. Reinicie o mapa ou use a prática.`
+      : `Escolha um número. Começar de outro ponto que não a largada conta como prática (sem recorde).`}</div>`;
+  }
+
+  /** Recebe os fantasmas guardados do mapa atual. */
+  setGhosts(set: GhostSet | null) { this.ghosts = set; this.ghostHint = -1; }
+
+  /** Fantasma do PB: corre ao lado, sincronizado pelo cronômetro; some perto da câmera. */
+  private drawGhost(w: World, cam: V3, alpha: number, dt: number) {
+    const sk = w.skill!;
+    this.ghostVisible = false;
+    this.ghostDiff = null;
+    const set = this.ghosts;
+    const hide = () => { if (this.ghostLabel) this.ghostLabel.style.display = 'none'; };
+    if (!set || !this.settings.ghostShow || sk.state === 'finished') { hide(); return; }
+    // por segmento: o fantasma recomeça em cada stage/checkpoint com o melhor segmento (também na prática)
+    const segMode = this.settings.ghostSync === 'segment' || (sk.practice && sk.stage > 0);
+    let track: GhostTrack | null, t: number, ghostTicks: number | null;
+    const running = sk.state === 'running' && !this.paused;
+    if (segMode) {
+      track = set.segments[sk.stage] ?? null;
+      t = sk.state === 'running' ? sk.ticks - sk.segmentEnteredAt + (running ? alpha : 0) : 0;
+      ghostTicks = set.segTicks[sk.stage] ?? null;
+    } else {
+      track = set.pb;
+      t = sk.state === 'running' ? sk.ticks + (running ? alpha : 0) : 0;
+      ghostTicks = set.pbTicks;
+    }
+    if (!track) { hide(); return; }
+    const f = sampleTrack(track, t, this.ghostFrame);
+    if (f.ended) { hide(); return; }
+    // diferença ao vivo: em que tempo o fantasma passou pelo ponto onde você está
+    if (sk.state === 'running') {
+      const me = w.local.phys.pos;
+      const gt = nearestTick(track, me, segMode ? null : sk.stage, this.ghostHint);
+      if (gt >= 0) {
+        this.ghostHint = gt / track.rateTicks;
+        this.ghostDiff = (segMode ? sk.ticks - sk.segmentEnteredAt : sk.ticks) - gt;
+      }
+    }
+    const gp = new V3(f.x, f.y, f.z);
+    const dist = gp.distTo(cam);
+    const fade = Math.max(0, Math.min(1, (dist - GHOST.fadeNear) / (GHOST.fadeFar - GHOST.fadeNear)));
+    const a = this.settings.ghostOpacity * fade;
+    // animação: velocidade a partir do deslocamento
+    const g = this.ghostPlayer;
+    if (dt > 0) g.phys.vel.set((f.x - this.ghostPrev.x) / dt, 0, (f.z - this.ghostPrev.z) / dt);
+    if (g.phys.vel.hLen() > 4000) g.phys.vel.set(0, 0, 0);
+    this.ghostPrev.copy(gp);
+    g.yaw = f.yaw; g.pitch = f.pitch;
+    g.phys.onGround = !!(f.flags & GF_GROUND); g.phys.ducked = !!(f.flags & GF_DUCK); g.phys.surfing = false;
+    g.slideTime = 0; g.sprinting = false;
+    if (a > 0.02) {
+      this.drawCharacter(g, gp, dt, { xray: false, tint: 0x9ff4ff, alpha: a });
+      this.ghostVisible = true;
+    }
+    // plaquinha
+    const s = this.r.project(gp.x, gp.y + 96, gp.z);
+    if (!this.ghostLabel) {
+      this.ghostLabel = document.createElement('div');
+      this.ghostLabel.id = 'ghost-label';
+      document.body.appendChild(this.ghostLabel);
+    }
+    if (s && a > 0.02) {
+      this.ghostLabel.style.display = 'block';
+      this.ghostLabel.textContent = `${segMode ? 'MELHOR' : 'PB'} ${ghostTicks !== null ? formatTicks(ghostTicks) : ''}`;
+      this.ghostLabel.style.left = `${s.x}px`; this.ghostLabel.style.top = `${s.y}px`;
+      this.ghostLabel.style.opacity = String(Math.min(1, a * 2));
+    } else hide();
   }
 
   /** Reinicia o mapa no próximo tick (tela de fim → Reiniciar). */
@@ -698,7 +796,7 @@ export class Game {
       const n = p.phys.surfNormal; const rgt = rightFromYaw(p.yaw);
       roll = -(n.x * rgt.x + n.z * rgt.z) * 0.35;
     }
-    const opts = xr ? { xray: true, tint: xr.tint, tintMix: 1, emissive: 1, alpha: xr.alpha } : (p.classId === 'berserker' && p.abilityActive > 0 ? { emissive: 0.25, tint: 0xff9f1c, tintMix: 0.25 } : undefined);
+    const opts = xr ? { xray: xr.xray, tint: xr.tint, tintMix: 1, emissive: 1, alpha: xr.alpha } : (p.classId === 'berserker' && p.abilityActive > 0 ? { emissive: 0.25, tint: 0xff9f1c, tintMix: 0.25 } : undefined);
     const root = trs(this.tmpM, pos.x, pos.y, pos.z, p.yaw, 0, roll);
     const hip = 32 - duck * 0.7;
     // legs

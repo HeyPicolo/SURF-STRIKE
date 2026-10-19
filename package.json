@@ -2,7 +2,7 @@
   "name": "surf-strike",
   "version": "0.1.0",
   "private": true,
-  "description": "SURF STRIKE — FPS de surf competitivo low-poly para navegador",
+  "description": "SURF STRIKE \u2014 FPS de surf competitivo low-poly para navegador",
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
@@ -10,7 +10,8 @@
     "build:single": "node scripts/build.mjs --single",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "tsx --test tests/*.test.ts",
-    "test:e2e": "node scripts/e2e.mjs"
+    "test:e2e": "node scripts/e2e.mjs",
+    "skill:versions": "tsx scripts/skill-versions.ts"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",

@@ -3,7 +3,7 @@
 Registro vivo das decisões, do estado atual e das pendências. **Atualizado a cada rodada de mudanças, no mesmo commit.**
 Serve para qualquer sessão (de código ou de apoio) entender o projeto sem reler o histórico inteiro.
 
-- **Última rodada:** 7 · commit `e9a4c25` · 19/10/2026
+- **Última rodada:** 8a (de 8a/8b/8c) · 19/10/2026
 - **No ar:** https://surf-strike.vercel.app (deploy automático da Vercel a cada push na `main`)
 - **Repositório:** github.com/HeyPicolo/SURF-STRIKE
 
@@ -20,9 +20,10 @@ Serve para qualquer sessão (de código ou de apoio) entender o projeto sem rele
 npm install
 npm run dev            # servidor local com rebuild
 npm run build          # gera dist/ (o que a Vercel publica)
-npm test               # 81 testes unitários (node:test via tsx)
+npm test               # 93 testes unitários (node:test via tsx)
+npm run skill:versions # regrava shared/maps/skillVersions.ts depois de mudar um mapa do Surf Skill
 npx tsc --noEmit -p tsconfig.json
-CHROME_PATH=/opt/pw-browsers/chromium node scripts/e2e.mjs   # 20 verificações no navegador
+CHROME_PATH=/opt/pw-browsers/chromium node scripts/e2e.mjs   # 24 verificações no navegador
 ```
 
 ## O jogo hoje
@@ -50,11 +51,16 @@ RUNNER (dash aéreo), JUMPER (teleporte), PREDATOR (silhuetas através das pared
 ### Mapa CLOUDS (partida)
 Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150), flancos na mesma altura, 4 jump pads nas quinas do platô, arenas de duelo em x ≈ 14000.
 
-### Surf Skill (rodada 7)
+### Surf Skill (rodadas 7 e 8)
 - Sozinho, só a faca (com bônus) e sprint automático, sem dano. Configuração em `shared/config/skill.ts`.
 - 3 mapas × 5 stages: **SKY STEPS** (T1), **DRIFT CANYON** (T2), **STORM SPIRE** (T3). Construtores em `shared/maps/skySteps.ts`, `driftCanyon.ts`, `stormSpire.ts`, com o kit `skillKit.ts` e o registro `skillMaps.ts`.
 - Lógica em `shared/sim/skill.ts` (zonas, cronômetro em ticks, splits, quedas, reinícios, prática) e recordes em `shared/sim/records.ts` (PB, melhores stages, Sum of Best, top 10, versão por hash da geometria). Armazenamento: interface `RecordStore`, hoje `client/src/skill/localStore.ts` (localStorage).
-- Teclas: R reinicia o mapa, Backspace reinicia o stage, M abre o menu de stages, Z/X salvam e carregam a posição (prática).
+- Teclas: R reinicia o mapa, Backspace reinicia o stage (linear: último checkpoint), M abre o menu de stages/checkpoints, Z/X salvam e carregam a posição (prática), H mostra/esconde o fantasma.
+- **Rodada 8a:** categorias Treino (os 3 mapas) e Desafio (12 mapas, chegam em 8b/8c); tiers 1–6 (`TIER_COLORS`, `TIER_STYLE`, `TIER_LABELS`); formatos **staged** e **linear** (checkpoints = portal + plataforma de retorno 430 u acima do cume; queda medida por trecho); tudo generalizado para "segmentos" (`map.skill.segments`); zonas podem ser caixas orientadas (`TriggerVolume.obb`); pulo liberado na zona de início com o cap valendo também no tick de saída; desbloqueio progressivo em `SKILL.progressiveUnlock` (desligado).
+- **Fantasma** (`shared/sim/ghost.ts`): gravação por tick na sim (`SkillRun.recorder`), 50 Hz com keyframes + deltas Int16 (~12 B/amostra; limite `GHOST.maxBytes5min` = 256 KB), `GhostStore` no IndexedDB (`client/src/skill/ghostStore.ts`), PB substitui o fantasma da corrida, melhores segmentos guardam o seu trecho, sincronia "corrida inteira" ou "por segmento", diferença ao vivo no HUD. Prática não grava.
+- Versões estáticas: `shared/maps/skillVersions.ts` (o menu não constrói mapas; só o mapa escolhido é construído e fica em cache). Os hashes dos mapas de treino continuam os da rodada 7.
+- Mapa oculto `teste_curto` (linear, 1 checkpoint) só para testes/e2e.
+- Kit (`skillKit.ts`): `Course` (encadeia rampas: `next`, `curve` contínua com emendas fechadas por cunha, `checkpoint`, `bhop`), rampas ascendentes, túneis (`ceiling`), rampas de uma face, `buildLinear` e métricas de projeto por segmento (meia-largura, inclinação, gaps, velocidade mínima balística, tempo de ar, transições, curva máxima).
 - Percurso de referência: `shared/bots/routeDriver.ts` (usa o `steerToward` com `idealStrafe`, sem assistência). Completa os 15 stages só com física; também existe `game.autopilot` no cliente para testes.
 
 | | T1 SKY STEPS | T2 DRIFT CANYON | T3 STORM SPIRE |
@@ -93,9 +99,11 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 | 5 · `5ef55f7` | Colete ao nascer, vida 150, rampa central reta e mais alta, flancos nivelados, 4 jump pads sem perda de velocidade. |
 | 6 · `4adcdcb` | Dano ×1,4, Kestrel mais precisa, sprint automático, Shift caminha (silencioso), sons de passos, slide em movimento, hitbox maior de faca/taser. |
 | 7 · `e9a4c25` | **Surf Skill**: 3 mapas com 5 stages, cronômetro em ticks, splits contra o PB, quedas para o início do stage, prática, recordes locais, Sum of Best, ranking, menu, HUD, sons, 16 testes e 6 verificações e2e novas. |
+| 8a | Infraestrutura do Surf Skill para os desafios: Treino × Desafio, tiers 1–6, formatos staged/linear com checkpoints, segmentos genéricos, fantasma do PB (gravação, IndexedDB, sincronia, diferença ao vivo), pulo nas bases, menu com abas, versões estáticas dos mapas, kit estendido. |
 
 ## Decisões tomadas (não desfazer sem pedido)
 
+- **Rodada 8a:** pulo na zona de início liberado (o cap de 420 continua, inclusive saindo no ar), por isso os recordes da rodada 7 continuam valendo. O fantasma do PB só é trocado quando a corrida vira PB. A "velocidade mínima de projeto" passou a ser balística (considera a inclinação da saída), então os números dos mapas de treino subiram (424 / 870 / 1197 u/s) sem mudar a geometria. O steer dos bots ganhou `idealStrafe` só para o percurso de referência.
 - **Rodada 7:** a linha da especificação sobre a zona de início veio cortada; interpretado como prespeed cap 420 u/s + pulo bloqueado, em toda zona de início. O fim de cada stage leva direto, parado, à zona de início do próximo. O tempo de cada stage vai de um split ao seguinte (os 5 somam o total). Cair no stage 1 depois de largar não zera o tempo (só o R zera). Ir para outro stage ou usar Z/X marca a corrida como prática. O strafe ideal no `steerToward` só é usado pelo percurso de referência; os bots da partida continuam como antes.
 - **Rodada 6:** o sprint tático antigo continua no código e volta com `SPRINT.raiseWeapon` e `SPRINT.useStamina` = true. Teclas antigas de sprint migram para caminhar.
 - **Gerais:** sem Three.js (renderizador próprio); toda configuração em `shared/config/`; a simulação não pode depender do DOM.
@@ -107,10 +115,12 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 - Recuo da Longbow não voltava → atraso de recuperação = mín(intervalo × 1,2; 0,3 s).
 - Teleporte e jump pad perdiam velocidade → teleportGlide (0,45 s sem atrito) e velocidade de entrada registrada antes do movimento.
 - Transições do Surf Skill: o próximo apoio precisa ficar abaixo da trajetória (drop ≥ ~300 com gap 300); use `chainRamp` e `endAfter` do kit. Spawns ficam 2 u acima do piso.
-- Banner/toasts da partida anterior apareciam no modo seguinte → `hud.clearTransient()` no início de cada jogo.
+- Banner/toasts da partida anterior apareciam no modo seguinte → `hud.clearTransient()` no início de cada jogo (e ao reiniciar o mapa no Surf Skill).
+- Mudar o kit sem querer altera o hash dos mapas de treino e zera recordes → o teste de versões fixa os hashes da rodada 7.
 
 ## Pendências e ideias
 
-- Multiplayer online (a simulação já é separada do cliente; os recordes já têm a interface `RecordStore` para um backend).
+- **Rodada 8b:** desafios D1–D6. **Rodada 8c:** D7–D12, índice de dificuldade crescente e tabela de métricas no README.
+- Multiplayer online (a simulação já é separada do cliente; recordes e fantasmas já têm as interfaces `RecordStore` e `GhostStore` para um backend).
 - Calibrar jogando: gaps do STORM SPIRE (stages 3 e 5, feitos no limite do percurso de referência), ritmo da pista de bhop do DRIFT CANYON (stage 4, espaçada para ~1170 u/s), prespeed cap (420), atraso da tela de fim (1,8 s), dano ×1,4 e caminhar ×0,55.
 - Renderização por software nos testes roda a ~15 FPS; em GPU real é normal.

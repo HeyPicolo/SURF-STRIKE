@@ -11,8 +11,11 @@ import type { World } from '../../shared/sim/world';
 import type { SkillEvent } from '../../shared/sim/skill';
 import { getSkillMap } from '../../shared/maps/skillMaps';
 import { skillMapMeta } from '../../shared/config/skill';
-import { addAttempt, applyFinish, mapVersion, MapRecords } from '../../shared/sim/records';
+import { addAttempt, applyFinish, MapRecords } from '../../shared/sim/records';
+import { SKILL_MAP_VERSIONS } from '../../shared/maps/skillVersions';
+import { updateGhostSet, emptyGhostSet } from '../../shared/sim/ghost';
 import { LocalRecordStore } from './skill/localStore';
+import { IdbGhostStore } from './skill/ghostStore';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const settings = loadSettings();
@@ -39,10 +42,11 @@ let game: Game;
 
 // ---- Surf Skill: recordes locais (a lógica fica em shared/sim/records.ts) ----
 const records = new LocalRecordStore();
+const ghosts = new IdbGhostStore();
 let skillMapId: string | null = null;
+/** Recordes sem construir o mapa: a versão vem de skillVersions.ts (gerado e conferido nos testes). */
 function skillRecords(id: string): MapRecords {
-  const m = getSkillMap(id);
-  return records.load(id, mapVersion(m), m.skill!.stages.length);
+  return records.load(id, SKILL_MAP_VERSIONS[id], skillMapMeta(id).segments.length);
 }
 function startSkill(id: string) {
   sfx.ensure();
@@ -57,6 +61,9 @@ function startSkill(id: string) {
     seed: 1, autoBhop: settings.autoBhop,
     skillPb: rec.pb ? { ticks: rec.pb.ticks, splits: rec.pb.splits, stages: rec.pb.stages } : null,
   }, m);
+  // fantasmas guardados (IndexedDB, assíncrono): aparecem assim que carregarem
+  const w0 = game.world;
+  ghosts.load(id, SKILL_MAP_VERSIONS[id], m.skill!.segments.length).then((g) => { if (game.world === w0) game.setGhosts(g); }).catch(() => { /* sem fantasma */ });
   resume();
 }
 function onSkillEvent(w: World, e: SkillEvent) {
@@ -73,6 +80,16 @@ function onSkillEvent(w: World, e: SkillEvent) {
     records.save(rec);
     if (rec.pb) w.skill!.pb = { ticks: rec.pb.ticks, splits: rec.pb.splits, stages: rec.pb.stages };
     game.skillRecordFeedback(res.newPb, res.rank);
+    // fantasma: PB novo substitui o da corrida; segmentos recorde substituem os de segmento
+    if (e.ghost) {
+      const n = w.skill!.stageCount, track = e.ghost;
+      const base = game.ghosts ? Promise.resolve(game.ghosts) : ghosts.load(id, SKILL_MAP_VERSIONS[id], n).catch(() => emptyGhostSet(n));
+      base.then((cur) => {
+        const next = updateGhostSet(cur, track, e.total, e.stages, res!.newPb, res!.goldStages);
+        if (game.world === w) game.setGhosts(next);
+        return ghosts.save(id, SKILL_MAP_VERSIONS[id], next);
+      }).catch(() => { /* indisponível */ });
+    }
   }
   // tela de fim depois de um instante (dá tempo de ver a chegada)
   setTimeout(() => {

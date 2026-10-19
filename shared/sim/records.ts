@@ -14,6 +14,7 @@ export interface MapRecords {
   mapId: string;
   /** versão (hash) da geometria do mapa: mudar o mapa invalida os recordes antigos */
   version: string;
+  /** quantidade de segmentos (stages ou trechos entre checkpoints) — nome mantido por compatibilidade */
   stageCount: number;
   pb: PbRun | null;
   /** melhor tempo de cada stage isolado (melhor segmento), em ticks */
@@ -93,8 +94,11 @@ export function mapVersion(map: MapDef): string {
     if (b.noCollide) continue;
     for (const v of b.verts) { feed(v.x); feed(v.y); feed(v.z); }
   }
-  for (const st of map.skill?.stages ?? []) {
-    for (const z of [st.startZone, st.endZone, ...st.fall]) { feed(z.min.x); feed(z.min.y); feed(z.min.z); feed(z.max.x); feed(z.max.y); feed(z.max.z); }
+  for (const st of map.skill?.segments ?? []) {
+    for (const z of [st.startZone, st.endZone, ...st.fall]) {
+      feed(z.min.x); feed(z.min.y); feed(z.min.z); feed(z.max.x); feed(z.max.y); feed(z.max.z);
+      if (z.obb) { feed(z.obb.c.x); feed(z.obb.c.y); feed(z.obb.c.z); feed(z.obb.yaw * 1000); feed(z.obb.hl); feed(z.obb.hw); feed(z.obb.hh); }
+    }
     feed(st.spawn.pos.x); feed(st.spawn.pos.y); feed(st.spawn.pos.z);
   }
   return h.toString(16).padStart(8, '0');

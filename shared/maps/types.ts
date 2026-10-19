@@ -24,6 +24,11 @@ export interface PickupSpawn {
 export interface TriggerVolume {
   min: V3;
   max: V3;
+  /**
+   * Caixa orientada (opcional): centro, direção (yaw) e meias-medidas ao longo da direção (hl),
+   * na lateral (hw) e na vertical (hh). Quando presente, vale ela; min/max são o envelope.
+   */
+  obb?: { c: V3; yaw: number; hl: number; hw: number; hh: number };
 }
 
 export interface Teleporter extends TriggerVolume {
@@ -63,30 +68,63 @@ export interface BotRoute { name: string; points: NavPoint[]; }
 
 export interface DuelArena { center: V3; a: SpawnPoint; b: SpawnPoint; }
 
-/** Um stage do Surf Skill: zona de início, percurso e zona de fim. */
-export interface SkillStageDef {
+/**
+ * Um segmento do Surf Skill: um stage (mapas staged) ou o trecho entre dois checkpoints (mapas linear).
+ * Staged: zona de início (com prespeed cap) → percurso → zona de fim, que leva ao início do próximo stage.
+ * Linear: o "início" do trecho k > 0 é a plataforma de retorno do checkpoint; a zona de fim é o portal
+ * do próximo checkpoint (passa-se por ele sem parar) ou a chegada.
+ */
+export interface SkillSegmentDef {
   index: number;
   name: string;
+  kind: 'stage' | 'checkpoint';
+  /** onde o jogador volta ao cair / reiniciar o segmento */
   spawn: SpawnPoint;
-  /** Sair desta zona inicia o cronômetro (stage 1) / o stage. Dentro dela: prespeed cap e sem pulo. */
+  /** zona de início (stage 1/largada: liga o cronômetro). Dentro dela: prespeed cap. */
   startZone: TriggerVolume;
-  /** Fim do stage: leva ao início do próximo (ou é a chegada, no último stage). */
+  /** fim do segmento: zona de fim do stage, portal do próximo checkpoint ou a chegada */
   endZone: TriggerVolume;
-  /** "Lava": tocar volta ao início do stage atual com velocidade zero. */
+  /** "Lava": tocar volta ao início do segmento atual com velocidade zero. */
   fall: TriggerVolume[];
   /** Segurança: abaixo desta altura também conta como queda. */
   fallY: number;
   color: number;
-  /** Percurso de referência (testes, e2e): pontos para o steer.ts atravessar o stage. */
+  /** Percurso de referência (testes, e2e): pontos para o steer.ts atravessar o segmento a partir do spawn. */
   route: NavPoint[];
-  /** Dados de projeto do stage (documentação e testes de dificuldade). */
-  design: { minHalfWidth: number; maxNormalY: number; minNormalY: number; ramps: number; bhop: boolean; minSpeed: number; maxGap: number };
+  /** linear: índice da rota por onde segue quem chega embalado pelo portal (pula a saída da plataforma) */
+  flowFrom: number;
+  /** Dados de projeto do segmento (documentação e testes de dificuldade). */
+  design: SegmentDesign;
+}
+/** compatibilidade com a rodada 7 */
+export type SkillStageDef = SkillSegmentDef;
+
+export interface SegmentDesign {
+  minHalfWidth: number;
+  /** soma das meias-larguras (para a média) e quantidade de rampas */
+  sumHalfWidth: number;
+  maxNormalY: number;
+  minNormalY: number;
+  ramps: number;
+  /** transições (rampa → rampa / apoio) */
+  transitions: number;
+  bhop: boolean;
+  /** velocidade horizontal mínima de projeto no pior gap */
+  minSpeed: number;
+  maxGap: number;
+  /** maior tempo de ar previsto num gap (s) */
+  maxAirTime: number;
+  /** maior mudança de direção entre rampas consecutivas (graus) */
+  maxTurn: number;
+  tunnel: boolean;
+  ascending: boolean;
 }
 
 export interface SkillCourseDef {
   id: string;
-  tier: 1 | 2 | 3;
-  stages: SkillStageDef[];
+  tier: 1 | 2 | 3 | 4 | 5 | 6;
+  format: 'staged' | 'linear';
+  segments: SkillSegmentDef[];
 }
 
 export interface MapDef {

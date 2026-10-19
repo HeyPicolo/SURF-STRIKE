@@ -5,6 +5,7 @@ import { WEAPONS, NADES, NadeKind, SLOT_NADES, SLOT_KEYS, reloadDuration, ITEMS 
 import { CLASSES } from '../../../shared/config/classes';
 import { forwardFromAngles } from '../../../shared/math/vec3';
 import { SkillMapMeta, TIER_COLORS, formatTicks, formatDiff } from '../../../shared/config/skill';
+import type { SkillFormat } from '../../../shared/config/skill';
 import type { SkillEvent } from '../../../shared/sim/skill';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -34,27 +35,35 @@ export class Hud {
   skillMode(on: boolean) { this.root.classList.toggle('mode-skill', on); if (!on) this.splitTimer = 0; }
 
   /** Mostra o último split (diferença verde/vermelha contra o PB, como no CS2). */
-  skillSplit(e: Extract<SkillEvent, { t: 'skillSplit' }>, stageCount: number) {
+  skillSplit(e: Extract<SkillEvent, { t: 'skillSplit' }>, stageCount: number, format: SkillFormat = 'staged') {
     const cls = (d: number | null) => (d === null ? 'even' : d < 0 ? 'better' : d > 0 ? 'worse' : 'even');
     const last = e.stage === stageCount - 1;
-    const label = last ? 'CHEGADA' : `STAGE ${e.stage + 1} CONCLUÍDO`;
+    const label = last ? 'CHEGADA' : format === 'linear' ? `CHECKPOINT ${e.stage + 1}` : `STAGE ${e.stage + 1} CONCLUÍDO`;
     const diff = e.diffTotal !== null ? ` <span class="${cls(e.diffTotal)}">${formatDiff(e.diffTotal)}</span>` : '';
     const sd = e.diffStage !== null ? ` <span class="${cls(e.diffStage)}">(${formatDiff(e.diffStage)})</span>` : '';
-    this.set('skill-split', 'html', `<span class="lbl">${label}${e.practice ? ' · PRÁTICA' : ''}</span>${formatTicks(e.total)}${diff}<br><span style="font-size:14px">stage ${formatTicks(e.stageTicks)}${sd}</span>`);
+    this.set('skill-split', 'html', `<span class="lbl">${label}${e.practice ? ' · PRÁTICA' : ''}</span>${formatTicks(e.total)}${diff}<br><span style="font-size:14px">${format === 'linear' ? 'trecho' : 'stage'} ${formatTicks(e.stageTicks)}${sd}</span>`);
     this.set('skill-split', 'class', 'on');
     this.splitTimer = last ? 6 : 3.5;
   }
 
-  skillUpdate(w: World, meta: SkillMapMeta, dt: number, help: string, menu: string | null) {
+  skillUpdate(w: World, meta: SkillMapMeta, dt: number, help: string, menu: string | null, ghostDiff: number | null = null, ghostOn = false) {
     const sk = w.skill!;
     this.set('skill-top', 'style', TIER_COLORS[meta.tier], '--skill-c');
-    this.set('skill-map', 'text', `${meta.name} · TIER ${meta.tier}`);
-    this.set('skill-stage', 'text', `STAGE ${sk.stage + 1}/${sk.stageCount} · ${sk.stageDef.name}`);
+    this.set('skill-map', 'text', `${meta.num ? `D${meta.num} · ` : ''}${meta.name} · TIER ${meta.tier}`);
+    this.set('skill-stage', 'text', sk.linear
+      ? (sk.stage === 0 ? `LARGADA · ${sk.stageCount - 1} CHECKPOINTS` : `CHECKPOINT ${sk.stage}/${sk.stageCount - 1} · ${sk.stageDef.name}`)
+      : `STAGE ${sk.stage + 1}/${sk.stageCount} · ${sk.stageDef.name}`);
+    // diferença ao vivo para o fantasma
+    if (ghostDiff !== null && sk.state === 'running') {
+      const s = Math.abs(ghostDiff) / 100;
+      const cls = ghostDiff < 0 ? 'better' : ghostDiff > 0 ? 'worse' : 'even';
+      this.set('skill-ghost', 'html', `FANTASMA <b class="${cls}">${ghostDiff < 0 ? '−' : '+'}${s.toFixed(2)} s</b> <span style="opacity:.7">${ghostDiff < 0 ? 'à frente' : 'atrás'}</span>`);
+    } else this.set('skill-ghost', 'html', ghostOn && sk.state === 'zone' ? '<span style="opacity:.7">fantasma pronto</span>' : '');
     this.set('skill-timer', 'text', formatTicks(sk.ticks));
     this.set('skill-timer', 'class', sk.state === 'zone' ? 'zone' : sk.state === 'finished' ? 'done' : '');
     const sub = sk.state === 'zone'
       ? (sk.stage === 0 ? 'Saia da zona verde para começar' : 'Saia da zona verde para começar o stage')
-      : sk.state === 'finished' ? 'Percurso concluído' : `stage ${formatTicks(sk.stageTicks)}${sk.falls ? ` · ${sk.falls} queda${sk.falls > 1 ? 's' : ''}` : ''}`;
+      : sk.state === 'finished' ? 'Percurso concluído' : `${sk.linear ? 'trecho' : 'stage'} ${formatTicks(sk.stageTicks)}${sk.falls ? ` · ${sk.falls} queda${sk.falls > 1 ? 's' : ''}` : ''}`;
     this.set('skill-sub', 'text', sub);
     this.set('skill-tag', 'class', sk.practice ? 'on' : '');
     if (this.splitTimer > 0) { this.splitTimer -= dt; if (this.splitTimer <= 0) this.set('skill-split', 'class', ''); }

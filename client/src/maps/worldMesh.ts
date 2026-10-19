@@ -54,38 +54,64 @@ export function buildWorldMesh(map: MapDef): WorldMeshes {
       }
     }
   }
-  // Surf Skill: paredes translúcidas das zonas (verde = início, vermelho = fim, dourado = chegada)
-  // e o número do stage flutuando sobre a plataforma de início
+  // Surf Skill: paredes translúcidas das zonas (verde = início, vermelho = fim, ciano = checkpoint,
+  // dourado = chegada) e o número do stage/checkpoint flutuando à frente de quem chega
   const zones = new MeshBuilder();
-  const stages = map.skill?.stages ?? [];
-  stages.forEach((st, i) => {
-    zoneWalls(zones, st.startZone, 0x3ddc84);
-    zoneWalls(zones, st.endZone, i === stages.length - 1 ? 0xffd23c : 0xff4757);
+  const segs = map.skill?.segments ?? [];
+  const linear = map.skill?.format === 'linear';
+  segs.forEach((st, i) => {
+    const last = i === segs.length - 1;
+    if (st.kind === 'stage') zoneWalls(zones, st.startZone, 0x3ddc84);
+    zoneWalls(zones, st.endZone, last ? 0xffd23c : linear ? 0x7fe9ff : 0xff4757);
     const c = st.spawn.pos;
-    // flutua logo depois da borda da plataforma, na altura do olhar
-    const sz = st.startZone.min.z - 330;
-    digit(mb, i + 1, c.x, c.y + 210, sz, 60, st.color);
-    mb.box(c.x - 70, c.y + 128, sz - 6, c.x + 70, c.y + 136, sz + 2, 0x2d3446);
+    const yaw = st.spawn.yaw;
+    const d = { x: -Math.sin(yaw), z: -Math.cos(yaw) };
+    if (!linear) {
+      // flutua logo depois da borda da plataforma, na altura do olhar
+      const sz = st.startZone.min.z - 330;
+      number(mb, i + 1, c.x, c.y + 210, sz, 60, st.color, { x: 1, z: 0 });
+      mb.box(c.x - 70, c.y + 128, sz - 6, c.x + 70, c.y + 136, sz + 2, 0x2d3446);
+    } else if (i > 0) {
+      // sobre a plataforma de retorno do checkpoint
+      number(mb, i, c.x + d.x * 40, c.y + 190, c.z + d.z * 40, 46, 0x7fe9ff, { x: -d.z, z: d.x });
+    }
   });
   return { opaque: mb.toArray(), glass: glass.toArray(), zones: zones.toArray() };
 }
 
-function zoneWalls(mb: MeshBuilder, z: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }, color: number) {
-  const { min: a, max: b } = z;
-  const y0 = a.y + 1, y1 = b.y;
-  mb.poly([[a.x, y0, a.z], [b.x, y0, a.z], [b.x, y1, a.z], [a.x, y1, a.z]], color, 1);
-  mb.poly([[b.x, y0, b.z], [a.x, y0, b.z], [a.x, y1, b.z], [b.x, y1, b.z]], color, 1);
-  mb.poly([[a.x, y0, b.z], [a.x, y0, a.z], [a.x, y1, a.z], [a.x, y1, b.z]], color, 1);
-  mb.poly([[b.x, y0, a.z], [b.x, y0, b.z], [b.x, y1, b.z], [b.x, y1, a.z]], color, 1);
-  // os dois lados de cada parede ficam visíveis
-  mb.poly([[a.x, y1, a.z], [b.x, y1, a.z], [b.x, y0, a.z], [a.x, y0, a.z]], color, 1);
-  mb.poly([[b.x, y1, b.z], [a.x, y1, b.z], [a.x, y0, b.z], [b.x, y0, b.z]], color, 1);
-  mb.poly([[a.x, y1, b.z], [a.x, y1, a.z], [a.x, y0, a.z], [a.x, y0, b.z]], color, 1);
-  mb.poly([[b.x, y1, a.z], [b.x, y1, b.z], [b.x, y0, b.z], [b.x, y0, a.z]], color, 1);
+type Vol = { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number }; obb?: { c: { x: number; y: number; z: number }; yaw: number; hl: number; hw: number; hh: number } };
+
+function zoneWalls(mb: MeshBuilder, z: Vol, color: number) {
+  // quatro cantos no plano (caixa orientada ou AABB) e as paredes entre eles, dos dois lados
+  let corners: [number, number][], y0: number, y1: number;
+  if (z.obb) {
+    const o = z.obb, dx = Math.sin(o.yaw), dz = -Math.cos(o.yaw), sx = -dz, sz = dx;
+    corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [o.c.x + dx * o.hl * a + sx * o.hw * b, o.c.z + dz * o.hl * a + sz * o.hw * b]);
+    y0 = o.c.y - o.hh + 1; y1 = o.c.y + o.hh;
+  } else {
+    const { min: a, max: b } = z;
+    corners = [[a.x, a.z], [b.x, a.z], [b.x, b.z], [a.x, b.z]];
+    y0 = a.y + 1; y1 = b.y;
+  }
+  for (let i = 0; i < 4; i++) {
+    const [x0, z0] = corners[i], [x1, z1] = corners[(i + 1) % 4];
+    mb.poly([[x0, y0, z0], [x1, y0, z1], [x1, y1, z1], [x0, y1, z0]], color, 1);
+    mb.poly([[x0, y1, z0], [x1, y1, z1], [x1, y0, z1], [x0, y0, z0]], color, 1);
+  }
 }
 
-/** Algarismo de 7 segmentos (plano XY, virado para +Z) feito de feixes luminosos. */
-function digit(mb: MeshBuilder, n: number, cx: number, cy: number, z: number, h: number, color: number) {
+/** Número de 1 ou 2 algarismos de 7 segmentos, no plano vertical com eixo horizontal `right`. */
+function number(mb: MeshBuilder, n: number, cx: number, cy: number, cz: number, h: number, color: number, right: { x: number; z: number }) {
+  const ds = String(n).split('').map(Number);
+  const step = h * 1.5;
+  ds.forEach((dg, i) => {
+    const off = (i - (ds.length - 1) / 2) * step;
+    digit(mb, dg, cx + right.x * off, cy, cz + right.z * off, h, color, right);
+  });
+}
+
+/** Algarismo de 7 segmentos feito de feixes luminosos. */
+function digit(mb: MeshBuilder, n: number, cx: number, cy: number, cz: number, h: number, color: number, right: { x: number; z: number }) {
   const segs: Record<string, [number, number, number, number]> = {
     a: [-0.5, 1, 0.5, 1], b: [0.5, 1, 0.5, 0], c: [0.5, 0, 0.5, -1], d: [-0.5, -1, 0.5, -1],
     e: [-0.5, 0, -0.5, -1], f: [-0.5, 1, -0.5, 0], g: [-0.5, 0, 0.5, 0],
@@ -93,7 +119,7 @@ function digit(mb: MeshBuilder, n: number, cx: number, cy: number, z: number, h:
   const on: Record<number, string> = { 0: 'abcdef', 1: 'bc', 2: 'abged', 3: 'abgcd', 4: 'fgbc', 5: 'afgcd', 6: 'afgedc', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg' };
   for (const k of on[n % 10]) {
     const [x0, y0, x1, y1] = segs[k];
-    mb.beam([cx + x0 * h, cy + y0 * h, z], [cx + x1 * h, cy + y1 * h, z], 9, color, 1);
+    mb.beam([cx + right.x * x0 * h, cy + y0 * h, cz + right.z * x0 * h], [cx + right.x * x1 * h, cy + y1 * h, cz + right.z * x1 * h], 9, color, 1);
   }
 }
 

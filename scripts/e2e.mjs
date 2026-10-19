@@ -212,6 +212,49 @@ await page.screenshot({ path: join(shots, '11-skill-split.png') });
 await S(() => { window.__surf.game.autopilot = false; });
 check('20. completa o stage 1 pelo percurso de referência e mostra o split', sk4.stage === 1 && sk4.split > 0 && sk4.splitHud.includes('on') && sk4.splitText.includes('STAGE 1') && sk4.stageHud.startsWith('STAGE 2/5'), JSON.stringify(sk4));
 
+// --- Surf Skill (rodada 8): pulo na base, aba Desafio, corrida curta e fantasma
+await S(() => { window.__surf.game.autopilot = false; window.__surf.input.keys.clear(); });
+await page.keyboard.press('KeyR'); await waitSim(0.2);
+const cap = await S(() => window.__surf.game.world.skill.state);
+await page.keyboard.down('KeyW'); await waitSim(0.35); await page.keyboard.down('Space');
+let maxZone = 0, exitV = -1;
+for (let i = 0; i < 80; i++) {
+  await waitSim(0.05);
+  const r = await S(() => { const w = window.__surf.game.world; return { st: w.skill.state, v: Math.hypot(w.local.phys.vel.x, w.local.phys.vel.z), air: !w.local.phys.onGround }; });
+  if (r.st === 'zone') maxZone = Math.max(maxZone, r.v); else { exitV = r.v; break; }
+}
+const jumped = await S(() => window.__surf.game.world.skill.state);
+await page.keyboard.up('Space'); await page.keyboard.up('KeyW');
+check('21. pula na base sem passar do prespeed cap', cap === 'zone' && jumped === 'running' && maxZone <= 420.5 && exitV <= 470, `maxNaZona=${maxZone.toFixed(0)} saida=${exitV.toFixed(0)}`);
+await S(() => window.__surf.menu.act.quitToMenu());
+await wait(300);
+await page.click('button[data-go=skill]');
+await wait(200);
+await page.click('[data-tab=desafio]');
+await wait(200);
+check('22. abre a aba Desafio', await S(() => document.querySelector('[data-tab=desafio]').classList.contains('on')));
+await page.screenshot({ path: join(shots, '12-skill-desafio.png') });
+// corrida curta de teste até o fim
+await S(() => { window.__surf.menu.act.startSkill('teste_curto'); window.__surf.input.enabled = true; window.__surf.game.paused = false; document.getElementById('panel').classList.add('hidden'); window.__surf.game.autopilot = true; });
+for (let i = 0; i < 200; i++) { await waitSim(0.25); if (await S(() => window.__surf.game.world?.skill?.state === 'finished')) break; }
+const fin = await S(() => window.__surf.game.world.skill.state);
+for (let i = 0; i < 40; i++) { await wait(150); if (await S(() => !!window.__surf.game.ghosts?.pb)) break; }
+const hasGhost = await S(() => !!window.__surf.game.ghosts?.pb);
+await wait(2200); // tela de fim
+const finishPanel = await page.isVisible('.skill-total');
+await page.screenshot({ path: join(shots, '13-skill-finish.png') });
+check('23. termina uma corrida curta e guarda o fantasma do PB', fin === 'finished' && hasGhost && finishPanel, `estado=${fin} fantasma=${hasGhost} tela=${finishPanel}`);
+await page.click('#skagain');
+await wait(300);
+await S(() => { window.__surf.game.autopilot = false; window.__surf.input.enabled = true; window.__surf.game.paused = false; document.getElementById('panel').classList.add('hidden'); });
+// segunda tentativa à mão: sai da zona andando e para; o fantasma segue o caminho do PB
+await page.keyboard.down('KeyW'); await waitSim(0.9); await page.keyboard.up('KeyW');
+await waitSim(1.2);
+const ghost2 = await S(() => ({ state: window.__surf.game.world.skill.state, visible: window.__surf.game.ghostVisible, diff: window.__surf.game.ghostDiff, label: document.getElementById('ghost-label')?.textContent || '' }));
+await page.screenshot({ path: join(shots, '14-skill-ghost.png') });
+await S(() => { window.__surf.game.autopilot = false; });
+check('24. o fantasma aparece na tentativa seguinte, com a diferença ao vivo', ghost2.state === 'running' && ghost2.visible && ghost2.diff !== null && ghost2.label.startsWith('PB'), JSON.stringify(ghost2));
+
 const fps = await S(() => new Promise((res) => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 2000) requestAnimationFrame(f); else res(n / 2); }; requestAnimationFrame(f); }));
 console.log(`fps (software renderer): ${fps}`);
 check('sem erros no console', errors.length === 0, errors.slice(0, 5).join(' | '));

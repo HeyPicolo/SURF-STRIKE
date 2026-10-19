@@ -261,3 +261,14 @@ table.skill-res td, table.skill-res th { padding: 6px 8px; border-top: 1px solid
 table.skill-res th { font-weight: 500; font-size: 12px; opacity: .6; }
 .skill-total { font-family: var(--display); font-size: 48px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .skill-record { font-family: var(--display); font-weight: 700; color: #ffd23c; font-size: 22px; letter-spacing: .06em; }
+#skill-ghost { font-family: var(--display); font-size: 13px; min-height: 16px; font-variant-numeric: tabular-nums; }
+#ghost-label { position: fixed; pointer-events: none; font: 700 12px 'Chakra Petch', Rubik, sans-serif; color: #9ff4ff; text-shadow: 0 1px 4px #00213a; transform: translate(-50%, -100%); white-space: nowrap; display: none; letter-spacing: .04em; }
+
+.skill-tabs { display: flex; gap: 8px; margin: 10px 0 2px; }
+.skill-tabs .choice { font-family: var(--display); font-weight: 700; letter-spacing: .06em; padding: 10px 26px; }
+.skill-card .card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tier-badge { font-family: var(--display); font-weight: 700; font-size: 13px; padding: 2px 9px; border: 2px solid; transform: skewX(var(--slant)); }
+.done-seal { margin-left: auto; font-family: var(--display); font-weight: 700; font-size: 11px; color: #4dff8f; border: 1px solid #4dff8f; padding: 1px 6px; }
+.skill-card .fmt { font-size: 12px; opacity: .75; letter-spacing: .04em; }
+.skill-card details summary { cursor: pointer; font-family: var(--display); font-weight: 600; font-size: 13px; margin: 4px 0; }
+.skill-card.locked { opacity: .55; }

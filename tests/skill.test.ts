@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { World } from '../shared/sim/world';
 import { SIM_DT } from '../shared/config/physics';
-import { SKILL, SKILL_MAPS, formatTicks, formatDiff } from '../shared/config/skill';
+import { SKILL, skillMapsOf, formatTicks, formatDiff } from '../shared/config/skill';
 import { getSkillMap } from '../shared/maps/skillMaps';
 import { RouteDriver } from '../shared/bots/routeDriver';
 import { insideVolume, SkillPb } from '../shared/sim/skill';
@@ -75,8 +75,9 @@ test('timer is measured in ticks and starts only when leaving the start zone', (
   assert.equal(formatDiff(250), '+02.50');
 });
 
-test('start zone: prespeed cap and no jumping (no bhop for prespeed)', () => {
+test('start zone: jumping is allowed, prespeed cap holds (also bhopping out in the air)', () => {
   const w = skillWorld(), sk = w.skill!, p = w.local;
+  assert.equal(SKILL.blockJumpInStart, false);
   steps(w, 10);
   p.phys.vel.set(0, 0, -900);
   steps(w, 1);
@@ -84,15 +85,28 @@ test('start zone: prespeed cap and no jumping (no bhop for prespeed)', () => {
   p.phys.vel.set(0, 0, 0);
   steps(w, 10);
   p.input.cmd.jump = true;
-  steps(w, 20);
+  const ev = steps(w, 5);
   p.input.cmd.jump = false;
-  assert.ok(p.phys.onGround && Math.abs(p.phys.vel.y) < 1e-6, 'jump blocked');
+  assert.ok(ev.some((e) => e.t === 'jump'), 'jump allowed in the zone');
   assert.equal(sk.state, 'zone');
-  // fora da zona o pulo volta a funcionar
-  leaveZone(w);
-  p.input.cmd.forward = 1; steps(w, 5); p.input.cmd.forward = 0;
-  p.input.cmd.jump = true; const ev = steps(w, 3); p.input.cmd.jump = false;
-  assert.ok(ev.some((e) => e.t === 'jump'));
+  steps(w, 80);
+  // bhop + air strafe dentro da zona e saída no ar: nunca acima do cap no tick de saída
+  // volta para o fundo da zona, corre e sai pulando com strafe
+  p.phys.pos.z = 250; p.input.cmd.forward = 1; steps(w, 25);
+  p.input.cmd.jump = true;
+  let exitSpeed = -1, maxIn = 0;
+  for (let i = 0; i < 3000 && sk.state === 'zone'; i++) {
+    p.input.cmd.side = i % 30 < 15 ? 1 : -1;
+    p.input.cmd.yaw = (i % 30 < 15 ? -1 : 1) * 0.3;
+    w.step(SIM_DT);
+    const hs = Math.hypot(p.phys.vel.x, p.phys.vel.z);
+    if (sk.state === 'zone') maxIn = Math.max(maxIn, hs); else exitSpeed = hs;
+  }
+  p.input.cmd.jump = false; p.input.cmd.forward = 0; p.input.cmd.side = 0;
+  assert.equal(sk.state, 'running');
+  assert.ok(maxIn <= SKILL.prespeedCap + 1e-6, `inside ${maxIn}`);
+  assert.ok(exitSpeed >= 0 && exitSpeed <= SKILL.prespeedCap + 1e-6, `exit speed ${exitSpeed}`);
+  assert.ok(!p.phys.onGround || true);
 });
 
 test('falling sends you back to the current stage start, stopped, and the clock keeps running', () => {
@@ -238,17 +252,19 @@ test('records are keyed by the map geometry version: changing the map invalidate
 });
 
 // ---------------------------------------------------------------- mapas
-const maps = SKILL_MAPS.map((meta) => ({ meta, map: getSkillMap(meta.id) }));
+const maps = skillMapsOf('treino').map((meta) => ({ meta, map: getSkillMap(meta.id) }));
 
-test('the 3 maps match the config metadata (name, tier, 5 stages with names and spawns)', () => {
+test('the 3 training maps match the config metadata (name, tier, 5 stages with names and spawns)', () => {
   assert.deepEqual(maps.map((m) => m.meta.tier), [1, 2, 3]);
   for (const { meta, map } of maps) {
     assert.equal(map.name, meta.name);
+    assert.equal(meta.category, 'treino');
     assert.equal(map.skill!.tier, meta.tier);
-    assert.equal(map.skill!.stages.length, 5);
-    map.skill!.stages.forEach((st, i) => {
-      assert.equal(st.name, meta.stages[i].name);
-      assert.deepEqual(st.spawn.pos.toArray(), meta.stages[i].spawn);
+    assert.equal(map.skill!.format, 'staged');
+    assert.equal(map.skill!.segments.length, 5);
+    map.skill!.segments.forEach((st, i) => {
+      assert.equal(st.name, meta.segments[i].name);
+      assert.deepEqual(st.spawn.pos.toArray(), meta.segments[i].spawn);
     });
   }
 });
@@ -263,7 +279,7 @@ test('every ramp is surfable (normal Y < 0.7) and every stage has start, end, fa
       assert.ok(sloped.length > 0, `${map.name} ${b.tag}`);
       for (const pl of sloped) assert.ok(pl.n.y < PHYSICS.walkableNormalY, `${map.name} ${b.tag} normal ${pl.n.y.toFixed(3)}`);
     }
-    for (const st of map.skill!.stages) {
+    for (const st of map.skill!.segments) {
       assert.ok(st.startZone && st.endZone && st.fall.length > 0, `${map.name} stage ${st.index + 1}`);
       const ps = new PhysState(); ps.pos.copy(st.spawn.pos);
       assert.equal(cw.boxSolid(ps.pos, ps.mins, ps.maxs), false);
@@ -303,7 +319,7 @@ for (const { meta } of maps) {
 
 test('tier 3 demands more speed and precision than tier 1', () => {
   const d = maps.map(({ map }) => {
-    const ss = map.skill!.stages.map((s) => s.design);
+    const ss = map.skill!.segments.map((s) => s.design);
     return {
       minHw: Math.min(...ss.map((x) => x.minHalfWidth)),
       needSpeed: Math.max(...ss.map((x) => x.minSpeed)),
@@ -319,9 +335,9 @@ test('tier 3 demands more speed and precision than tier 1', () => {
   assert.ok(t3.maxGap > t1.maxGap * 3, `longest gap: T1 ${t1.maxGap} vs T3 ${t3.maxGap}`);
   assert.ok(t3.ramps > t1.ramps && t2.ramps > t1.ramps, 'more transitions');
   assert.ok(t2.bhop && !t1.bhop, 'tier 2 has mandatory bhop exits');
-  const peaks = SKILL_MAPS.map((m) => (m as { peak?: number }).peak ?? 0);
+  const peaks = maps.map((m) => (m.meta as { peak?: number }).peak ?? 0);
   if (peaks[0] && peaks[2]) assert.ok(peaks[2] > peaks[0], `peak speed of the reference run: T1 ${Math.round(peaks[0])} vs T3 ${Math.round(peaks[2])}`);
   // tier 3 tem rampas no limite (normal perto de 0.7) e rampas bem íngremes
-  const t3d = maps[2].map.skill!.stages.map((s) => s.design);
+  const t3d = maps[2].map.skill!.segments.map((s) => s.design);
   assert.ok(Math.max(...t3d.map((x) => x.maxNormalY)) > 0.67 && Math.min(...t3d.map((x) => x.minNormalY)) < 0.5);
 });

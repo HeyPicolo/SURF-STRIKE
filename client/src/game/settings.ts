@@ -1,9 +1,10 @@
+import { GHOST } from '../../../shared/config/skill';
 // Configurações do jogador (persistidas no localStorage quando disponível).
 export type Action =
   | 'forward' | 'back' | 'left' | 'right' | 'jump' | 'crouch' | 'walk'
   | 'reload' | 'use' | 'ability' | 'drop' | 'inspect' | 'slot1' | 'slot2' | 'slot3' | 'slot4' | 'scoreboard'
   | 'resetPos' | 'fly' | 'saveCp' | 'loadCp'
-  | 'skillRestart' | 'skillStage' | 'skillSave' | 'skillLoad' | 'skillMenu';
+  | 'skillRestart' | 'skillStage' | 'skillSave' | 'skillLoad' | 'skillMenu' | 'ghostToggle';
 
 export const ACTION_LABELS: Record<Action, string> = {
   forward: 'Frente', back: 'Trás', left: 'Esquerda (strafe)', right: 'Direita (strafe)', jump: 'Pular / Bunny hop',
@@ -11,7 +12,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   drop: 'Soltar equipamento', inspect: 'Inspecionar arma', slot1: 'Arma primária', slot2: 'Pistola', slot3: 'Faca / taser', slot4: 'Granadas', scoreboard: 'Placar',
   resetPos: 'Treino: reiniciar posição', fly: 'Treino: voar (noclip)', saveCp: 'Treino: salvar checkpoint', loadCp: 'Treino: carregar checkpoint',
   skillRestart: 'Surf Skill: reiniciar mapa', skillStage: 'Surf Skill: reiniciar stage', skillSave: 'Surf Skill: salvar posição (prática)',
-  skillLoad: 'Surf Skill: voltar à posição salva', skillMenu: 'Surf Skill: menu de stages',
+  skillLoad: 'Surf Skill: voltar à posição salva', skillMenu: 'Surf Skill: menu de stages/checkpoints', ghostToggle: 'Surf Skill: mostrar fantasma',
 };
 
 export const DEFAULT_KEYS: Record<Action, string> = {
@@ -19,7 +20,7 @@ export const DEFAULT_KEYS: Record<Action, string> = {
   reload: 'KeyR', use: 'KeyE', ability: 'KeyQ', drop: 'KeyG', inspect: 'KeyF', slot1: 'Digit1', slot2: 'Digit2', slot3: 'Digit3', slot4: 'Digit4',
   scoreboard: 'Tab', resetPos: 'KeyT', fly: 'KeyV', saveCp: 'KeyZ', loadCp: 'KeyX',
   // o Surf Skill não tem recarga nem treino: pode reaproveitar R, Z e X
-  skillRestart: 'KeyR', skillStage: 'Backspace', skillSave: 'KeyZ', skillLoad: 'KeyX', skillMenu: 'KeyM',
+  skillRestart: 'KeyR', skillStage: 'Backspace', skillSave: 'KeyZ', skillLoad: 'KeyX', skillMenu: 'KeyM', ghostToggle: 'KeyH',
 };
 
 export type Quality = 'low' | 'medium' | 'high';
@@ -40,11 +41,16 @@ export interface Settings {
   playerName: string;
   /** o jogador já confirmou o nome usado no ranking do Surf Skill */
   skillNameSet: boolean;
+  /** fantasma do recorde pessoal no Surf Skill */
+  ghostShow: boolean;
+  ghostOpacity: number;
+  /** 'run': corrida inteira; 'segment': reinicia a cada stage/checkpoint com o melhor segmento */
+  ghostSync: 'run' | 'segment';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   sensitivity: 2.0, fov: 100, masterVolume: 0.7, sfxVolume: 0.9, quality: 'high', effects: true,
-  autoBhop: true, showSpeed: true, viewBob: true, fullscreenLock: true, keys: { ...DEFAULT_KEYS }, playerName: 'Jogador', skillNameSet: false,
+  autoBhop: true, showSpeed: true, viewBob: true, fullscreenLock: true, keys: { ...DEFAULT_KEYS }, playerName: 'Jogador', skillNameSet: false, ghostShow: GHOST.defaultShow, ghostOpacity: GHOST.defaultOpacity, ghostSync: 'run',
 };
 
 const KEY = 'surfstrike.settings.v1';

@@ -7,7 +7,7 @@ import type { World } from '../../../shared/sim/world';
 import type { Team } from '../../../shared/maps/types';
 import { Settings, saveSettings, ACTION_LABELS, Action, keyLabel, DEFAULT_KEYS } from '../game/settings';
 import { esc } from './hud';
-import { SKILL_MAPS, SkillMapMeta, TIER_COLORS, TIER_LABELS, SKILL, formatTicks, formatDiff } from '../../../shared/config/skill';
+import { SkillMapMeta, TIER_COLORS, TIER_LABELS, TIER_STYLE, SKILL, formatTicks, formatDiff, skillMapsOf, SkillCategory, segmentWord, SkillTier } from '../../../shared/config/skill';
 import { MapRecords, FinishResult, sumOfBest } from '../../../shared/sim/records';
 import type { SkillEvent } from '../../../shared/sim/skill';
 
@@ -140,56 +140,88 @@ export class Menu {
   }
 
   // ------------------------------------------------------------------ Surf Skill
-  showSkill() {
+  private skillTab: SkillCategory = 'treino';
+
+  /** Selo do tier (T6: preto com borda vermelha). */
+  private tierBadge(t: SkillTier) {
+    const st = TIER_STYLE[t];
+    return `<span class="tier-badge" style="background:${st.bg};color:${st.fg};border-color:${st.border}">T${t}</span>`;
+  }
+
+  showSkill(tab: SkillCategory = this.skillTab) {
+    this.skillTab = tab;
     const s = this.settings;
     const t = (ticks: number | null | undefined) => (ticks === null || ticks === undefined ? '—' : formatTicks(ticks));
-    const cards = SKILL_MAPS.map((m) => {
+    const list = skillMapsOf(tab);
+    let prevDone = true;
+    const cards = list.map((m) => {
       const rec = this.act.skillRecords(m.id);
       const sob = sumOfBest(rec);
+      const done = rec.completions > 0;
+      // desbloqueio progressivo (desligado por padrão): só nos desafios
+      const locked = tab === 'desafio' && SKILL.progressiveUnlock && !prevDone;
+      prevDone = done;
+      const n = m.format === 'linear' ? m.segments.length - 1 : m.segments.length;
       const top = rec.top.length
         ? `<table>${rec.top.map((e, i) => `<tr><td>${i + 1}</td><td>${esc(e.name)}</td><td>${formatTicks(e.ticks)}</td><td style="opacity:.6">${new Date(e.date).toLocaleDateString('pt-BR')}</td></tr>`).join('')}</table>`
         : '<p class="muted" style="font-size:12px">Nenhum tempo ainda. Seja o primeiro.</p>';
-      return `<div class="skill-card" style="--c:${TIER_COLORS[m.tier]}">
-        <div class="tier">${TIER_LABELS[m.tier]}</div>
+      return `<div class="skill-card ${locked ? 'locked' : ''}" style="--c:${TIER_COLORS[m.tier]}">
+        <div class="card-head">${this.tierBadge(m.tier)}<span class="tier">${m.num ? `DESAFIO ${m.num} · ` : ''}${TIER_LABELS[m.tier]}</span>${done ? '<span class="done-seal">✓ CONCLUÍDO</span>' : ''}</div>
         <h3>${m.name}</h3>
+        <div class="fmt">${m.format === 'staged' ? 'Staged' : 'Linear'} · ${n} ${segmentWord(m.format, n !== 1)}</div>
         <p>${m.desc}</p>
         <div class="stats">
           <span>Recorde pessoal</span><b>${t(rec.pb?.ticks)}</b>
           <span>Sum of Best</span><b>${t(sob)}</b>
           <span>Tentativas</span><b>${rec.attempts} · ${rec.completions} concluídas</b>
         </div>
-        <h4 style="margin:6px 0 2px">Top ${SKILL.topN} local</h4>${top}
-        <button class="btn primary" data-skill="${m.id}">Jogar ${m.name}</button>
+        <details${rec.top.length ? '' : ' open'}><summary>Top ${SKILL.topN} local</summary>${top}</details>
+        ${locked ? '<button class="btn" disabled>Conclua o desafio anterior</button>' : `<button class="btn primary" data-skill="${m.id}">Jogar ${m.name}</button>`}
       </div>`;
     }).join('');
     const askName = !s.skillNameSet;
+    const empty = tab === 'desafio' && list.length === 0
+      ? '<p class="muted">Os 12 mapas de desafio chegam nas próximas atualizações.</p>' : '';
     this.panel(`<h2>Surf Skill</h2>
-      <p>Sem combate: só você, a faca e a física do surf contra o cronômetro. Cada mapa tem 5 stages. O tempo começa quando você sai da zona verde e termina na zona dourada. Cair na lava leva de volta ao início do stage, mas o relógio continua correndo.</p>
+      <p>Sem combate: só você, a faca e a física do surf contra o cronômetro. O tempo começa quando você sai da zona verde e termina na zona dourada. Cair leva de volta ao início do stage (ou ao último checkpoint), mas o relógio continua correndo.</p>
       ${askName ? `<div class="skill-name"><span>Seu nome no ranking</span><input type="text" id="skname" maxlength="16" value="${esc(s.playerName === 'Jogador' ? '' : s.playerName)}" placeholder="Jogador"></div><p class="muted" style="font-size:12px;margin-top:0">Dá para trocar depois em Configurações.</p>` : `<p class="muted">Jogando como <b>${esc(s.playerName)}</b> (troque em Configurações).</p>`}
-      <div class="skill-maps">${cards}</div>
+      <div class="skill-tabs">
+        <button class="choice ${tab === 'treino' ? 'on' : ''}" data-tab="treino">Treino</button>
+        <button class="choice ${tab === 'desafio' ? 'on' : ''}" data-tab="desafio">Desafio</button>
+      </div>
+      <p class="muted" style="font-size:12px">${tab === 'treino' ? 'Três mapas para aprender: tier 1 a 3.' : 'Doze mapas que testam de verdade o seu surf, cada um mais difícil que o anterior (tier 2 a 6).'}</p>
+      ${empty}<div class="skill-maps">${cards}</div>
       <div class="panel-actions"><button class="btn" data-back>Voltar</button></div>`);
+    $('panel-body').querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => b.onclick = () => { this.act.click(); this.saveName(askName); this.showSkill(b.dataset.tab as SkillCategory); });
     $('panel-body').querySelectorAll<HTMLButtonElement>('[data-skill]').forEach((b) => b.onclick = () => {
       this.act.click();
-      if (askName) {
-        const v = ($('skname') as HTMLInputElement).value.trim();
-        s.playerName = v || 'Jogador';
-        s.skillNameSet = true;
-        saveSettings(s);
-      }
+      this.saveName(askName);
       this.act.startSkill(b.dataset.skill!);
     });
+  }
+
+  private saveName(askName: boolean) {
+    if (!askName) return;
+    const el = document.getElementById('skname') as HTMLInputElement | null;
+    if (!el) return;
+    const v = el.value.trim();
+    if (!v) return;
+    this.settings.playerName = v;
+    this.settings.skillNameSet = true;
+    saveSettings(this.settings);
   }
 
   /** Tela de fim: tempo total, os 5 stages (tempo, PB, diferença) e Reiniciar / Voltar. */
   showSkillFinish(meta: SkillMapMeta, e: Extract<SkillEvent, { t: 'skillFinish' }>, prevPb: MapRecords['pb'], res: FinishResult | null, rec: MapRecords) {
     this.inGame = true;
     const cls = (d: number | null) => (d === null ? '' : d < 0 ? 'better' : d > 0 ? 'worse' : 'even');
-    const rows = meta.stages.map((st, i) => {
+    const linear = meta.format === 'linear';
+    const rows = meta.segments.map((st, i) => {
       const time = e.stages[i];
       const pbStage = prevPb?.stages[i] ?? null;
       const diff = pbStage !== null && time !== undefined ? time - pbStage : null;
       const gold = res?.goldStages[i] ? ' <span style="color:#ffd23c">★</span>' : '';
-      return `<tr><td>${i + 1} · ${esc(st.name)}</td><td>${time !== undefined ? formatTicks(time) : '—'}${gold}</td><td>${pbStage !== null ? formatTicks(pbStage) : '—'}</td><td class="${cls(diff)}">${diff !== null ? formatDiff(diff) : '—'}</td></tr>`;
+      return `<tr><td>${linear ? (i === 0 ? 'Largada' : `CP ${i}`) : i + 1} · ${esc(st.name)}</td><td>${time !== undefined ? formatTicks(time) : '—'}${gold}</td><td>${pbStage !== null ? formatTicks(pbStage) : '—'}</td><td class="${cls(diff)}">${diff !== null ? formatDiff(diff) : '—'}</td></tr>`;
     }).join('');
     const sob = sumOfBest(rec);
     const head = e.practice
@@ -199,7 +231,7 @@ export class Menu {
     this.panel(`<h2>${meta.name} concluído</h2>
       <div class="skill-total">${formatTicks(e.total)}</div>
       ${head}
-      <table class="skill-res"><tr><th>Stage</th><th>Tempo</th><th>PB</th><th>Diferença</th></tr>${rows}</table>
+      <table class="skill-res"><tr><th>${linear ? 'Trecho' : 'Stage'}</th><th>Tempo</th><th>PB</th><th>Diferença</th></tr>${rows}</table>
       <p class="muted">Recorde pessoal: <b>${rec.pb ? formatTicks(rec.pb.ticks) : '—'}</b> · Sum of Best: <b>${sob !== null ? formatTicks(sob) : '—'}</b> · ${rec.attempts} tentativas, ${rec.completions} concluídas</p>
       <div class="panel-actions"><button class="btn primary" id="skagain">Reiniciar</button><button class="btn" id="sktomenu">Voltar ao menu</button></div>`);
     $('skagain').onclick = () => { this.act.click(); this.hidePanel(); this.act.skillRestart(); };
@@ -245,12 +277,18 @@ export class Menu {
           <h4>Vídeo</h4>
           <label class="set-row"><span>Qualidade gráfica</span><select id="quality"><option value="high">Alta</option><option value="medium">Média</option><option value="low">Baixa</option></select></label>
           ${check('fx', 'Efeitos visuais completos', s.effects)}
+          <h4>Surf Skill</h4>
+          ${check('ghost', 'Mostrar fantasma do recorde', s.ghostShow)}
+          ${range('gopa', 'Opacidade do fantasma', 0.1, 1, 0.05, s.ghostOpacity)}
+          <label class="set-row"><span>Sincronia do fantasma</span><select id="gsync"><option value="run">Corrida inteira</option><option value="segment">Por segmento (melhor de cada stage)</option></select></label>
         </div>
         <div><h4>Teclas <span class="muted">(clique e pressione uma tecla)</span></h4>${keys}
           <div class="panel-actions"><button class="btn" id="resetkeys">Restaurar teclas padrão</button></div></div>
       </div>
       <div class="panel-actions"><button class="btn primary" data-back>Salvar e voltar</button></div>`);
     ($('quality') as HTMLSelectElement).value = s.quality;
+    ($('gsync') as HTMLSelectElement).value = s.ghostSync;
+    ($('gsync') as HTMLSelectElement).onchange = (e) => { s.ghostSync = (e.target as HTMLSelectElement).value as Settings['ghostSync']; this.changed(); };
     const bindRange = (id: string, set: (v: number) => void) => {
       const el = $(id) as HTMLInputElement;
       el.oninput = () => { set(+el.value); $(id + '-o').textContent = el.value; this.changed(); };
@@ -259,12 +297,14 @@ export class Menu {
     bindRange('fov', (v) => (s.fov = v));
     bindRange('vol', (v) => (s.masterVolume = v));
     bindRange('sfx', (v) => (s.sfxVolume = v));
+    bindRange('gopa', (v) => (s.ghostOpacity = v));
     const bindCheck = (id: string, set: (v: boolean) => void) => { const el = $(id) as HTMLInputElement; el.onchange = () => { set(el.checked); this.changed(); }; };
     bindCheck('bhop', (v) => (s.autoBhop = v));
     bindCheck('speed', (v) => (s.showSpeed = v));
     bindCheck('bob', (v) => (s.viewBob = v));
     bindCheck('fslock', (v) => (s.fullscreenLock = v));
     bindCheck('fx', (v) => (s.effects = v));
+    bindCheck('ghost', (v) => (s.ghostShow = v));
     ($('quality') as HTMLSelectElement).onchange = (e) => { s.quality = (e.target as HTMLSelectElement).value as Settings['quality']; this.changed(); };
     ($('pname') as HTMLInputElement).oninput = (e) => { s.playerName = (e.target as HTMLInputElement).value.trim() || 'Jogador'; s.skillNameSet = true; this.changed(); };
     $('panel-body').querySelectorAll<HTMLButtonElement>('.keybind').forEach((b) => b.onclick = () => {

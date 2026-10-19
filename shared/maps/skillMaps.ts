@@ -3,22 +3,22 @@ import type { MapDef } from './types';
 import { buildSkySteps } from './skySteps';
 import { buildDriftCanyon } from './driftCanyon';
 import { buildStormSpire } from './stormSpire';
+import { buildTesteCurto } from './testeCurto';
 
 export const SKILL_MAP_BUILDERS: Record<string, () => MapDef> = {
   sky_steps: buildSkySteps,
   drift_canyon: buildDriftCanyon,
   storm_spire: buildStormSpire,
+  teste_curto: buildTesteCurto,
 };
 
-const cache = new Map<string, MapDef>();
-/** Constrói (uma vez) o mapa de Surf Skill. */
+// só o último mapa construído fica em memória (o menu não precisa construir mapas: usa skillVersions.ts)
+let cached: { id: string; map: MapDef } | null = null;
+/** Constrói o mapa de Surf Skill selecionado (reaproveita se for o mesmo da última vez). */
 export function getSkillMap(id: string): MapDef {
-  let m = cache.get(id);
-  if (!m) {
-    const b = SKILL_MAP_BUILDERS[id];
-    if (!b) throw new Error(`mapa de Surf Skill desconhecido: ${id}`);
-    m = b();
-    cache.set(id, m);
-  }
-  return m;
+  if (cached?.id === id) return cached.map;
+  const b = SKILL_MAP_BUILDERS[id];
+  if (!b) throw new Error(`mapa de Surf Skill desconhecido: ${id}`);
+  cached = { id, map: b() };
+  return cached.map;
 }

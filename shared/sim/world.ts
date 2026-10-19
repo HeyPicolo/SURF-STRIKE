@@ -138,7 +138,7 @@ export class World {
       local.armor = 0;
       local.noAbilities = true;
       if (SKILL.knifeOnly) { local.weapons = [null, null, null, null]; local.giveWeapon('knife'); local.slot = SLOT_KNIFE; }
-      this.skill!.place(local, this.map.skill!.stages[0]);
+      this.skill!.place(local, this.map.skill!.segments[0]);
       return;
     }
     if (c.mode === 'training') {
