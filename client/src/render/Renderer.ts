@@ -110,8 +110,8 @@ export class Renderer {
     this.width = w; this.height = h;
   }
 
-  /** Sets up camera matrices, clears and draws the sky. */
-  beginFrame(cam: Camera, time: number) {
+  /** Sets up camera matrices, clears and draws the sky (or clears to a flat `bg` color, e.g. the Arsenal). */
+  beginFrame(cam: Camera, time: number, bg?: number) {
     const gl = this.gl;
     this.time = time;
     this.cam = cam;
@@ -128,6 +128,14 @@ export class Renderer {
     multiply(this.viewProj, this.proj, this.view);
     invert(this.invViewProj, this.viewProj);
 
+    if (bg !== undefined) {
+      const c = hexToRgb(bg);
+      gl.clearColor(c[0], c[1], c[2], 1);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.disable(gl.CULL_FACE);
+      this.useLit(this.viewProj);
+      return;
+    }
     gl.clearColor(0.7, 0.85, 1, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     // sky
@@ -167,8 +175,10 @@ export class Renderer {
     gl.uniform1f(u.uEmissiveAdd, 0);
   }
 
-  drawMesh(m: GpuMesh, model: Mat4 | null, opts?: { tint?: number; tintMix?: number; emissive?: number; alpha?: number; grid?: number; xray?: boolean }) {
+  drawMesh(m: GpuMesh, model: Mat4 | null, opts?: { tint?: number; tintMix?: number; emissive?: number; alpha?: number; grid?: number; xray?: boolean; cull?: boolean }) {
     const gl = this.gl, u = this.lit.u;
+    // malhas com faces orientadas para fora (armas, itens, luvas) descartam as faces de trás
+    if (opts?.cull) gl.enable(gl.CULL_FACE);
     gl.uniformMatrix4fv(u.uModel, false, model ?? this.identity);
     if (opts?.tint !== undefined) { const c = hexToRgb(opts.tint); gl.uniform4f(u.uTint, c[0], c[1], c[2], opts.tintMix ?? 1); }
     else gl.uniform4f(u.uTint, 0, 0, 0, 0);
@@ -180,6 +190,7 @@ export class Renderer {
     if (opts?.xray) gl.depthFunc(gl.ALWAYS);
     gl.bindVertexArray(m.vao);
     gl.drawArrays(gl.TRIANGLES, 0, m.count);
+    if (opts?.cull) gl.disable(gl.CULL_FACE);
     if (opts?.xray) gl.depthFunc(gl.LEQUAL);
     if (alpha < 1) { gl.disable(gl.BLEND); gl.depthMask(true); }
   }
@@ -267,6 +278,12 @@ export class Renderer {
     gl.disable(gl.BLEND);
     gl.bindVertexArray(null);
     this.partCount = 0; this.partAddCount = 0; this.flatCount = 0; this.flatAddCount = 0;
+  }
+
+  /** Troca a direção da luz principal do passe atual (ex.: luz de estúdio do Arsenal). */
+  setLight(dir: [number, number, number]) {
+    const l = Math.hypot(dir[0], dir[1], dir[2]) || 1;
+    this.gl.uniform3fv(this.lit.u.uSunDir, [dir[0] / l, dir[1] / l, dir[2] / l]);
   }
 
   /** Viewmodel pass: clear depth and use a camera-space projection. */

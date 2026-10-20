@@ -5,14 +5,15 @@
 import { World, WorldConfig, SimEvent } from '../../../shared/sim/world';
 import { Player, hitboxes } from '../../../shared/sim/player';
 import { SIM_DT, PHYSICS, SPRINT } from '../../../shared/config/physics';
-import { WEAPONS, WeaponId, NADES, ITEMS, SLOT_NADES, reloadDuration } from '../../../shared/config/weapons';
+import { WEAPONS, WeaponId, NADES, NadeKind, ITEMS, SLOT_NADES, reloadDuration } from '../../../shared/config/weapons';
 import { CLASSES, ClassId } from '../../../shared/config/classes';
 import { V3, DEG, forwardFromAngles, rightFromYaw } from '../../../shared/math/vec3';
 import type { MapDef, Team, PickupKind } from '../../../shared/maps/types';
 import { Renderer, GpuMesh } from '../render/Renderer';
 import { trs, child, mat4, multiply, Mat4 } from '../render/glm';
 import { buildWorldMesh } from '../maps/worldMesh';
-import { buildCharacter, buildWeapon, buildPickup, buildGrenade, buildCube, buildButterflyParts, ButterflyParts, CharacterMeshes, TEAM_COLORS, PICKUP_COLORS } from '../entities/models';
+import { buildCharacter, buildWeapon, buildPickup, buildGrenade, buildCube, buildButterflyParts, buildGloves, ButterflyParts, GloveMeshes, CharacterMeshes, TEAM_COLORS, PICKUP_COLORS } from '../entities/models';
+import { WEAPON_REFS, LOD_FAR_DIST } from '../entities/style';
 import { ViewPose, REST, butterflyDraw, butterflyInspect, gunInspect, nadeInspect, BF_DRAW_TIME, BF_INSPECT_TIME, GUN_INSPECT_TIME, NADE_INSPECT_TIME } from './viewAnims';
 import { Effects } from './effects';
 import { Input } from './input';
@@ -31,11 +32,19 @@ interface MapMeshes { world: GpuMesh; glass: GpuMesh; zones: GpuMesh }
 interface Assets {
   maps: Map<string, MapMeshes>;
   chars: Map<string, CharacterMeshes>;
+  /** terceira pessoa e chão (versão simplificada) */
   weapons: Map<WeaponId, GpuMesh>;
+  /** primeira pessoa (versão detalhada) */
+  weaponsView: Map<WeaponId, GpuMesh>;
+  /** longe (a mais de LOD_FAR_DIST): só silhueta e cores */
+  weaponsFar: Map<WeaponId, GpuMesh>;
   pickups: Map<PickupKind, GpuMesh>;
-  grenade: GpuMesh;
+  pickupsFar: Map<PickupKind, GpuMesh>;
+  /** granadas lançadas / na mão, por tipo */
+  nades: Map<NadeKind, GpuMesh>;
+  nadesView: Map<NadeKind, GpuMesh>;
   flash: GpuMesh;
-  hand: GpuMesh;
+  gloves: GloveMeshes;
   butterfly: ButterflyParts;
 }
 
@@ -134,14 +143,15 @@ export class Game {
   loadAssets() {
     if (this.assets) return;
     const r = this.r;
-    const weapons = new Map<WeaponId, GpuMesh>();
-    for (const id of Object.keys(WEAPONS) as WeaponId[]) weapons.set(id, buildWeapon(r, id));
-    const pickups = new Map<PickupKind, GpuMesh>();
-    for (const k of ['ammo', 'medkit', 'armor', 'nade_he', 'nade_smoke', 'nade_impulse', 'shield', 'speed'] as PickupKind[]) pickups.set(k, buildPickup(r, k));
-    const handMb = buildCube(r, 0x262b38, 0);
+    const weapons = new Map<WeaponId, GpuMesh>(), weaponsView = new Map<WeaponId, GpuMesh>(), weaponsFar = new Map<WeaponId, GpuMesh>();
+    for (const id of Object.keys(WEAPONS) as WeaponId[]) { weapons.set(id, buildWeapon(r, id, 'world')); weaponsView.set(id, buildWeapon(r, id, 'view')); weaponsFar.set(id, buildWeapon(r, id, 'far')); }
+    const pickups = new Map<PickupKind, GpuMesh>(), pickupsFar = new Map<PickupKind, GpuMesh>();
+    for (const k of ['ammo', 'medkit', 'armor', 'nade_he', 'nade_smoke', 'nade_impulse', 'shield', 'speed'] as PickupKind[]) { pickups.set(k, buildPickup(r, k)); pickupsFar.set(k, buildPickup(r, k, 'far')); }
+    const nades = new Map<NadeKind, GpuMesh>(), nadesView = new Map<NadeKind, GpuMesh>();
+    for (const k of Object.keys(NADES) as NadeKind[]) { nades.set(k, buildGrenade(r, k, 'world')); nadesView.set(k, buildGrenade(r, k, 'view')); }
     this.assets = {
-      maps: new Map(), chars: new Map(), weapons, pickups,
-      grenade: buildGrenade(r), flash: buildCube(r, 0xffe3a0, 1), hand: handMb, butterfly: buildButterflyParts(r),
+      maps: new Map(), chars: new Map(), weapons, weaponsView, weaponsFar, pickups, pickupsFar, nades, nadesView,
+      flash: buildCube(r, 0xffe3a0, 1), gloves: buildGloves(r), butterfly: buildButterflyParts(r),
     };
   }
 
@@ -568,10 +578,11 @@ export class Game {
       if (!k.active) continue;
       const bobY = Math.sin(t * 2 + k.id) * 4 + 18;
       const spin = t * 1.6 + k.id;
-      const mesh = k.kind === 'weapon' ? A.weapons.get(k.weapon!)! : A.pickups.get(k.kind)!;
+      const far = Math.hypot(k.pos.x - vpos.x, k.pos.y - vpos.y, k.pos.z - vpos.z) > LOD_FAR_DIST;
+      const mesh = k.kind === 'weapon' ? (far ? A.weaponsFar : A.weapons).get(k.weapon!)! : (far ? A.pickupsFar : A.pickups).get(k.kind)!;
       const col = k.kind === 'weapon' ? 0xffffff : PICKUP_COLORS[k.kind];
       const scale = k.kind === 'weapon' ? 1.25 : 1.3;
-      r.drawMesh(mesh, trs(this.tmpM, k.pos.x, k.pos.y + bobY, k.pos.z, spin, k.kind === 'weapon' ? 0 : 0, k.kind === 'weapon' ? 0.3 : 0, scale), { emissive: 0.15 + 0.1 * Math.sin(t * 4 + k.id) });
+      r.drawMesh(mesh, trs(this.tmpM, k.pos.x, k.pos.y + bobY, k.pos.z, spin, k.kind === 'weapon' ? 0 : 0, k.kind === 'weapon' ? 0.3 : 0, scale), { emissive: 0.15 + 0.1 * Math.sin(t * 4 + k.id), cull: true });
       // glow base & light column
       const glowCol = k.kind === 'weapon' ? (k.weapon === 'sniper' || k.weapon === 'rifle' ? 0xffc93d : 0xffffff) : col;
       this.groundRing(k.pos.x, k.pos.y + 1.5, k.pos.z, 22, glowCol, 0.55);
@@ -596,7 +607,7 @@ export class Game {
     // grenades
     for (const g of w.grenades) {
       const gp = new V3().copy(g.prevPos).lerp(g.pos, alpha);
-      r.drawMesh(A.grenade, trs(this.tmpM, gp.x, gp.y, gp.z, t * 8, t * 5), { tint: NADES[g.kind].color, tintMix: 0.6, emissive: 0.3 });
+      r.drawMesh(A.nades.get(g.kind)!, trs(this.tmpM, gp.x, gp.y, gp.z, t * 8, t * 5), { emissive: 0.12, cull: true });
       if (Math.random() < 0.6) this.fx.emit(gp.x, gp.y, gp.z, 1, { color: NADES[g.kind].color, size: 6, speed: 5, max: 0.3, add: true });
     }
     // smoke clouds
@@ -817,7 +828,8 @@ export class Game {
     const wpn = p.slot < SLOT_NADES ? p.weapons[p.slot] : null;
     if (wpn && !xr) {
       const handM = child(this.tmpM2, armR, -4, -24, 0, 0, -Math.PI / 2, 0, 0.9);
-      r.drawMesh(this.assets!.weapons.get(wpn.id)!, handM);
+      const cam = this.r.cam, far = Math.hypot(pos.x - cam.x, pos.y - cam.y, pos.z - cam.z) > LOD_FAR_DIST;
+      r.drawMesh((far ? this.assets!.weaponsFar : this.assets!.weapons).get(wpn.id)!, handM, { cull: true });
     }
     // ability FX
     if (!xr && p.abilityActive > 0 && Math.random() < 0.5) {
@@ -900,23 +912,24 @@ export class Game {
     const m = trs(this.tmpM, x, y, z, yawO, pitchO, rollO, isKnife ? 0.95 : 0.72);
     if (p.slot === SLOT_NADES) {
       const nk = p.nadeSel;
-      r.drawMesh(this.assets!.grenade, trs(this.tmpM2, x, y + 2, z - 4, this.time + pose.roll, pose.pitch, 0, 1.4), { tint: NADES[nk].color, tintMix: 0.7, emissive: 0.2 });
+      r.drawMesh(this.assets!.nadesView.get(nk)!, trs(this.tmpM2, x, y + 2, z - 4, this.time + pose.roll, pose.pitch, 0, 1.4), { cull: true });
     } else if (ws && isKnife) {
       // faca borboleta: o cabo "safe" fica na mão; a lâmina e o cabo "bite" giram nos pinos
       const bf = this.assets!.butterfly;
-      r.drawMesh(bf.safe, m);
-      r.drawMesh(bf.blade, child(this.tmpM2, m, 0, 0, 0, 0, pose.blade, 0));
-      r.drawMesh(bf.bite, child(this.tmpM2, m, 0, 0, 0, 0, pose.bite, 0));
-      r.drawMesh(this.assets!.hand, child(this.tmpM2, m, 0.9, 0, 7, 0, 0, 0, 2.6, 4.4, 7));
+      const C = { cull: true };
+      r.drawMesh(bf.safe, m, C);
+      r.drawMesh(bf.blade, child(this.tmpM2, m, 0, 0, 0, 0, pose.blade, 0), C);
+      r.drawMesh(bf.bite, child(this.tmpM2, m, 0, 0, 0, 0, pose.bite, 0), C);
+      r.drawMesh(this.assets!.gloves.knife, m, C);
     } else if (ws) {
-      r.drawMesh(this.assets!.weapons.get(ws.id)!, m);
-      r.drawMesh(this.assets!.hand, child(this.tmpM2, m, 0, -3, 1, 0, 0, 0, 5, 7, 5));
+      r.drawMesh(this.assets!.weaponsView.get(ws.id)!, m, { cull: true });
+      r.drawMesh(this.assets!.gloves.gun, m, { cull: true });
       // muzzle flash
       if (this.flashTime > 0 && !isKnife) {
         this.flashTime -= dt;
-        const len = ws.id === 'sniper' ? -44 : ws.id === 'shotgun' ? -38 : ws.id === 'rifle' ? -34 : ws.id === 'smg' ? -21 : -16;
+        const mz = WEAPON_REFS[ws.id as Exclude<WeaponId, 'knife'>].muzzle;
         const s = 3 + Math.random() * 3;
-        r.drawMesh(this.assets!.flash, child(this.tmpM2, m, 0, 2.2, len - 2, Math.random() * 3, Math.random() * 3, Math.random() * 3, s, s, s * 2));
+        r.drawMesh(this.assets!.flash, child(this.tmpM2, m, 0, mz.y, mz.z - 2, Math.random() * 3, Math.random() * 3, Math.random() * 3, s, s, s * 2));
       }
     }
     void multiply; void hitboxes;

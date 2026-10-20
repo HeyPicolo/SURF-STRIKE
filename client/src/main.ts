@@ -16,6 +16,7 @@ import { SKILL_MAP_VERSIONS } from '../../shared/maps/skillVersions';
 import { updateGhostSet, emptyGhostSet } from '../../shared/sim/ghost';
 import { LocalRecordStore } from './skill/localStore';
 import { IdbGhostStore } from './skill/ghostStore';
+import { Arsenal } from './ui/arsenal';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const settings = loadSettings();
@@ -109,6 +110,7 @@ const menu = new Menu(settings, {
   startSkill: (id: string) => startSkill(id),
   skillRecords: (id: string) => skillRecords(id),
   skillRestart: () => { game.skillRestart(); resume(); },
+  openArsenal: () => openArsenal(),
 });
 
 game = new Game(renderer, input, hud, sfx, settings, map, {
@@ -131,6 +133,14 @@ function startGame(mode: 'bots' | 'training', classId: ClassId, s?: MatchSetup) 
   });
   resume();
 }
+
+// ---- Arsenal: revisão dos modelos (?arsenal na URL ou botão no painel do Treino) ----
+const arsenal = new Arsenal(renderer);
+function openArsenal() {
+  menu.hideAll();
+  arsenal.open(() => menu.showMain());
+}
+if (new URLSearchParams(location.search).has('arsenal')) openArsenal();
 
 function resume() {
   menu.hidePanel();
@@ -166,14 +176,15 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 // expose for automated browser tests / debugging
-(window as unknown as { __surf: unknown }).__surf = { game, input, menu, settings, records, skillRecords };
+(window as unknown as { __surf: unknown }).__surf = { game, input, menu, settings, records, skillRecords, arsenal, openArsenal };
 
 let last = performance.now();
 function loop(now: number) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   try {
-    if (game.world) game.frame(dt);
+    if (arsenal.active) arsenal.frame(dt);
+    else if (game.world) game.frame(dt);
     else game.menuFrame(dt);
   } catch (e) {
     console.error(e);

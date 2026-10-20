@@ -3,7 +3,7 @@
 Registro vivo das decisões, do estado atual e das pendências. **Atualizado a cada rodada de mudanças, no mesmo commit.**
 Serve para qualquer sessão (de código ou de apoio) entender o projeto sem reler o histórico inteiro.
 
-- **Última rodada:** 9b (fecha a rodada 9) · 19/10/2026 · 9a = `d1eb0fa`
+- **Última rodada:** 10 · 20/10/2026 · 9b = `4c552ce`
 - **No ar:** https://surf-strike.vercel.app (deploy automático da Vercel a cada push na `main`)
 - **Repositório:** github.com/HeyPicolo/SURF-STRIKE
 
@@ -20,12 +20,13 @@ Serve para qualquer sessão (de código ou de apoio) entender o projeto sem rele
 npm install
 npm run dev            # servidor local com rebuild
 npm run build          # gera dist/ (o que a Vercel publica)
-npm test               # 153 testes unitários (node:test via tsx, ~60 s)
+npm test               # 162 testes unitários (node:test via tsx, ~60 s)
 npm run skill:metrics  # corre o percurso de referência de todos os mapas, grava skillReference.ts e imprime a tabela de métricas
 npm run skill:versions # regrava shared/maps/skillVersions.ts depois de mudar um mapa do Surf Skill
 npm run skill:layout   # confere folga entre stages, lava, brushes cruzando, trechos não vizinhos e nuvens
 npx tsc --noEmit -p tsconfig.json
-CHROME_PATH=/opt/pw-browsers/chromium node scripts/e2e.mjs   # 26 verificações no navegador
+CHROME_PATH=/opt/pw-browsers/chromium node scripts/e2e.mjs   # 29 verificações no navegador (screenshots em e2e-shots/, Arsenal em e2e-shots/arsenal/)
+# ?arsenal na URL abre a tela Arsenal (revisão dos modelos)
 ```
 
 ## O jogo hoje
@@ -107,6 +108,10 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 | `shared/maps/clouds.ts` | mapa da partida |
 | `shared/bots/brain.ts`, `steer.ts`, `routeDriver.ts` | IA, direção de surf, percurso de referência |
 | `client/src/game/Game.ts` | loop, input, eventos, câmera, viewmodel, passos, HUD do Surf Skill |
+| `client/src/entities/style.ts` | guia de estilo das armas/itens: paletas, `STYLE` (espessuras), `TRI_BUDGET`, `WEAPON_REFS` (boca, luneta), `PICKUP_COLORS` |
+| `client/src/entities/geometry.ts` | geometria das armas, balisong, granadas, itens e luvas (sem GL, 2 versões: `view`/`world`); `MODEL_LIST` |
+| `client/src/render/mesh.ts` | `MeshBuilder` e as primitivas do estilo de blocos |
+| `client/src/ui/arsenal.ts` | tela Arsenal (`?arsenal` ou botão no painel do Treino) |
 | `client/src/ui/menu.ts`, `hud.ts` | menus (inclui seleção de mapa e tela de fim do Surf Skill) e HUD |
 | `client/src/maps/worldMesh.ts` | malha do mapa, paredes das zonas, número do stage |
 | `client/src/audio/sfx.ts` | sons sintetizados |
@@ -127,9 +132,39 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 | 8b · `e3bfd84` | Desafios D1–D6, métricas e índice de dificuldade, tabela no README, testes de cada segmento, das emendas das curvas e do índice crescente. |
 | 8c · `6ecdbba` | Desafios D7–D12, `gapDrop`, `stepDeg`, rampas lisas no ZENITH, chegada de destaque, tabela dos 15 mapas, índice crescente até o D12. |
 | 9a · `d1eb0fa` | Layout automático dos stages pelo envelope, lava menor, nuvens fora da pista, emendas em meia-esquadria sem ramp bug, plataformas de checkpoint atravessáveis, `skill:layout`. |
-| 9b | Sem prespeed cap, velocidade mantida entre stages, versão das regras na chave dos recordes, Próximo mapa, referência com controle de velocidade, ajustes de bhop e curvas, recalibração. |
+| 9b · `4c552ce` | Sem prespeed cap, velocidade mantida entre stages, versão das regras na chave dos recordes, Próximo mapa, referência com controle de velocidade, ajustes de bhop e curvas, recalibração. |
+| 10 | Visual novo das armas, balisong, granadas, itens e luvas no estilo de blocos (paletas por arma, fitas, parafusos, trilhos, recortes), duas versões de detalhe, tela Arsenal, testes de orçamento/caixa/cobertura e e2e com screenshots. Só visual. |
 
 ## Decisões tomadas (não desfazer sem pedido)
+
+- **Rodada 10 (visual das armas):**
+  - Só visual: nenhum número de gameplay nem animação mudou. Personagens, mapas e HUD ficaram de fora.
+  - Guia de estilo resumido:
+    - blocos chanfrados (`STYLE.chamfer` 0,4) e cilindros de 8 lados (6 na versão simplificada);
+    - parafusos sextavados cinza-claro (`boltR` 0,24), trilhos com dentes a cada 1,3 u e recortes com parede clara embaixo;
+    - fita em bandas a 0,13 u acima da peça, na cor de destaque;
+    - fosco: os filetes neon saíram e o único LED é o de carga do VOLT-1.
+  - Paletas em `PALETTES`. A cor de identificação de cada arma continua na paleta (teste). Como as cores de id são escuras, entraram como peça escura dominante (cano/caixa/coronha) e o corpo ganhou uma cor clara (areia, oliva, cinza frio, branco-gelo).
+  - Na LONGBOW, a referência tem cano e luneta marrom-grafite; aqui são verde-grafite, para manter a cor de id (mais próximo da referência sem perder a identidade).
+  - Orçamento:
+    - `view` ≤ 2500 triângulos (LONGBOW ~2070, a mais pesada);
+    - `world` ≤ 600 (terceira pessoa, arma no chão, granada lançada, itens);
+    - `far` ≤ 150, a partir de 1100 u (`LOD_FAR_DIST`).
+  - A versão `far` não foi pedida. Entrou porque 38 itens com ~450 triângulos cada somavam mais que o mapa CLOUDS inteiro (13,7 mil).
+  - Na versão `world`, `minChamfer` 0,38 descarta os chanfros pequenos e somem parafusos, dentes e recortes.
+  - Pontos de referência (`WEAPON_REFS`):
+    - a boca de cada arma ficou onde o clarão já saía (z −44/−34/−21/−38/−16; VOLT-1 −13,6);
+    - a luneta fica em y 7,8;
+    - a luva usa a mesma caixa da mão antiga (z 0..3,5 · y −6,5..0,5 nas armas; z 3,5..10,5 na balisong) e é desenhada sem escala.
+  - Tamanho na mão: as caixas envolventes ficaram a ±15% das antigas. A fração da tela coberta em primeira pessoa (arma + mão) é igual ou menor que antes; o teste rasteriza na mesma projeção do jogo. Para isso, a luneta e a coronha da HORNET ficaram mais enxutas.
+  - Granadas: uma malha por tipo (a faixa colorida já vem no modelo). Antes, uma malha única era tingida na hora de desenhar.
+  - BREAKER-12: o porta-cartuchos fica no lado esquerdo, o que aparece em primeira pessoa.
+  - Arsenal: fundo neutro (`beginFrame` com `bg`) e luz de estúdio (`setLight`), só na tela de revisão.
+  - Faces orientadas para fora em todas as primitivas novas (`tri(..., out)`). Armas, itens, luvas e granadas são desenhados com `cull: true`; o mapa e os personagens continuam sem descarte.
+  - Desempenho:
+    - medido no renderizador por software dos testes (SwiftShader), no Treino com a LONGBOW na mão: ~9,1 FPS contra ~9,9 antes (−8%);
+    - por quadro são ~21,4 mil triângulos contra 18,4 mil. A diferença é quase toda a arma na mão (2,5 mil triângulos com a luva, contra 120). No SwiftShader o custo cresce com o número de vértices;
+    - numa GPU de verdade isso é desprezível, mas não deu para medir aqui. Se cair FPS em máquina fraca, o primeiro corte é a versão `view` (dentes do trilho e parafusos).
 
 - **Rodada 8a:** pulo na zona de início liberado (o cap de 420 continua, inclusive saindo no ar), por isso os recordes da rodada 7 continuam valendo. O fantasma do PB só é trocado quando a corrida vira PB. A "velocidade mínima de projeto" passou a ser balística (considera a inclinação da saída), então os números dos mapas de treino subiram (424 / 870 / 1197 u/s) sem mudar a geometria. O steer dos bots ganhou `idealStrafe` só para o percurso de referência.
 - **Rodada 7:** a linha da especificação sobre a zona de início veio cortada; interpretado como prespeed cap 420 u/s + pulo bloqueado, em toda zona de início. O fim de cada stage leva direto, parado, à zona de início do próximo. O tempo de cada stage vai de um split ao seguinte (os 5 somam o total). Cair no stage 1 depois de largar não zera o tempo (só o R zera). Ir para outro stage ou usar Z/X marca a corrida como prática. O strafe ideal no `steerToward` só é usado pelo percurso de referência; os bots da partida continuam como antes.
@@ -153,6 +188,7 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 ## Pendências e ideias
 
 - Multiplayer online (a simulação já é separada do cliente; recordes e fantasmas já têm as interfaces `RecordStore` e `GhostStore` para um backend).
+- Ajustar olhando o jogo (rodada 10): contraste das cores escuras de id (KESTREL, HORNET) em mapas claros, tamanho dos recortes hexagonais da LONGBOW, luvas (hoje grafite com fita azul para todas as armas) e se vale estender o estilo aos personagens.
 - Calibrar jogando a rodada 9: como fica chegar embalado em cada stage (principalmente bhop e curvas logo depois da entrada), se a extensão de 1800 u das chegadas é o bastante, e os tempos de referência que caíram abaixo da faixa (D8 2:28, D11 3:22).
 - Calibrar jogando os desafios: velocidade mínima do THUNDERHEAD/ZENITH (1700 u/s pode ser pouco ou demais para humanos), largura das curvas do ZENITH (feitas para 3500 u/s), U-turns do ECLIPSE BOWL e quedas bruscas do HOLLOW MOON.
 - Calibrar jogando: gaps do STORM SPIRE (stages 3 e 5, feitos no limite do percurso de referência), ritmo da pista de bhop do DRIFT CANYON (stage 4, espaçada para ~1170 u/s), prespeed cap (420), atraso da tela de fim (1,8 s), dano ×1,4 e caminhar ×0,55.

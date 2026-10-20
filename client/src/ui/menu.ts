@@ -19,6 +19,8 @@ export interface MatchSetup { teamSize: number; difficulty: BotDifficulty; team:
 export interface MenuActions {
   startBots(s: MatchSetup): void;
   startTraining(classId: ClassId): void;
+  /** tela Arsenal (revisão dos modelos) */
+  openArsenal?(): void;
   resume(): void;
   quitToMenu(): void;
   settingsChanged(): void;
@@ -140,9 +142,10 @@ export class Menu {
     this.panel(`<h2>Treinamento</h2>
       <p>Arena CLOUDS sozinho, com alvos para testar armas. Todos os pickups reaparecem. Você pode reiniciar a posição, salvar checkpoints de surf e voar livremente. O medidor de velocidade fica sempre visível.</p>
       <h4>Classe</h4>${this.classCards(this.setup.classId)}
-      <div class="panel-actions"><button class="btn primary" id="go">Entrar no treino</button><button class="btn" data-back>Voltar</button></div>`);
+      <div class="panel-actions"><button class="btn primary" id="go">Entrar no treino</button><button class="btn" id="arsenal-btn">Arsenal</button><button class="btn" data-back>Voltar</button></div>`);
     this.bindClassCards((id) => { this.setup.classId = id; this.saveSetup(); });
     $('go').onclick = () => { this.act.click(); this.act.startTraining(this.setup.classId); };
+    $('arsenal-btn').onclick = () => { this.act.click(); this.act.openArsenal?.(); };
   }
 
   // ------------------------------------------------------------------ Surf Skill

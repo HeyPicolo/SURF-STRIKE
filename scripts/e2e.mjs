@@ -281,6 +281,75 @@ const nextMap = await S(() => ({ map: window.__surf.game.world?.map?.name, state
 await page.screenshot({ path: join(shots, '15-skill-next.png') });
 check('26. "Próximo mapa" na tela de fim carrega o mapa seguinte na zona de início', nextBtn && nextMap.map === 'SKY STEPS' && nextMap.state === 'zone' && !nextMap.panel, JSON.stringify({ nextBtn, ...nextMap }));
 
+// rodada 10: armas novas em primeira pessoa (1/2/3/4), tiro, recarga, inspeção e a balisong abrindo/fechando
+await S(() => { const s = window.__surf; s.game.autopilot = false; s.input.keys.clear(); s.game.stop(); s.menu.act.startTraining('runner'); s.input.enabled = true; s.game.paused = false; document.getElementById('panel').classList.add('hidden'); s.settings.viewBob = false; });
+await wait(500);
+await S(() => { const w = window.__surf.game.world, p = w.local; p.giveWeapon('rifle'); p.giveWeapon('pistol'); p.nades.he = 1; p.nades.smoke = 1; p.phys.pos.set(0, 2, 5450); p.phys.vel.set(0, 0, 0); window.__surf.input.yaw = Math.PI; window.__surf.input.pitch = -0.05; });
+const fpRes = [];
+for (const [key, label] of [['Digit1', 'rifle'], ['Digit2', 'pistol'], ['Digit3', 'knife'], ['Digit3', 'taser'], ['Digit4', 'nade']]) {
+  await page.keyboard.press(key); await waitSim(0.9);
+  const cur = await S(() => { const p = window.__surf.game.world.local; return p.slot === 4 ? 'nade' : p.currentWeapon()?.id; });
+  let fired = true, reloaded = true;
+  if (label === 'rifle' || label === 'pistol') {
+    const m0 = await S(() => window.__surf.game.world.local.currentWeapon().mag);
+    await page.mouse.down(); await waitSim(0.15); await page.mouse.up(); await waitSim(0.3);
+    const m1 = await S(() => window.__surf.game.world.local.currentWeapon().mag);
+    fired = m1 < m0;
+    await page.keyboard.press('KeyR'); await waitSim(2.8);
+    const m2 = await S(() => { const ws = window.__surf.game.world.local.currentWeapon(); return { mag: ws.mag, max: ws.def?.mag ?? null }; });
+    reloaded = m2.mag > m1;
+  }
+  await waitSim(0.3);
+  await page.keyboard.press('KeyF'); await waitSim(0.25);
+  const insp = await S(() => window.__surf.game.inspect);
+  await page.screenshot({ path: join(shots, `16-fp-${label}.png`) });
+  await waitSim(label === 'knife' ? 2.0 : 1.3);
+  fpRes.push({ label, cur, fired, reloaded, insp: !!insp });
+}
+check('27. Treino: saca cada arma (1/2/3/4), atira, recarrega e inspeciona com os modelos novos', fpRes.every((r) => r.cur === r.label && r.fired && r.reloaded && r.insp), JSON.stringify(fpRes));
+// balisong: a animação de sacar abre (lâmina e cabo giram uma volta) e a inspeção fecha e abre de novo
+await page.keyboard.press('Digit2'); await waitSim(0.5);
+await page.keyboard.press('Digit3'); await waitSim(0.05);
+const bf = await S(async () => {
+  const g = window.__surf.game, p = g.world.local, out = [];
+  for (let i = 0; i < 12; i++) { const ps = g.viewPose(p, true); out.push(+(ps.blade % (2 * Math.PI)).toFixed(2)); await new Promise((r) => setTimeout(r, 60)); }
+  return out;
+});
+await waitSim(0.8);
+await page.keyboard.press('KeyF');
+const bfInsp = await S(async () => {
+  const g = window.__surf.game, p = g.world.local, out = [];
+  for (let i = 0; i < 30; i++) { const ps = g.viewPose(p, true); out.push(+Math.abs(Math.cos(ps.blade / 2)).toFixed(2)); await new Promise((r) => setTimeout(r, 70)); }
+  return out;
+});
+await page.screenshot({ path: join(shots, '17-fp-balisong-inspect.png') });
+// cos(blade/2): 1 = aberta (0 ou 2π), 0 = fechada (π)
+const opened = bf.some((b) => Math.abs(b - Math.PI) < 0.6) && Math.abs(bf[bf.length - 1]) < 0.3;
+const closedInInspect = bfInsp.some((c) => c < 0.25) && bfInsp.some((c) => c > 0.9);
+check('28. balisong abre ao sacar e fecha/abre na inspeção (três peças nos pinos)', opened && closedInInspect, JSON.stringify({ draw: bf, inspect: bfInsp.join(',') }));
+
+// rodada 10: tela Arsenal com todos os modelos (detalhado e simplificado) e screenshot de cada um
+const arsDir = join(shots, 'arsenal');
+mkdirSync(arsDir, { recursive: true });
+await S(() => { const s = window.__surf; s.game.stop(); s.input.enabled = false; s.input.unlock(); s.openArsenal(); });
+await wait(300);
+const arsVisible = await page.isVisible('#arsenal');
+const arsList = await S(() => window.__surf.arsenal.entries.map((e) => ({ id: e.id, lods: e.lods })));
+const arsInfo = [];
+for (let i = 0; i < arsList.length; i++) for (const lod of arsList[i].lods) {
+  const info = await S(([i, lod]) => { const a = window.__surf.arsenal; a.show(i); a.setLod(lod); a.fixedYaw = -0.45; return a.info(); }, [i, lod]);
+  await wait(120);
+  await page.screenshot({ path: join(arsDir, `${String(i + 1).padStart(2, '0')}-${info.id}-${lod}.png`) });
+  arsInfo.push(info);
+}
+await page.keyboard.press('ArrowRight'); await wait(100);
+const arrowIdx = await S(() => window.__surf.arsenal.idx);
+await S(() => { window.__surf.arsenal.fixedYaw = null; });
+await page.keyboard.press('Escape'); await wait(300);
+const backToMenu = await page.isVisible('#main-nav') && !(await S(() => window.__surf.arsenal.active));
+const overBudget = arsInfo.filter((x) => x.tris > x.budget);
+check('29. Arsenal mostra todos os modelos (setas, versões de detalhe, triângulos) e volta ao menu', arsVisible && arsInfo.length >= 40 && overBudget.length === 0 && arrowIdx === 0 && backToMenu, `modelos=${arsList.length} capturas=${arsInfo.length} acima=${overBudget.length} seta=${arrowIdx} menu=${backToMenu}`);
+
 const fps = await S(() => new Promise((res) => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 2000) requestAnimationFrame(f); else res(n / 2); }; requestAnimationFrame(f); }));
 console.log(`fps (software renderer): ${fps}`);
 check('sem erros no console', errors.length === 0, errors.slice(0, 5).join(' | '));

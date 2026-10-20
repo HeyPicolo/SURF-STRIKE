@@ -1,11 +1,12 @@
-// Original low-poly models: characters (per team & class), weapons and pickups.
+// Original low-poly models: characters (per team & class); weapons, items and gloves come from geometry.ts.
 import { MeshBuilder } from '../render/mesh';
 import type { Renderer, GpuMesh } from '../render/Renderer';
 import type { ClassId } from '../../../shared/config/classes';
 import { CLASSES } from '../../../shared/config/classes';
-import type { WeaponId } from '../../../shared/config/weapons';
-import { WEAPONS } from '../../../shared/config/weapons';
+import type { WeaponId, NadeKind } from '../../../shared/config/weapons';
 import type { Team, PickupKind } from '../../../shared/maps/types';
+import { weaponGeometry, butterflyGeometry, pickupGeometry, nadeGeometry, gunGloveGeometry, knifeGloveGeometry, Lod } from './geometry';
+import { PICKUP_COLORS } from './style';
 
 export const TEAM_COLORS: Record<Team, number> = { blue: 0x2f7bff, red: 0xff4757 };
 const TEAM_DARK: Record<Team, number> = { blue: 0x1d3f8f, red: 0x8f1f2b };
@@ -69,161 +70,36 @@ export function buildCharacter(r: Renderer, team: Team, cls: ClassId): Character
   return { legL: leg(-1), legR: leg(1), torso: r.createMesh(torso.toArray()), head: r.createMesh(head.toArray()), armL: arm(), armR: arm() };
 }
 
-/** Weapon models: forward = −Z, origin at the grip. */
-export function buildWeapon(r: Renderer, id: WeaponId): GpuMesh {
-  const m = new MeshBuilder();
-  const c = WEAPONS[id].color;
-  const metal = 0x2a2f3b, light = 0x8e99ad;
-  const neon = id === 'sniper' ? 0x37ff9a : id === 'shotgun' ? 0xff8a3c : id === 'smg' ? 0xffd23c : id === 'rifle' ? 0x37c6ff : 0xc77dff;
-  switch (id) {
-    case 'knife': {
-      // faca borboleta aberta (terceira pessoa e itens): lâmina + os dois cabos juntos
-      addButterflyBlade(m); addButterflyHandle(m, 1); addButterflyHandle(m, -1);
-      break;
-    }
-    case 'taser':
-      // corpo compacto amarelo e preto com eletrodos na ponta
-      m.box(-1.8, -0.5, -11, 1.8, 4.2, 2, 0xffd23c);
-      m.box(-1.9, 1.2, -11.2, 1.9, 2.0, 1, 0x262b38);
-      m.box(-1.4, -7.5, -1, 1.4, -0.5, 3, 0x262b38);
-      m.box(-1.6, 0.2, -13, 1.6, 3.6, -11, 0x262b38);
-      m.box(-1.2, 2.6, -13.6, -0.4, 3.2, -13, 0x7fe9ff, 1);
-      m.box(0.4, 2.6, -13.6, 1.2, 3.2, -13, 0x7fe9ff, 1);
-      m.box(-1.9, 3.0, -8, 1.9, 3.6, -2, 0x7fe9ff, 1);
-      break;
-    case 'pistol':
-      m.box(-1.6, 0, -13, 1.6, 4, 2, light);
-      m.box(-1.3, -7, -1, 1.3, 0, 3, metal);
-      m.box(-0.8, 0.5, -15, 0.8, 2.5, -13, metal);
-      m.box(-1.7, 1.5, -11, 1.7, 2.3, -3, neon, 1);
-      break;
-    case 'rifle':
-      m.box(-1.8, -1, -16, 1.8, 5, 6, c);
-      m.box(-0.9, 1, -32, 0.9, 2.8, -16, metal);
-      m.box(-1.6, -1.5, 6, 1.6, 4, 16, metal);
-      m.box(-1.3, -9, -9, 1.3, -1, -5, metal);
-      m.box(-1.2, -6, 0, 1.2, -1, 3, metal);
-      m.box(-1, 5, -10, 1, 7, -4, light);
-      m.box(-1.9, 2, -15, 1.9, 3, 4, neon, 1);
-      break;
-    case 'smg':
-      m.box(-1.8, -1, -12, 1.8, 5, 4, c);
-      m.box(-0.8, 1, -19, 0.8, 2.6, -12, metal);
-      m.box(-1.2, -11, -7, 1.2, -1, -4, metal);
-      m.box(-1.2, -6, 0, 1.2, -1, 3, metal);
-      m.box(-0.6, 0, 4, 0.6, 3, 13, light);
-      m.box(-1.9, 3, -11, 1.9, 4, 2, neon, 1);
-      break;
-    case 'shotgun':
-      m.box(-2, -1, -12, 2, 5, 6, c);
-      m.box(-1.6, 1.5, -36, 1.6, 4.5, -12, metal);
-      m.box(-2.2, -1.5, -26, 2.2, 1.5, -16, light);
-      m.box(-1.7, -2, 6, 1.7, 4, 18, c);
-      m.box(-1.2, -6, 0, 1.2, -1, 3, metal);
-      m.box(-2.1, 3.5, -11, 2.1, 4.5, 5, neon, 1);
-      break;
-    case 'sniper':
-      m.box(-1.8, -1, -14, 1.8, 5, 8, c);
-      m.box(-0.9, 1.2, -42, 0.9, 3, -14, metal);
-      m.box(-1.7, -2, 8, 1.7, 5, 22, c);
-      m.cylinder(0, 7, -2, 1.8, 1, 6, metal);
-      m.box(-1.6, 6, -12, 1.6, 9, 4, metal);
-      m.box(-1.2, -6, 0, 1.2, -1, 3, metal);
-      m.box(-1.3, -7, -8, 1.3, -1, -4, metal);
-      m.box(-1.9, 2.5, -13, 1.9, 3.5, 7, neon, 1);
-      break;
-  }
-  return r.createMesh(m.toArray());
-}
+// ---------------------------------------------------------------- armas, faca, granadas, itens e luvas
+// A geometria fica em geometry.ts (sem GL, testável); aqui só vira GpuMesh, uma vez no carregamento.
 
-// ---------------------------------------------------------------- faca borboleta (balisong)
-// Pinos de articulação na origem; lâmina aponta para −Z e os cabos para +Z quando aberta.
-// Os cabos giram em torno do eixo X (pitch) para abrir/fechar.
-const BF_STEEL = 0xd8dfec, BF_EDGE = 0xb5bfd2, BF_HANDLE = 0x2c3240, BF_ACCENT = 0x37e3ff;
-
-function addButterflyBlade(m: MeshBuilder) {
-  type P = [number, number, number];
-  const t = 0.32; // meia espessura
-  // perfil (y, z): espiga, dorso, ponta clip, fio
-  const prof: [number, number][] = [[1.1, 0.6], [1.25, -9.5], [0.4, -15.8], [-0.2, -16.6], [-1.15, -12], [-1.3, -1.5], [-0.9, 0.6]];
-  const L = prof.map(([y, z]) => [t, y, z] as P), R = prof.map(([y, z]) => [-t, y, z] as P);
-  m.poly(L, BF_STEEL); m.poly([...R].reverse(), BF_STEEL);
-  for (let i = 0; i < prof.length; i++) {
-    const j = (i + 1) % prof.length;
-    const edge = i >= 3 && i <= 4;
-    m.quad(L[i], R[i], R[j], L[j], edge ? 0xf2f6ff : BF_EDGE);
-  }
-  // furo de alívio e filete luminoso
-  m.box(-t - 0.02, 0.2, -6, t + 0.02, 0.6, -3, BF_ACCENT, 1);
-  m.cylinder(0, -0.2, 0, 0.55, 0.01, 6, 0x9aa3b5);
-}
-
-function addButterflyHandle(m: MeshBuilder, side: 1 | -1) {
-  const x0 = side > 0 ? 0.36 : -1.36, x1 = side > 0 ? 1.36 : -0.36;
-  m.box(x0, -1.25, -0.6, x1, 1.25, 13, BF_HANDLE);
-  // janelas (esqueletizado) com brilho
-  for (const z of [2.5, 6.5, 10.5]) m.box(side > 0 ? x1 - 0.02 : x0 - 0.04, -0.55, z, side > 0 ? x1 + 0.04 : x0 + 0.02, 0.55, z + 2.4, BF_ACCENT, 0.8);
-  // pino
-  m.box(x0 - 0.05, -0.35, -0.35, x1 + 0.05, 0.35, 0.35, 0x9aa3b5);
-  // trava no cabo "safe"
-  if (side > 0) m.box(x0, -0.5, 12.6, x1 + 0.5, 0.5, 13.6, 0x9aa3b5);
+/** Arma: 'view' = primeira pessoa (detalhada), 'world' = terceira pessoa e chão (simplificada). */
+export function buildWeapon(r: Renderer, id: WeaponId, lod: Lod = 'world'): GpuMesh {
+  return r.createMesh(weaponGeometry(id, lod).toArray());
 }
 
 export interface ButterflyParts { blade: GpuMesh; safe: GpuMesh; bite: GpuMesh; }
 
 export function buildButterflyParts(r: Renderer): ButterflyParts {
-  const b = new MeshBuilder(); addButterflyBlade(b);
-  const s = new MeshBuilder(); addButterflyHandle(s, 1);
-  const t = new MeshBuilder(); addButterflyHandle(t, -1);
-  return { blade: r.createMesh(b.toArray()), safe: r.createMesh(s.toArray()), bite: r.createMesh(t.toArray()) };
+  const g = butterflyGeometry();
+  return { blade: r.createMesh(g.blade.toArray()), safe: r.createMesh(g.safe.toArray()), bite: r.createMesh(g.bite.toArray()) };
 }
 
-export function buildPickup(r: Renderer, kind: PickupKind): GpuMesh {
-  const m = new MeshBuilder();
-  switch (kind) {
-    case 'medkit':
-      m.box(-10, 0, -7, 10, 12, 7, 0xffffff);
-      m.box(-2.5, 3, -7.4, 2.5, 9, -7, 0xff3b4f, 1); m.box(-6, 4.5, -7.4, 6, 7.5, -7, 0xff3b4f, 1);
-      m.box(-2.5, 3, 7, 2.5, 9, 7.4, 0xff3b4f, 1); m.box(-6, 4.5, 7, 6, 7.5, 7.4, 0xff3b4f, 1);
-      break;
-    case 'armor':
-      m.box(-10, 0, -4, 10, 18, 4, 0x3b4a66);
-      m.box(-10.5, 12, -4.5, -5, 20, 4.5, 0x3b4a66); m.box(5, 12, -4.5, 10.5, 20, 4.5, 0x3b4a66);
-      m.box(-7, 5, -4.6, 7, 9, -4, 0x5ec8ff, 1);
-      break;
-    case 'ammo':
-      m.box(-9, 0, -6, 9, 10, 6, 0x6b5b2e);
-      m.box(-9.4, 6, -6.4, 9.4, 8, 6.4, 0xffd23c, 1);
-      break;
-    case 'nade_he': m.blob(0, 7, 0, 6, 7, 6, 0xff5a3c, 0.3); m.box(-1.5, 13, -1.5, 1.5, 16, 1.5, 0x333333); break;
-    case 'nade_smoke': m.cylinder(0, 0, 0, 5, 15, 8, 0xcfd6e2, 0.1); m.box(-1.5, 15, -1.5, 1.5, 18, 1.5, 0x333333); break;
-    case 'nade_impulse': m.blob(0, 7, 0, 7, 7, 7, 0x37e3ff, 0.6); m.torus(0, 7, 0, 9, 1.2, 12, 4, 0xffffff, 1); break;
-    case 'shield':
-      m.cylinder(0, 0, 0, 12, 4, 6, 0x5ec8ff, 0.8);
-      m.cylinder(0, 4, 0, 8, 6, 6, 0xffffff, 0.6);
-      break;
-    case 'speed':
-      m.tri([-8, 0, 0], [4, 10, 0], [0, 10, 0], 0xffe14d, 1);
-      m.tri([-2, 10, 0], [8, 10, 0], [-4, 22, 0], 0xffe14d, 1);
-      m.tri([-8, 0, 0], [0, 10, 0], [4, 10, 0], 0xffe14d, 1);
-      m.tri([-2, 10, 0], [-4, 22, 0], [8, 10, 0], 0xffe14d, 1);
-      break;
-    default:
-      m.box(-6, 0, -6, 6, 12, 6, 0xffffff, 1);
-  }
-  return r.createMesh(m.toArray());
+export function buildPickup(r: Renderer, kind: PickupKind, lod: Lod = 'world'): GpuMesh {
+  return r.createMesh(pickupGeometry(kind, lod).toArray());
 }
 
-export const PICKUP_COLORS: Record<PickupKind, number> = {
-  weapon: 0xffffff, ammo: 0xffd23c, medkit: 0xff3b4f, armor: 0x5ec8ff,
-  nade_he: 0xff5a3c, nade_smoke: 0xcfd6e2, nade_impulse: 0x37e3ff, shield: 0x5ec8ff, speed: 0xffe14d,
-};
-
-export function buildGrenade(r: Renderer): GpuMesh {
-  const m = new MeshBuilder();
-  m.blob(0, 0, 0, 4, 4.5, 4, 0x3a4255, 0.2);
-  return r.createMesh(m.toArray());
+/** Granada por tipo ('view' na mão, 'world' lançada). */
+export function buildGrenade(r: Renderer, kind: NadeKind, lod: Lod = 'world'): GpuMesh {
+  return r.createMesh(nadeGeometry(kind, lod).toArray());
 }
+
+export interface GloveMeshes { gun: GpuMesh; knife: GpuMesh; }
+export function buildGloves(r: Renderer): GloveMeshes {
+  return { gun: r.createMesh(gunGloveGeometry().toArray()), knife: r.createMesh(knifeGloveGeometry().toArray()) };
+}
+
+export { PICKUP_COLORS };
 
 /** Unit-ish meshes reused for effects */
 export function buildCube(r: Renderer, color = 0xffffff, emissive = 1): GpuMesh {
