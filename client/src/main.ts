@@ -16,10 +16,11 @@ import { SKILL_MAP_VERSIONS } from '../../shared/maps/skillVersions';
 import { updateGhostSet, emptyGhostSet } from '../../shared/sim/ghost';
 import { LocalRecordStore } from './skill/localStore';
 import { IdbGhostStore } from './skill/ghostStore';
-import { Arsenal } from './ui/arsenal';
+import { Gallery } from './ui/gallery';
+import { Gunsmith } from './ui/gunsmith';
 import { LocalProgressionStore } from './game/progressStore';
 import { devXp, levelInfo } from '../../shared/sim/progression';
-import { PROGRESSION_WEAPONS, ProgWeaponId } from '../../shared/config/progression';
+import { PROGRESSION_WEAPONS, ProgWeaponId, isProgWeapon } from '../../shared/config/progression';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const settings = loadSettings();
@@ -114,12 +115,14 @@ const menu = new Menu(settings, {
   startSkill: (id: string) => startSkill(id),
   skillRecords: (id: string) => skillRecords(id),
   skillRestart: () => { game.skillRestart(); resume(); },
-  openArsenal: () => openArsenal(),
+  openGallery: () => openGallery(),
+  openArsenal: (w?: string) => openArsenal(w),
+  sfx: (k: 'xp' | 'levelUp' | 'unlock') => { sfx.ensure(); sfx[k](); },
 });
 
 game = new Game(renderer, input, hud, sfx, settings, map, {
   onPause: () => pause(),
-  onMatchEnd: (w: World) => { input.enabled = false; input.unlock(); menu.showResults(w); },
+  onMatchEnd: (w: World) => { input.enabled = false; input.unlock(); menu.showResults(w, game.lastMatchXp); },
   onSkillEvent: (w: World, e: SkillEvent) => onSkillEvent(w, e),
 });
 
@@ -142,9 +145,9 @@ game.progress = progress;
 
 // ---- Progressão (rodada 12). ?devxp: painel para dar XP, liberar tudo e zerar ----
 const dev = {
-  grant(id: ProgWeaponId, amount: number) { progress.save(devXp.grant(progress.load(), id, amount)); },
-  unlockAll() { progress.save(devXp.unlockAll(progress.load())); },
-  reset() { progress.reset(); },
+  grant(id: ProgWeaponId, amount: number) { progress.save(devXp.grant(progress.load(), id, amount)); refreshArsenal(); },
+  unlockAll() { progress.save(devXp.unlockAll(progress.load())); refreshArsenal(); },
+  reset() { progress.reset(); refreshArsenal(); },
   levels() { const d = progress.load(); return Object.fromEntries(PROGRESSION_WEAPONS.map((w) => [w, levelInfo(w, d.xp[w]).level])); },
 };
 if (new URLSearchParams(location.search).has('devxp')) {
@@ -160,13 +163,24 @@ if (new URLSearchParams(location.search).has('devxp')) {
   document.body.appendChild(el);
 }
 
-// ---- Arsenal: revisão dos modelos (?arsenal na URL ou botão no painel do Treino) ----
-const arsenal = new Arsenal(renderer);
-function openArsenal() {
+// ---- Arsenal (gunsmith, rodada 12c): ?arsenal na URL ou botão do menu ----
+const gunsmith = new Gunsmith(renderer, progress);
+gunsmith.click = () => { sfx.ensure(); sfx.uiClick(); };
+gunsmith.onGallery = () => openGallery();
+function openArsenal(weapon?: string) {
   menu.hideAll();
-  arsenal.open(() => menu.showMain());
+  gunsmith.open(() => menu.showMain(), weapon && isProgWeapon(weapon as never) ? weapon as ProgWeaponId : undefined);
 }
 if (new URLSearchParams(location.search).has('arsenal')) openArsenal();
+function refreshArsenal() { if (gunsmith.active) gunsmith.refresh(); }
+
+// ---- Galeria: revisão dos modelos (?galeria na URL, botão no painel do Treino ou no Arsenal) ----
+const gallery = new Gallery(renderer);
+function openGallery() {
+  menu.hideAll();
+  gallery.open(() => menu.showMain());
+}
+if (new URLSearchParams(location.search).has('galeria')) openGallery();
 
 function resume() {
   menu.hidePanel();
@@ -202,14 +216,15 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 // expose for automated browser tests / debugging
-(window as unknown as { __surf: unknown }).__surf = { game, input, menu, settings, records, skillRecords, arsenal, openArsenal, progress, dev };
+(window as unknown as { __surf: unknown }).__surf = { game, input, menu, settings, records, skillRecords, gallery, openGallery, gunsmith, openArsenal, progress, dev };
 
 let last = performance.now();
 function loop(now: number) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   try {
-    if (arsenal.active) arsenal.frame(dt);
+    if (gallery.active) gallery.frame(dt);
+    else if (gunsmith.active) gunsmith.frame(dt);
     else if (game.world) game.frame(dt);
     else game.menuFrame(dt);
   } catch (e) {

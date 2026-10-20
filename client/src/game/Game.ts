@@ -4,7 +4,8 @@
 // =============================================================
 import { World, WorldConfig, SimEvent } from '../../../shared/sim/world';
 import { Player, hitboxes, wdef } from '../../../shared/sim/player';
-import { ProgressionStore, MatchXpTracker, applyMatchXp, playerBuilds, XpGain, LevelUp } from '../../../shared/sim/progression';
+import { ProgressionStore, MatchXpTracker, applyMatchXp, playerBuilds, XpGain, LevelUp, levelInfo, XP_REASON_LABEL } from '../../../shared/sim/progression';
+import { ATTACHMENTS, WEAPON_ATTACHMENTS } from '../../../shared/config/attachments';
 import type { ProgWeaponId } from '../../../shared/config/progression';
 import { SIM_DT, PHYSICS, SPRINT } from '../../../shared/config/physics';
 import { WEAPONS, WeaponId, NADES, NadeKind, ITEMS, SLOT_NADES, reloadDuration } from '../../../shared/config/weapons';
@@ -112,6 +113,9 @@ export class Game {
   xpTracker: MatchXpTracker | null = null;
   /** resultado de XP da última partida (para a tela de resultado) */
   lastMatchXp: MatchXpResult | null = null;
+  /** avisos de XP na partida: até onde o log já foi mostrado, XP de dano acumulado, nível visto */
+  private xpShown = 0; private xpDmgAcc = 0; private xpDmgTime = 0;
+  private xpBase: Record<ProgWeaponId, number> | null = null; private xpLevel: Partial<Record<ProgWeaponId, number>> = {};
   /** mapa da partida atual (o do construtor é o do menu) */
   private activeMap: MapDef;
   // ---- Surf Skill ----
@@ -221,6 +225,8 @@ export class Game {
     if (this.progress && cfg.mode !== 'skill' && !cfg.localBuilds) cfg = { ...cfg, localBuilds: playerBuilds(this.progress.load()) };
     this.world = new World(map, cfg);
     this.xpTracker = cfg.mode === 'bots' && this.progress ? new MatchXpTracker(this.world.localId, cfg.mode, cfg.difficulty) : null;
+    this.xpShown = 0; this.xpDmgAcc = 0; this.xpDmgTime = 0; this.xpLevel = {};
+    this.xpBase = this.xpTracker ? { ...this.progress!.load().xp } : null;
     this.skillMenuOpen = false; this.pendingGoto = null; this.pendingRestart = false;
     this.ghosts = null; this.ghostDiff = null; this.ghostHint = -1;
     this.apDriver = null; this.apStage = -1;
@@ -236,6 +242,39 @@ export class Game {
     this.hud.show(true);
     this.paused = false;
     this.clearLabels();
+  }
+
+  /** Avisos discretos de XP (arma na mão) e de nível novo durante a partida. */
+  private xpNotices(dt: number) {
+    const t = this.xpTracker;
+    if (!t || !this.xpBase) return;
+    const log = t.log;
+    // agrupa os ganhos do mesmo instante; dano sozinho acumula e aparece a cada 1,5 s
+    while (this.xpShown < log.length) {
+      const t0 = log[this.xpShown].time;
+      let sum = 0; const labels: string[] = [];
+      while (this.xpShown < log.length && log[this.xpShown].time === t0) {
+        const g = log[this.xpShown++];
+        if (g.reason === 'damage') { this.xpDmgAcc += g.amount; continue; }
+        sum += g.amount;
+        if (g.reason !== 'kill' && !labels.includes(XP_REASON_LABEL[g.reason])) labels.push(XP_REASON_LABEL[g.reason]);
+      }
+      if (sum > 0) { this.hud.xpGain(sum + this.xpDmgAcc, labels.join(' · ')); this.xpDmgAcc = 0; this.xpDmgTime = 0; this.sfx.xp(); }
+    }
+    this.xpDmgTime += dt;
+    if (this.xpDmgAcc > 0 && this.xpDmgTime > 1.5) { this.hud.xpGain(this.xpDmgAcc, ''); this.xpDmgAcc = 0; this.xpDmgTime = 0; }
+    // nível novo no meio da partida
+    for (const [wid, g] of Object.entries(t.total) as [ProgWeaponId, number][]) {
+      const before = this.xpLevel[wid] ?? levelInfo(wid, this.xpBase[wid]).level;
+      const now = levelInfo(wid, this.xpBase[wid] + g).level;
+      if (now > before) {
+        const unlocked = WEAPON_ATTACHMENTS[wid].filter((a) => a.level > before && a.level <= now).map((a) => ATTACHMENTS[a.id].name);
+        this.hud.levelUp(WEAPONS[wid].name, now, unlocked);
+        this.sfx.levelUp();
+        if (unlocked.length) setTimeout(() => this.sfx.unlock(), 450);
+      }
+      this.xpLevel[wid] = now;
+    }
   }
 
   /** Soma ao salvo o XP da partida (uma vez) e guarda o resultado em lastMatchXp. */
@@ -300,6 +339,7 @@ export class Game {
         steps++;
       }
       this.fx.update(dt);
+      this.xpNotices(dt);
     }
     this.render(dt);
     if (w.match.phase === 'matchEnd' && !this.lastEnded) {

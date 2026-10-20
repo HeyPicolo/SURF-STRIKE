@@ -4,6 +4,11 @@ import { BOT_SKILL, BotDifficulty, MATCH } from '../../../shared/config/match';
 import { WEAPONS } from '../../../shared/config/weapons';
 import { PHYSICS } from '../../../shared/config/physics';
 import type { World } from '../../../shared/sim/world';
+import type { MatchXpResult } from '../game/Game';
+import type { ProgWeaponId } from '../../../shared/config/progression';
+import { ATTACHMENTS } from '../../../shared/config/attachments';
+import { levelInfo } from '../../../shared/sim/progression';
+import { xpFrac } from '../../../shared/sim/gunsmith';
 import type { Team } from '../../../shared/maps/types';
 import { Settings, saveSettings, ACTION_LABELS, Action, keyLabel, DEFAULT_KEYS } from '../game/settings';
 import { esc } from './hud';
@@ -19,8 +24,12 @@ export interface MatchSetup { teamSize: number; difficulty: BotDifficulty; team:
 export interface MenuActions {
   startBots(s: MatchSetup): void;
   startTraining(classId: ClassId): void;
-  /** tela Arsenal (revisão dos modelos) */
-  openArsenal?(): void;
+  /** Galeria (revisão dos modelos) */
+  openGallery?(): void;
+  /** Arsenal (gunsmith), opcionalmente numa arma */
+  openArsenal?(weapon?: string): void;
+  /** sons da progressão */
+  sfx?(k: 'xp' | 'levelUp' | 'unlock'): void;
   resume(): void;
   quitToMenu(): void;
   settingsChanged(): void;
@@ -51,6 +60,7 @@ export class Menu {
       const go = b.dataset.go!;
       if (go === 'play') this.showPlay();
       else if (go === 'training') this.showTraining();
+      else if (go === 'arsenal') this.act.openArsenal?.();
       else if (go === 'skill') this.showSkill();
       else if (go === 'create' || go === 'join') this.showMultiplayer(go);
       else if (go === 'classes') this.showClasses();
@@ -142,10 +152,10 @@ export class Menu {
     this.panel(`<h2>Treinamento</h2>
       <p>Arena CLOUDS sozinho, com alvos para testar armas. Todos os pickups reaparecem. Você pode reiniciar a posição, salvar checkpoints de surf e voar livremente. O medidor de velocidade fica sempre visível.</p>
       <h4>Classe</h4>${this.classCards(this.setup.classId)}
-      <div class="panel-actions"><button class="btn primary" id="go">Entrar no treino</button><button class="btn" id="arsenal-btn">Arsenal</button><button class="btn" data-back>Voltar</button></div>`);
+      <div class="panel-actions"><button class="btn primary" id="go">Entrar no treino</button><button class="btn" id="arsenal-btn">Galeria</button><button class="btn" data-back>Voltar</button></div>`);
     this.bindClassCards((id) => { this.setup.classId = id; this.saveSetup(); });
     $('go').onclick = () => { this.act.click(); this.act.startTraining(this.setup.classId); };
-    $('arsenal-btn').onclick = () => { this.act.click(); this.act.openArsenal?.(); };
+    $('arsenal-btn').onclick = () => { this.act.click(); this.act.openGallery?.(); };
   }
 
   // ------------------------------------------------------------------ Surf Skill
@@ -354,7 +364,42 @@ export class Menu {
     $('quit').onclick = () => { this.act.click(); this.inGame = false; this.act.quitToMenu(); };
   }
 
-  showResults(w: World) {
+  /** XP das armas na tela de resultado (rodada 12c): barra animada até o nível novo e desbloqueios. */
+  private xpResultsHtml(xp: MatchXpResult | null): string {
+    if (!xp) return '';
+    const ws = (Object.entries(xp.gains) as [ProgWeaponId, number][]).filter(([, g]) => g > 0).sort((a, b) => b[1] - a[1]);
+    if (!ws.length) return '<h4>XP das armas</h4><p class="muted">Nenhum XP de arma nesta partida (XP vem de dano, abates e vitórias com as armas de fogo).</p>';
+    const rows = ws.map(([w, g]) => {
+      const a = levelInfo(w, xp.before[w]), b = levelInfo(w, xp.after[w]);
+      const lu = xp.levelUps.find((l) => l.weapon === w);
+      return `<div class="xp-row" data-weapon="${w}"><span class="xp-name">${esc(WEAPONS[w].name)}</span>
+        <span class="gs-xpbar"><i style="width:${(xpFrac(a) * 100).toFixed(1)}%" data-from="${xpFrac(a)}" data-to="${xpFrac(b)}" data-up="${b.level > a.level ? 1 : 0}"></i></span>
+        <span class="xp-amt">+${g.toLocaleString('pt-BR')} XP</span>
+        ${lu ? `<div class="xp-lvl"><i class="diamond"></i>NÍVEL ${lu.to}${lu.unlocked.length ? ` · liberado: ${lu.unlocked.map((u) => esc(ATTACHMENTS[u].name)).join(', ')}` : ''}</div>` : `<div class="xp-lvl muted" style="color:#8b97a6">Nível ${b.level}${b.maxed ? ' (máximo)' : ` · ${b.intoLevel.toLocaleString('pt-BR')} / ${b.needed.toLocaleString('pt-BR')} XP`}</div>`}
+      </div>`;
+    }).join('');
+    return `<h4>XP das armas</h4><div class="xp-results" id="xp-results">${rows}</div>`;
+  }
+
+  /** Anima as barras de XP (até 100% e recomeça se subiu de nível) e toca os sons. */
+  private animateXp(xp: MatchXpResult | null) {
+    if (!xp) return;
+    const bars = [...document.querySelectorAll<HTMLElement>('#xp-results .gs-xpbar i')];
+    if (!bars.length) return;
+    setTimeout(() => {
+      this.act.sfx?.('xp');
+      for (const b of bars) b.style.width = `${(b.dataset.up === '1' ? 1 : Number(b.dataset.to)) * 100}%`;
+    }, 250);
+    if (xp.levelUps.length) {
+      setTimeout(() => {
+        this.act.sfx?.('levelUp');
+        for (const b of bars) if (b.dataset.up === '1') { b.style.transition = 'none'; b.style.width = '0%'; void b.offsetWidth; b.style.transition = ''; b.style.width = `${Number(b.dataset.to) * 100}%`; }
+      }, 1250);
+      if (xp.levelUps.some((l) => l.unlocked.length)) setTimeout(() => this.act.sfx?.('unlock'), 1750);
+    }
+  }
+
+  showResults(w: World, xp: MatchXpResult | null = null) {
     this.inGame = false;
     const me = w.local;
     const won = w.match.matchWinner === me.team;
@@ -365,7 +410,11 @@ export class Menu {
       <div class="result-score"><span class="b">${w.match.score.blue}</span><span>×</span><span class="r">${w.match.score.red}</span></div>
       <p>MVP: <b>${esc(mvp.name)}</b> com ${mvp.stats.kills} abates e ${mvp.stats.damage} de dano.</p>
       <table style="width:100%;border-collapse:collapse;font-size:14px" class="results"><tr style="opacity:.6;font-size:12px"><td>Jogador</td><td>Classe</td><td>Abates</td><td>Mortes</td><td>HS</td><td>Dano</td></tr>${rows}</table>
-      <div class="panel-actions"><button class="btn primary" id="again">Jogar novamente</button><button class="btn" id="tomenu">Menu principal</button></div>`);
+      ${this.xpResultsHtml(xp)}
+      <div class="panel-actions"><button class="btn primary" id="again">Jogar novamente</button>${xp && Object.keys(xp.gains).length ? '<button class="btn" id="toarsenal">Abrir no Arsenal</button>' : ''}<button class="btn" id="tomenu">Menu principal</button></div>`);
+    this.animateXp(xp);
+    const best = xp ? (Object.entries(xp.gains) as [string, number][]).sort((a, b) => b[1] - a[1])[0]?.[0] : undefined;
+    document.getElementById('toarsenal')?.addEventListener('click', () => { this.act.click(); this.act.quitToMenu(); this.act.openArsenal?.(best); });
     $('again').onclick = () => { this.act.click(); this.hidePanel(); this.act.startBots({ ...this.setup }); };
     $('tomenu').onclick = () => { this.act.click(); this.act.quitToMenu(); };
   }

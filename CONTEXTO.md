@@ -20,13 +20,13 @@ Serve para qualquer sessão (de código ou de apoio) entender o projeto sem rele
 npm install
 npm run dev            # servidor local com rebuild
 npm run build          # gera dist/ (o que a Vercel publica)
-npm test               # 205 testes unitários (node:test via tsx, ~80 s)
+npm test               # 209 testes unitários (node:test via tsx, ~80 s)
 npm run skill:metrics  # corre o percurso de referência de todos os mapas, grava skillReference.ts e imprime a tabela de métricas
 npm run skill:versions # regrava shared/maps/skillVersions.ts depois de mudar um mapa do Surf Skill
 npm run skill:layout   # confere folga entre stages, lava, brushes cruzando, trechos não vizinhos e nuvens
 npx tsc --noEmit -p tsconfig.json
-CHROME_PATH=/opt/pw-browsers/chromium node scripts/e2e.mjs   # 34 verificações no navegador (screenshots em e2e-shots/, Arsenal em e2e-shots/arsenal/)
-# ?arsenal na URL abre a tela Arsenal (revisão dos modelos); ?devxp mostra o painel de XP (liberar tudo, +XP, zerar)
+CHROME_PATH=/opt/pw-browsers/chromium node scripts/e2e.mjs   # 38 verificações no navegador (screenshots em e2e-shots/, Arsenal em e2e-shots/arsenal/)
+# ?arsenal abre o Arsenal (gunsmith), ?galeria a Galeria (revisão dos modelos); ?devxp mostra o painel de XP (liberar tudo, +XP, zerar)
 npx tsx scripts/xp-sim.ts 8 medium 3 hard   # XP por partida e partidas até o nível máximo
 ```
 
@@ -120,7 +120,8 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 | `client/src/render/mesh.ts` | `MeshBuilder` e as primitivas do estilo de blocos |
 | `client/src/entities/characters.ts` | personagens no estilo de blocos (3 versões: perto/média/longe), pivôs e paleta do time |
 | `client/src/game/adsPose.ts` | posição do viewmodel no ADS (linha de visada no centro) |
-| `client/src/ui/arsenal.ts` | tela Arsenal (`?arsenal` ou botão no painel do Treino) |
+| `client/src/ui/gallery.ts` | Galeria: revisão dos modelos (`?galeria`, botão no Arsenal e no painel do Treino) |
+| `client/src/ui/gunsmith.ts`, `shared/sim/gunsmith.ts` | Arsenal (gunsmith): lista, edição com cards e linhas, painel da categoria; regras sem DOM |
 | `client/src/ui/menu.ts`, `hud.ts` | menus (inclui seleção de mapa e tela de fim do Surf Skill) e HUD |
 | `client/src/maps/worldMesh.ts` | malha do mapa, paredes das zonas, número do stage |
 | `client/src/audio/sfx.ts` | sons sintetizados |
@@ -146,10 +147,18 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 | 11a · `5dfb809` | Luneta da LONGBOW sem cliques perdidos (sprint automático engolia o clique; mira desejada guardada; alternar/segurar), bots com mira humana (reação com cauda, flick + correções, tremor, lead/recuo aprendidos, personalidade, audição), início do sacar da balisong contínuo. |
 | 11b · `14ec289` | ADS nas armas de ferro (alça/massa/red dot do modelo no centro, FOV, tempo, sensibilidade, movimento e spread em config) e personagens no estilo de blocos (3 versões, hitbox igual, cor do time em placas). |
 | 12a · `0c6d9e7` | Progressão por arma (XP só contra bots, níveis 30/20) e attachments no sim: 27 peças em 8 categorias, até 5, WeaponDef efetivo com teto de ±25% e TTK mínimo, build do jogador no WeaponState, builds dos bots pela seed, duelos com a arma base, supressor e laser na percepção dos bots, dados salvos com schema, `?devxp`. |
-| 12b | Attachments nos modelos: pontos de montagem, cano/boca do build, peça padrão escondida, visada de cada mira no ADS (retícula na tela da 2x/3x, térmica), laser visível para os outros, supressor sem tracer, cache de malha por arma + build. |
+| 12b · `ca2e92e` | Attachments nos modelos: pontos de montagem, cano/boca do build, peça padrão escondida, visada de cada mira no ADS (retícula na tela da 2x/3x, térmica), laser visível para os outros, supressor sem tracer, cache de malha por arma + build. |
+| 12c | Menu ARSENAL (gunsmith) no layout da referência, Galeria (a antiga tela Arsenal), avisos de XP e de nível na partida, XP na tela de resultado com "Abrir no Arsenal", sons de XP/nível/desbloqueio. |
 
 ## Decisões tomadas (não desfazer sem pedido)
 
+- **Rodada 12c:**
+  - O nome "Arsenal" passou para o gunsmith; a tela de revisão de modelos virou "Galeria" (`?galeria`; `?arsenal` abre o gunsmith).
+  - Os cards ficam parados (posição calculada uma vez por arma e tamanho de tela, perto do ponto da peça); só as linhas acompanham o balanço e o arraste.
+  - Equipar ou trocar fecha o painel (volta para a arma, como confirmação). Na tela de resultado, a barra vai até 100% e recomeça quando sobe de nível.
+  - O padrão geométrico do fundo é desenhado no WebGL, num plano atrás da arma: uma camada CSS por cima do canvas deixava "fantasmas" de quadros antigos na composição (visto no renderizador por software).
+  - Fonte fina e larga do título: Lexend Zetta (Google Fonts, pesos 200–400).
+  - Builds salvos (2–3 por arma, opcional na especificação) ficaram para depois; o nome do build é editável.
 - **Rodada 12b:**
   - Laser no lado esquerdo da arma (o que aparece em primeira pessoa); na VEX-9 embaixo do trilho.
   - Com mira no KESTREL, alça e massa ficam rebatidas (senão tapam o ponto e aparecem dentro da luneta). Nas outras armas as miras de ferro ficam abaixo da linha da mira e continuam.
@@ -249,7 +258,8 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 
 ## Pendências e ideias
 
-- Rodada 12c (menu ARSENAL/gunsmith, avisos de XP, tela de resultado com XP).
+- Builds salvos por arma (2–3), opcional da rodada 12.
+- Ajustar jogando a rodada 12c: frequência dos avisos de XP (o dano soma a cada 1,5 s), posição dos cards em armas curtas (VEX-9) e o contraste do padrão do fundo.
 - Ajustar olhando a rodada 12b: tamanho das miras de ponto (pequenas na pistola), o tambor da HORNET, a cor das peças da BREAKER-12 (a peça escura dela é madeira) e a grossura do feixe do laser.
 - Calibrar jogando a rodada 12a: curva de XP (feita com bots como jogador; humanos podem fazer mais ou menos), força do tambor e do supressor, se o laser denuncia demais e os builds dos bots no GOD (5 peças de nível máximo).
 

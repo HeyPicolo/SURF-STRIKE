@@ -126,6 +126,27 @@ export class Sfx {
     if (head) { this.tone(d, t, 0.18, 1900, 1700, 0.4, 'sine'); this.tone(d, t, 0.12, 2800, 2600, 0.2, 'sine'); }
     else this.tone(d, t, 0.06, 1200, 900, 0.3, 'square');
   }
+  /** XP da arma (rodada 12c): tique curto e agudo */
+  xp() {
+    const d = this.out(0, 0.25); if (!d) return;
+    const t = this.ctx!.currentTime;
+    this.tone(d, t, 0.07, 1320, 1560, 0.22, 'sine');
+  }
+  /** subida de nível da arma: arpejo ascendente */
+  levelUp() {
+    const d = this.out(0, 0.55); if (!d) return;
+    const t = this.ctx!.currentTime;
+    [523, 659, 784, 1047].forEach((f, i) => this.tone(d, t + i * 0.085, 0.22, f, f, 0.3, 'triangle'));
+    this.tone(d, t + 0.34, 0.5, 1568, 1568, 0.16, 'sine');
+  }
+  /** attachment desbloqueado: "clique" metálico + brilho */
+  unlock() {
+    const d = this.out(0, 0.5); if (!d) return;
+    const t = this.ctx!.currentTime;
+    this.noise(d, t, 0.05, 4000, 2500, 4, 0.5);
+    this.tone(d, t + 0.04, 0.3, 1760, 2200, 0.2, 'sine');
+    this.tone(d, t + 0.1, 0.35, 2637, 2637, 0.12, 'sine');
+  }
   kill() {
     const d = this.out(0, 0.6); if (!d) return;
     const t = this.ctx!.currentTime;

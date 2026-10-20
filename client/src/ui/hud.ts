@@ -250,10 +250,36 @@ export class Hud {
     setTimeout(() => el.remove(), 1900);
   }
 
+  /** XP da arma na mão (rodada 12c): linha discreta que some sozinha. */
+  xpGain(amount: number, label: string) {
+    const el = document.createElement('div');
+    el.className = 'xp-line';
+    el.innerHTML = `<b>+${amount} XP</b>${label ? ` <span>${esc(label)}</span>` : ''}`;
+    const box = $('xp-feed');
+    box.appendChild(el);
+    while (box.children.length > 4) box.firstChild!.remove();
+    setTimeout(() => el.remove(), 2200);
+  }
+
+  /** Aviso de nível da arma ("NÍVEL 8") com o desbloqueio liberado. */
+  levelUp(weapon: string, level: number, unlocked: string[]) {
+    $('lvl-title').textContent = `NÍVEL ${level}`;
+    $('lvl-weapon').textContent = weapon;
+    $('lvl-sub').textContent = unlocked.length ? `Liberado: ${unlocked.join(', ')}` : '';
+    const el = $('level-up');
+    el.className = '';
+    void el.offsetWidth; // reinicia a animação
+    el.className = 'on';
+    clearTimeout(this.lvlTimer);
+    this.lvlTimer = window.setTimeout(() => { el.className = ''; }, 3200);
+  }
+  private lvlTimer = 0;
+
   /** Limpa avisos da partida anterior (banner, toasts, split). */
   clearTransient() {
     this.bannerTimer = 0; $('banner').className = '';
     $('toasts').innerHTML = '';
+    $('xp-feed').innerHTML = ''; $('level-up').className = '';
     this.splitTimer = 0; this.set('skill-split', 'class', '');
   }
 

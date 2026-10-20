@@ -356,3 +356,21 @@ export function rearGripStyle(P: Palette, att?: string): { color: number; tape: 
 }
 
 export { ITEM_STYLE };
+
+/**
+ * Ponto da arma onde fica a peça de cada categoria (modelo), para as linhas do Arsenal: centro
+ * aproximado da peça equipada, ou do lugar dela quando a categoria está vazia.
+ */
+export function slotPoint(id: ProgWeaponId, slot: AttachSlot, build: Build = {}): P {
+  const b = barrelFor(id, build), mt = MOUNTS[id][slot], att = build[slot];
+  switch (slot) {
+    case 'muzzle': { const dev = att ? MUZZLE_LEN[att] ?? 2 : Math.max(1, BARRELS[id].device); return [0, b.y, b.z1 - dev / 2]; }
+    case 'barrel': return [0, b.y, (b.z0 + b.z1) / 2];
+    case 'optic': { if (!mt) return [0, 5, -4]; const o = att ? OPTIC_SIGHT[att] : undefined; return [0, mt.p[1] + (o ? o.h : id === 'sniper' ? 2.94 : 1) * mt.s, mt.p[2]]; }
+    case 'laser': return laserRef(id, build) ?? (mt ? [mt.p[0], mt.p[1], mt.p[2]] : [0, 0, -10]);
+    case 'stock': return mt ? [0, mt.p[1] - 0.5, mt.p[2] + 6 * mt.s] : [0, 1, 8];
+    case 'underbarrel': return mt ? [0, mt.p[1] - 2.2 * mt.s, mt.p[2]] : [0, -2, -15];
+    case 'magazine': return mt ? (id === 'shotgun' ? [0, mt.p[1], mt.p[2] - 10] : [0, mt.p[1] - 3.5 * mt.s, mt.p[2]]) : [0, -4, -4];
+    case 'rearGrip': return mt ? mt.p : [0, -3.8, 1.8];
+  }
+}

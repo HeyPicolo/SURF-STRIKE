@@ -1,7 +1,8 @@
 // =============================================================
-//  Arsenal: tela para revisar os modelos (armas, faca, granadas, itens e luvas) girando sobre um
-//  fundo neutro. Setas trocam de modelo, L alterna as versões (detalhado/simplificado/longe), Esc fecha.
-//  Abre por ?arsenal na URL ou pelo botão no painel do Treino.
+//  Galeria (era o "Arsenal" da rodada 10; o nome Arsenal agora é o gunsmith): revisão dos modelos
+//  (armas, faca, granadas, itens, luvas e personagens) girando sobre um fundo neutro. Setas trocam
+//  de modelo, L alterna as versões (detalhado/simplificado/longe), Esc fecha.
+//  Abre por ?galeria na URL, pelo botão no painel do Treino ou pelo Arsenal.
 // =============================================================
 import type { Renderer, GpuMesh } from '../render/Renderer';
 import { trs, child, mat4 } from '../render/glm';
@@ -13,7 +14,7 @@ import { CHAR_BUDGET } from '../entities/characters';
 
 const BG = 0x8d939c;
 
-export class Arsenal {
+export class Gallery {
   active = false;
   idx = 0;
   lod: Lod = 'view';
@@ -43,8 +44,8 @@ export class Arsenal {
     this.onClose = onClose;
     if (!this.el) {
       this.el = document.createElement('div');
-      this.el.id = 'arsenal';
-      this.el.innerHTML = `<div class="ars-top"><b>ARSENAL</b><span class="muted">modelos no estilo de blocos</span><button class="btn" id="ars-close">Fechar <span class="kbd">Esc</span></button></div>
+      this.el.id = 'gallery';
+      this.el.innerHTML = `<div class="ars-top"><b>GALERIA</b><span class="muted">modelos no estilo de blocos</span><button class="btn" id="ars-close">Fechar <span class="kbd">Esc</span></button></div>
         <div class="ars-bottom"><button class="btn" id="ars-prev">◀</button><div class="ars-info"><div id="ars-name"></div><div id="ars-meta" class="muted"></div></div><button class="btn" id="ars-next">▶</button>
         <button class="btn" id="ars-lod"></button></div>`;
       document.body.appendChild(this.el);

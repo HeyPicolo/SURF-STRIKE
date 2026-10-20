@@ -397,27 +397,27 @@ await page.screenshot({ path: join(shots, '21-attach-laser-3p.png') });
 const rd = attRes.reddot.px;
 check('34. attachments: ponto vermelho no centro no ADS, retícula da 2x e mira térmica (screenshots)', attRes.reddot.adsK === 1 && rd[0] > 200 && rd[1] < 150 && attRes.x2.optic.includes('x2') && attRes.thermal.scope.includes('thermal'), JSON.stringify(attRes));
 
-// rodada 10: tela Arsenal com todos os modelos (detalhado e simplificado) e screenshot de cada um
+// rodada 10: Galeria (era a tela Arsenal) com todos os modelos (detalhado e simplificado) e screenshot de cada um
 const arsDir = join(shots, 'arsenal');
 mkdirSync(arsDir, { recursive: true });
-await S(() => { const s = window.__surf; s.game.stop(); s.input.enabled = false; s.input.unlock(); s.openArsenal(); });
+await S(() => { const s = window.__surf; s.game.stop(); s.input.enabled = false; s.input.unlock(); s.openGallery(); });
 await wait(300);
-const arsVisible = await page.isVisible('#arsenal');
-const arsList = await S(() => window.__surf.arsenal.entries.map((e) => ({ id: e.id, lods: e.lods })));
+const arsVisible = await page.isVisible('#gallery');
+const arsList = await S(() => window.__surf.gallery.entries.map((e) => ({ id: e.id, lods: e.lods })));
 const arsInfo = [];
 for (let i = 0; i < arsList.length; i++) for (const lod of arsList[i].lods) {
-  const info = await S(([i, lod]) => { const a = window.__surf.arsenal; a.show(i); a.setLod(lod); a.fixedYaw = -0.45; return a.info(); }, [i, lod]);
+  const info = await S(([i, lod]) => { const a = window.__surf.gallery; a.show(i); a.setLod(lod); a.fixedYaw = -0.45; return a.info(); }, [i, lod]);
   await wait(120);
   await page.screenshot({ path: join(arsDir, `${String(i + 1).padStart(2, '0')}-${info.id}-${lod}.png`) });
   arsInfo.push(info);
 }
 await page.keyboard.press('ArrowRight'); await wait(100);
-const arrowIdx = await S(() => window.__surf.arsenal.idx);
-await S(() => { window.__surf.arsenal.fixedYaw = null; });
+const arrowIdx = await S(() => window.__surf.gallery.idx);
+await S(() => { window.__surf.gallery.fixedYaw = null; });
 await page.keyboard.press('Escape'); await wait(300);
-const backToMenu = await page.isVisible('#main-nav') && !(await S(() => window.__surf.arsenal.active));
+const backToMenu = await page.isVisible('#main-nav') && !(await S(() => window.__surf.gallery.active));
 const overBudget = arsInfo.filter((x) => x.tris > x.budget);
-check('29. Arsenal mostra todos os modelos (setas, versões de detalhe, triângulos) e volta ao menu', arsVisible && arsInfo.length >= 56 && overBudget.length === 0 && arrowIdx === 0 && backToMenu, `modelos=${arsList.length} capturas=${arsInfo.length} acima=${overBudget.length} seta=${arrowIdx} menu=${backToMenu}`);
+check('29. Galeria mostra todos os modelos (setas, versões de detalhe, triângulos) e volta ao menu', arsVisible && arsInfo.length >= 56 && overBudget.length === 0 && arrowIdx === 0 && backToMenu, `modelos=${arsList.length} capturas=${arsInfo.length} acima=${overBudget.length} seta=${arrowIdx} menu=${backToMenu}`);
 
 // rodada 12: ?devxp mostra o painel de desenvolvimento (liberar tudo / zerar)
 await page.goto('http://localhost:5199/?devxp');
@@ -428,6 +428,74 @@ const devAll = await S(() => window.__surf.dev.levels());
 await S(() => window.__surf.dev.reset());
 const devZero = await S(() => window.__surf.dev.levels());
 check('33. ?devxp: painel libera tudo e zera', devPanel && devAll.rifle === 30 && devAll.pistol === 20 && devZero.rifle === 1, JSON.stringify({ devPanel, devAll, devZero }));
+
+// rodada 12c: ARSENAL (gunsmith) — modo dev libera tudo, equipar 5 peças, cards e linhas, 6ª peça
+await S(() => window.__surf.dev.unlockAll());
+await page.click('button[data-go=arsenal]'); await wait(500);
+const gsList = await S(() => ({ cards: document.querySelectorAll('.gs-wcard').length, rifle: document.querySelector('.gs-wcard[data-weapon=rifle] .gs-lvl')?.textContent }));
+await page.screenshot({ path: join(shots, '22-arsenal-lista.png') });
+await page.click('.gs-wcard[data-weapon=rifle]'); await wait(300);
+for (const [slot, att] of [['muzzle', 'supp'], ['optic', 'holo'], ['underbarrel', 'gripVert'], ['magazine', 'magExt'], ['stock', 'stockLight']]) {
+  await page.click(`.gs-card[data-slot=${slot}]`); await wait(120);
+  await page.hover(`.gs-opt[data-att=${att}]`); await wait(80);
+  await page.click(`.gs-opt[data-att=${att}]`); await wait(120);
+}
+await S(() => { window.__surf.gunsmith.still = true; }); await wait(500);
+const gsEdit = await S(() => {
+  const g = window.__surf.gunsmith, W = innerWidth, H = innerHeight;
+  const lines = g.lines(), svg = document.querySelectorAll('#gs-lines path').length;
+  return { on: document.querySelectorAll('.gs-card.on').length, empty: document.querySelectorAll('.gs-card.empty').length, count: document.querySelector('.gs-count b')?.textContent, svg,
+    lines: lines.length, inside: lines.every((l) => l.point.x > 0 && l.point.x < W && l.point.y > 0 && l.point.y < H && Math.abs(l.card.x - l.point.x) < W * 0.5), title: document.getElementById('gs-title').value };
+});
+await page.screenshot({ path: join(shots, '23-arsenal-5-pecas.png') });
+check('35. Arsenal: lista das armas e 5 peças equipadas com os cards ligados à arma (screenshots)', gsList.cards === 5 && gsList.rifle.includes('30') && gsEdit.on === 5 && gsEdit.count === '5/5' && gsEdit.lines === 5 && gsEdit.svg === 5 && gsEdit.inside, JSON.stringify({ gsList, gsEdit }));
+await page.click('.gs-card[data-slot=laser]'); await wait(150);
+await page.click('.gs-opt[data-att=laserTac]'); await wait(200);
+const limit = await page.isVisible('.gs-modal');
+await page.screenshot({ path: join(shots, '24-arsenal-limite.png') });
+await page.click('.gs-swap[data-slot=muzzle]'); await wait(200);
+const afterSwap = await S(() => ({ build: window.__surf.gunsmith.build, modal: !!document.querySelector('.gs-modal') }));
+check('36. Arsenal: a 6ª peça mostra o aviso e troca por uma removida', limit && !afterSwap.modal && afterSwap.build.laser === 'laserTac' && !afterSwap.build.muzzle && Object.keys(afterSwap.build).length === 5, JSON.stringify(afterSwap));
+await page.keyboard.press('Escape'); await wait(150); await page.keyboard.press('Escape'); await wait(200);
+const gsClosed = await S(() => !window.__surf.gunsmith.active) && await page.isVisible('#main-nav');
+
+// Treino com o build: viewmodel e ADS
+await page.click('button[data-go=training]'); await page.click('#go'); await wait(800);
+await S(() => { window.__surf.input.enabled = true; window.__surf.game.paused = false; document.getElementById('panel').classList.add('hidden'); });
+await S(() => { const w = window.__surf.game.world, p = w.local; p.giveWeapon('rifle'); p.slot = 0; p.switchTime = 0; p.phys.pos.set(0, 2, 5450); p.phys.vel.set(0, 0, 0); window.__surf.input.yaw = Math.PI; window.__surf.input.pitch = -0.04; });
+await waitSim(0.6);
+await page.screenshot({ path: join(shots, '25-treino-build.png') });
+await page.mouse.down({ button: 'right' }); await page.mouse.up({ button: 'right' }); await waitSim(0.8);
+const trainBuild = await S(() => { const p = window.__surf.game.world.local, ws = p.currentWeapon(); return { build: ws.build, adsK: p.adsK }; });
+trainBuild.px = await centerPixel();
+await page.screenshot({ path: join(shots, '26-treino-build-ads.png') });
+check('37. Treino: a arma vem com o build do Arsenal (viewmodel e ADS pela holográfica)', gsClosed && trainBuild.build?.laser === 'laserTac' && trainBuild.build?.optic === 'holo' && trainBuild.adsK === 1 && trainBuild.px[0] > 200 && trainBuild.px[1] < 150, JSON.stringify(trainBuild));
+
+// partida curta contra bots: abates com a KESTREL, fim de partida e XP na tela de resultado
+await page.mouse.down({ button: 'right' }); await page.mouse.up({ button: 'right' });
+await S(() => window.__surf.menu.act.quitToMenu()); await wait(300);
+await S(() => window.__surf.dev.reset());
+await page.click('button[data-go=play]');
+await page.click('[data-choice=size] button[data-v="1"]');
+await page.click('[data-choice=diff] button[data-v="hard"]');
+await page.click('#go'); await wait(800);
+await S(() => { window.__surf.input.enabled = true; window.__surf.game.paused = false; document.getElementById('panel').classList.add('hidden'); });
+for (let i = 0; i < 60; i++) { await waitSim(0.5); if (await S(() => window.__surf.game.world.match.combatEnabled)) break; }
+await S(() => {
+  const w = window.__surf.game.world, me = w.local;
+  me.giveWeapon('rifle'); me.slot = 0;
+  w.match.score.blue = w.match.cfg.roundsToWin - 1;
+  for (const q of w.players) if (q.team !== me.team && q.alive) w.applyDamage(q, me, 999, true, false, 'KESTREL AR', undefined, 'rifle');
+});
+let resVisible = false;
+for (let i = 0; i < 80 && !resVisible; i++) { await wait(250); resVisible = await page.isVisible('#xp-results'); }
+await wait(1800);
+const xpEnd = await S(() => ({ rows: [...document.querySelectorAll('#xp-results .xp-row')].map((r) => r.textContent.replace(/\s+/g, ' ').trim()), arsenalBtn: !!document.getElementById('toarsenal'), saved: JSON.parse(localStorage.getItem('surfstrike.progression')).xp }));
+await page.screenshot({ path: join(shots, '27-resultado-xp.png') });
+if (xpEnd.arsenalBtn) { await page.click('#toarsenal'); await wait(500); }
+const openedOn = await S(() => ({ active: window.__surf.gunsmith.active, screen: window.__surf.gunsmith.screen, weapon: window.__surf.gunsmith.weapon }));
+check('38. partida curta contra bots: XP da arma na tela de resultado e "Abrir no Arsenal"', resVisible && xpEnd.rows.length > 0 && xpEnd.rows[0].includes('KESTREL') && xpEnd.saved.rifle > 0 && openedOn.active && openedOn.screen === 'edit' && openedOn.weapon === 'rifle', JSON.stringify({ xpEnd, openedOn }));
+await S(() => window.__surf.gunsmith.close());
 
 const fps = await S(() => new Promise((res) => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 2000) requestAnimationFrame(f); else res(n / 2); }; requestAnimationFrame(f); }));
 console.log(`fps (software renderer): ${fps}`);
