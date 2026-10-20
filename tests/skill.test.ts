@@ -13,6 +13,7 @@ import {
 import { CollisionWorld } from '../shared/physics/trace';
 import { Mover, PhysState, emptyCmd } from '../shared/physics/movement';
 import { PHYSICS } from '../shared/config/physics';
+import { V3 } from '../shared/math/vec3';
 import type { SimEvent } from '../shared/sim/world';
 import type { MapDef } from '../shared/maps/types';
 
@@ -92,7 +93,7 @@ test('start zone: jumping is allowed, prespeed cap holds (also bhopping out in t
   steps(w, 80);
   // bhop + air strafe dentro da zona e saída no ar: nunca acima do cap no tick de saída
   // volta para o fundo da zona, corre e sai pulando com strafe
-  p.phys.pos.z = 250; p.input.cmd.forward = 1; steps(w, 25);
+  p.phys.pos.z = sk.stageDef.spawn.pos.z + 130; p.input.cmd.forward = 1; steps(w, 25);
   p.input.cmd.jump = true;
   let exitSpeed = -1, maxIn = 0;
   for (let i = 0; i < 3000 && sk.state === 'zone'; i++) {
@@ -115,7 +116,7 @@ test('falling sends you back to the current stage start, stopped, and the clock 
   driveStage(w); // stage 1 → 2
   assert.equal(sk.stage, 1);
   const t0 = sk.ticks;
-  p.phys.pos.set(sk.stageDef.spawn.pos.x, sk.stageDef.fallY + 40, -3000);
+  p.phys.pos.set(sk.stageDef.spawn.pos.x, sk.stageDef.fallY + 40, sk.stageDef.spawn.pos.z - 3120);
   const ev = steps(w, 2);
   const reset = ev.find((e) => e.t === 'skillReset');
   assert.ok(reset && reset.t === 'skillReset' && reset.reason === 'fall' && reset.stage === 1);
@@ -126,7 +127,7 @@ test('falling sends you back to the current stage start, stopped, and the clock 
   assert.equal(sk.ticks, t0 + 2, 'falling does not reset the map timer');
   // o trigger de lava também conta (sem passar do fallY)
   const lava = sk.stageDef.fall[0];
-  p.phys.pos.set(sk.stageDef.spawn.pos.x, lava.max.y - 10, -3000);
+  p.phys.pos.set(sk.stageDef.spawn.pos.x, lava.max.y - 10, sk.stageDef.spawn.pos.z - 3120);
   steps(w, 1);
   assert.equal(sk.falls, 2);
 });
@@ -254,7 +255,7 @@ test('records are keyed by the map geometry version: changing the map invalidate
 // ---------------------------------------------------------------- mapas
 const maps = skillMapsOf('treino').map((meta) => ({ meta, map: getSkillMap(meta.id) }));
 
-test('the 3 training maps match the config metadata (name, tier, 5 stages with names and spawns)', () => {
+test('the 3 training maps match the config metadata (name, tier, 5 stages with names; spawns from the automatic layout)', () => {
   assert.deepEqual(maps.map((m) => m.meta.tier), [1, 2, 3]);
   for (const { meta, map } of maps) {
     assert.equal(map.name, meta.name);
@@ -264,7 +265,8 @@ test('the 3 training maps match the config metadata (name, tier, 5 stages with n
     assert.equal(map.skill!.segments.length, 5);
     map.skill!.segments.forEach((st, i) => {
       assert.equal(st.name, meta.segments[i].name);
-      assert.deepEqual(st.spawn.pos.toArray(), meta.segments[i].spawn);
+      assert.equal(st.spawn.pos.y, meta.layoutY, 'altura do spawn');
+      assert.ok(insideVolume(st.startZone, st.spawn.pos, new V3(-16, 0, -16), new V3(16, 72, 16)), 'spawn na zona de início');
     });
   }
 });

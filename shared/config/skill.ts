@@ -24,6 +24,16 @@ export const SKILL = {
   progressiveUnlock: false,
 };
 
+/** Layout automático dos stages dos mapas staged (desafios). */
+export const STAGE_LAYOUT = {
+  /** folga mínima entre os envelopes de dois stages (u) */
+  clearance: 3000,
+  /** tudo dentro de ±limit em X e Z (precisão de float: ±40000 com margem) */
+  limit: 38000,
+  /** folga da lava em volta das rampas de cada stage (os mapas de treino mantêm 2500) */
+  lavaPad: 1200,
+};
+
 /** Fantasma (replay do recorde pessoal). */
 export const GHOST = {
   /** grava 1 amostra a cada N ticks (2 = 50 Hz) e interpola na reprodução */
@@ -91,22 +101,15 @@ export interface SkillMapMeta {
   segments: SkillSegmentMeta[];
   /** fora do menu (mapa curto usado nos testes automáticos) */
   hidden?: boolean;
+  /** staged com layout automático: altura do spawn; as posições saem do envelope de cada stage */
+  layoutY?: number;
 }
-
-/** Cada stage fica numa "ilha" própria ao longo do eixo X; anda-se sempre para −Z. */
-export const STAGE_SPACING = 9000;
-const st = (name: string, k: number, y: number): SkillSegmentMeta => ({ name, spawn: [k * STAGE_SPACING, y, 120], yaw: 0 });
 
 /**
- * Stages dos desafios staged em grade (mantém as coordenadas dentro de ±40000):
- * colunas a cada 9000 u em X, linhas a cada 20000 u em Z; cada stage anda ~15000 u para −Z.
+ * Mapas staged: só os nomes dos stages; as posições (spawns) saem do layout automático
+ * (`packStages` no skillKit), a partir do envelope real de cada stage, com STAGE_LAYOUT.clearance
+ * de folga. `layoutY` é a altura dos spawns.
  */
-export function gridStages(names: string[], y: number, cols: number, colSpacing = 9000, xOffset = 0): SkillSegmentMeta[] {
-  return names.map((name, k) => {
-    const col = k % cols, row = Math.floor(k / cols);
-    return { name, spawn: [(col - (cols - 1) / 2) * colSpacing + xOffset, y, 120 + 20000 - row * 20000], yaw: 0 };
-  });
-}
 const named = (names: string[]): SkillSegmentMeta[] => names.map((name) => ({ name }));
 
 export const SKILL_MAPS: SkillMapMeta[] = [
@@ -114,35 +117,30 @@ export const SKILL_MAPS: SkillMapMeta[] = [
     id: 'sky_steps', name: 'SKY STEPS', category: 'treino', tier: 1, format: 'staged', color: 0x3ddc84,
     segmentColors: [0x9ff0c4, 0x8fe3e8, 0xa8c8ff, 0xc9b8ff, 0xffc8e6],
     desc: 'Rampas largas e suaves, retas longas e transições com folga. Ideal para aprender a segurar a rampa.',
-    segments: [
-      st('Primeiro contato', 0, 3000), st('Reta longa', 1, 3000), st('Degraus', 2, 3000),
-      st('Dupla', 3, 3000), st('Curva leve', 4, 3000),
-    ],
+    layoutY: 3000,
+    segments: named(['Primeiro contato', 'Reta longa', 'Degraus', 'Dupla', 'Curva leve']),
   },
   {
     id: 'drift_canyon', name: 'DRIFT CANYON', category: 'treino', tier: 2, format: 'staged', color: 0xffd23c,
     segmentColors: [0xffe08a, 0xffc46b, 0xff9f5a, 0xf2a6ff, 0x9fe3ff],
     desc: 'Rampas mais estreitas, transições rampa-rampa, curvas, mudanças de altura e um pouco de bhop.',
-    segments: [
-      st('Garganta', 0, 3400), st('Zigue', 1, 3400), st('Desfiladeiro', 2, 3400),
-      st('Saltos', 3, 3400), st('Cânion final', 4, 3400),
-    ],
+    layoutY: 3400,
+    segments: named(['Garganta', 'Zigue', 'Desfiladeiro', 'Saltos', 'Cânion final']),
   },
   {
     id: 'storm_spire', name: 'STORM SPIRE', category: 'treino', tier: 3, format: 'staged', color: 0xff4757,
     segmentColors: [0xff8c8c, 0xff6b9a, 0xd56bff, 0x8c7bff, 0x5ad1ff],
     desc: 'Rampas estreitas no limite do surf, transições rápidas em lados alternados e gaps longos. Pouca margem de erro.',
-    segments: [
-      st('Relâmpago', 0, 3800), st('Alternância', 1, 3800), st('Fenda', 2, 3800),
-      st('Espiral', 3, 3800), st('Olho da tempestade', 4, 3800),
-    ],
+    layoutY: 3800,
+    segments: named(['Relâmpago', 'Alternância', 'Fenda', 'Espiral', 'Olho da tempestade']),
   },
   // ---------------------------------------------------------------- DESAFIOS
   {
     id: 'coral_rush', name: 'CORAL RUSH', category: 'desafio', num: 1, tier: 2, format: 'staged', color: 0xff8a6b,
     segmentColors: [0xffb3a0, 0xff9e8a, 0xffc7a8, 0xffd0c2, 0xffa6b8, 0xffbfa0],
     desc: 'Stages curtos e limpos, rampas médias e retas. O primeiro salto de cada stage pune largada preguiçosa.',
-    segments: gridStages(['Recife', 'Correnteza', 'Atol', 'Maré alta', 'Coral vermelho', 'Arrebentação'], 6000, 3),
+    layoutY: 6000,
+    segments: named(['Recife', 'Correnteza', 'Atol', 'Maré alta', 'Coral vermelho', 'Arrebentação']),
   },
   {
     id: 'velvet_dunes', name: 'VELVET DUNES', category: 'desafio', num: 2, tier: 2, format: 'linear', color: 0xe0b46c,
@@ -154,7 +152,8 @@ export const SKILL_MAPS: SkillMapMeta[] = [
     id: 'lantern_pass', name: 'LANTERN PASS', category: 'desafio', num: 3, tier: 3, format: 'staged', color: 0xff9f3d,
     segmentColors: [0xffc27a, 0xffb466, 0xffd08f, 0xffa95a, 0xffcf8a, 0xffbd73, 0xffe0a6],
     desc: 'Um degrau acima: linhas mais apertadas, curvas de 25 a 35° e trocas de face mais rápidas.',
-    segments: gridStages(['Primeira lanterna', 'Beco', 'Ponte de papel', 'Vielas', 'Telhados', 'Festival', 'Portão'], 6500, 4),
+    layoutY: 6500,
+    segments: named(['Primeira lanterna', 'Beco', 'Ponte de papel', 'Vielas', 'Telhados', 'Festival', 'Portão']),
   },
   {
     id: 'glacier_run', name: 'GLACIER RUN', category: 'desafio', num: 4, tier: 3, format: 'linear', color: 0x7fd8ff,
@@ -166,7 +165,8 @@ export const SKILL_MAPS: SkillMapMeta[] = [
     id: 'iron_cathedral', name: 'IRON CATHEDRAL', category: 'desafio', num: 5, tier: 4, format: 'staged', color: 0xb08bff,
     segmentColors: [0x9aa3b8, 0xa8a0c4, 0x8f9bb5, 0xb2a7cc, 0x98a6bf, 0xa79cc2, 0x8e98b0, 0xbbb0d6],
     desc: 'Túneis e tetos baixos: rampas estreitas dentro de corredores fechados, onde o arco do salto precisa ser baixo.',
-    segments: gridStages(['Nave', 'Cripta', 'Claustro', 'Abóbada', 'Órgão', 'Vitral', 'Campanário', 'Altar'], 7000, 4),
+    layoutY: 7000,
+    segments: named(['Nave', 'Cripta', 'Claustro', 'Abóbada', 'Órgão', 'Vitral', 'Campanário', 'Altar']),
   },
   {
     id: 'skywire', name: 'SKYWIRE', category: 'desafio', num: 6, tier: 4, format: 'linear', color: 0x5ff0c8,
@@ -178,13 +178,15 @@ export const SKILL_MAPS: SkillMapMeta[] = [
     id: 'eclipse_bowl', name: 'ECLIPSE BOWL', category: 'desafio', num: 7, tier: 5, format: 'staged', color: 0xb46bff,
     segmentColors: [0xd2a8ff, 0xc497ff, 0xb98cff, 0xdcb8ff, 0xa983f2, 0xcfa2ff, 0xbe95ff, 0xe4c6ff],
     desc: 'Curvas fechadas: 90°, rampas em bacia e retornos de 180° feitos na própria rampa. Chegue rápido demais e você sobe e sai da face.',
-    segments: gridStages(['Penumbra', 'Meia-lua', 'Bacia', 'Retorno', 'Anel', 'Ferradura', 'Coroa', 'Totalidade'], 9000, 3, 16000),
+    layoutY: 9000,
+    segments: named(['Penumbra', 'Meia-lua', 'Bacia', 'Retorno', 'Anel', 'Ferradura', 'Coroa', 'Totalidade']),
   },
   {
     id: 'rebel_signal', name: 'REBEL SIGNAL', category: 'desafio', num: 8, tier: 5, format: 'staged', color: 0xff5f8f,
     segmentColors: [0xffa3bf, 0xff8fb0, 0xffb8cc, 0xff7aa3, 0xffc4d6, 0xff99b7, 0xffadc6, 0xff85aa, 0xffd0de],
     desc: 'Stages técnicos e variados: cada um pede uma técnica diferente — túnel, subida, curva fechada, bhop, cabos, faces alternadas e retorno.',
-    segments: gridStages(['Frequência', 'Subida', 'Interferência', 'Pulso', 'Antena', 'Estática', 'Retorno', 'Bunker', 'Sinal final'], 9500, 3, 16000),
+    layoutY: 9500,
+    segments: named(['Frequência', 'Subida', 'Interferência', 'Pulso', 'Antena', 'Estática', 'Retorno', 'Bunker', 'Sinal final']),
   },
   {
     id: 'hollow_moon', name: 'HOLLOW MOON', category: 'desafio', num: 9, tier: 5, format: 'linear', color: 0x9fb4ff,
@@ -202,7 +204,8 @@ export const SKILL_MAPS: SkillMapMeta[] = [
     id: 'obsidian_gauntlet', name: 'OBSIDIAN GAUNTLET', category: 'desafio', num: 11, tier: 6, format: 'staged', color: 0x8a5cff,
     segmentColors: [0xb79cff, 0xa588ff, 0xc6b0ff, 0x9a7cf0, 0xd2c0ff, 0xab90ff, 0xbfa6ff, 0x9f82f5, 0xcab6ff, 0xb294ff, 0xdccdff],
     desc: 'Todas as técnicas com rampas no limite de largura e inclinação: túnel, subidas, curvas, bhop, cabos, faces únicas, velocidade mínima e quedas.',
-    segments: gridStages(['Fenda', 'Escarpa', 'Vidro', 'Brasas', 'Fio negro', 'Lâmina', 'Retorno', 'Abismo', 'Desabamento', 'Espiral', 'Manopla'], 9500, 6, 12000, -5000),
+    layoutY: 9500,
+    segments: named(['Fenda', 'Escarpa', 'Vidro', 'Brasas', 'Fio negro', 'Lâmina', 'Retorno', 'Abismo', 'Desabamento', 'Espiral', 'Manopla']),
   },
   {
     id: 'zenith', name: 'ZENITH', category: 'desafio', num: 12, tier: 6, format: 'linear', color: 0xffd76a,

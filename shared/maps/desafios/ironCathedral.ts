@@ -28,7 +28,7 @@ function stage(pieces: Piece[], o: { hw?: number; clear?: number; h?: number } =
       // a curva usa a face de dentro: troca de face antes, se precisar
       const inner: 1 | -1 = p > 0 ? 1 : -1;
       c.next({ gap: 320, drop: 330, len: 1600, descent: 330, ride: inner });
-      c.curveFor(p, 2100, 100).straight(1400, 280);
+      c.curveFor(p, 2400, 100).straight(1400, 280);
     }
   }
   return c.stage(endAfter(c.last, 420, 460, 760, 620));

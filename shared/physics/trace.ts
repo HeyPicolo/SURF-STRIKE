@@ -70,6 +70,8 @@ export class CollisionWorld {
   }
 
   private tmp: Brush[] = [];
+  /** id do único brush `spawnOnly` que conta como sólido nas traces atuais (−1: nenhum) */
+  allowSpawnOnly = -1;
 
   /**
    * Sweep an axis-aligned box (mins/maxs relative to the origin) from start to end.
@@ -85,6 +87,7 @@ export class CollisionWorld {
     );
     for (const b of list) {
       if (ignoreKind && b.kind === ignoreKind) continue;
+      if (b.spawnOnly && b.id !== this.allowSpawnOnly) continue;
       clipBoxToBrush(start, end, mins, maxs, b, out);
       if (out.allSolid) break;
     }

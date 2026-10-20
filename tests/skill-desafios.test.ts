@@ -34,7 +34,8 @@ test('desafios: every ramp face is surfable (normal Y 0.40–0.69) and half-widt
   for (const m of desafios) {
     const map = getSkillMap(m.id);
     for (const b of map.brushes.filter((x) => x.kind === 'ramp')) {
-      const faces = b.planes.slice(0, b.faces.length).filter((pl) => pl.n.y > 0.05);
+      // faces de surf (as duas primeiras são as tampas; nas juntas de curva elas ficam inclinadas)
+      const faces = b.planes.slice(2, b.faces.length).filter((pl) => pl.n.y > 0.05);
       for (const pl of faces) assert.ok(pl.n.y >= 0.4 && pl.n.y < PHYSICS.walkableNormalY && pl.n.y <= 0.69, `${m.name} ${b.tag} normal ${pl.n.y.toFixed(3)}`);
     }
     for (const s of map.skill!.segments) assert.ok(s.design.minHalfWidth >= 90, `${m.name} ${s.name}: ${s.design.minHalfWidth}`);
@@ -47,7 +48,7 @@ test('desafios: every segment has its zones, a fall trigger and a solid spawn in
     const cw = new CollisionWorld(map.brushes), mv = new Mover(cw);
     for (const st of map.skill!.segments) {
       assert.ok(st.startZone && st.endZone && st.fall.length > 0, `${m.name} ${st.name}`);
-      const ps = new PhysState(); ps.pos.copy(st.spawn.pos);
+      const ps = new PhysState(); ps.pos.copy(st.spawn.pos); ps.spawnFloor = st.spawnFloor ?? -1;
       assert.equal(cw.boxSolid(ps.pos, ps.mins, ps.maxs), false, `${m.name} ${st.name}: spawn livre`);
       for (let i = 0; i < 20; i++) mv.move(ps, emptyCmd(), SIM_DT);
       assert.ok(ps.onGround, `${m.name} ${st.name}: spawn no chão`);

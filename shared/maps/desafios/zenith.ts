@@ -90,8 +90,8 @@ export function buildZenith(): MapDef {
   c.next({ gap: 260, drop: TD, len: 3000, descent: 900, ...N, ride: 1 });
   c.next({ gap: 260, drop: TD, len: 2400, descent: -480, ...N, ride: -1 });
   c.next({ gap: 260, drop: TD, len: 2200, descent: -400, ...N, ride: 1 });
-  // a maratona é surfada perto do teto de velocidade: todas as peças são lisas (sem ramp bug nos biséis)
-  for (const r of c.ramps) r.slick = true;
+  // a maratona é surfada perto do teto de velocidade: todas as rampas são só de surf (sem ramp bug nos biséis)
+  for (const r of c.ramps) r.surfOnly = true;
   return linearMapDef(skillMapMeta('zenith'), {
     ...c.linear([X0, 38002, Z0], endAfter(c.last, 420, 320, 1100, 1300)),
     finale: { color: 0xffd76a },

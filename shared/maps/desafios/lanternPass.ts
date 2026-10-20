@@ -27,7 +27,7 @@ function stage(steps: Step[], o: { hw?: number; straight?: number } = {}): Stage
       c.next({ gap: 300, drop: 320, len: 1700, descent: 360, hw, ride: ride === c.last.ride ? (ride === 1 ? -1 : 1) : ride });
       if (ride === c.ramps[c.ramps.length - 2].ride) c.next({ gap: 300, drop: 320, len: 1700, descent: 360, hw, ride });
     } else {
-      c.curveFor(st, 2300, 110).straight(straight, 300);
+      c.curveFor(st, 2600, 110).straight(straight, 300);
     }
   });
   return c.stage(endAfter(c.last, 420, 460, 760, 620));

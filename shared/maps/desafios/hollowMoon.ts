@@ -20,12 +20,14 @@ export function buildHollowMoon(): MapDef {
     // descida brusca: queda grande logo depois do gap
     c.next({ gap: 560, drop: 700 + k * 20, len: 3000, descent: 420, ...ONE, ...R });
     // espiral: curva larga para a direita na face direita
-    c.curveFor(90, 2300, 100).straight(800, 160);
+    c.curveFor(90, 2400, 100).straight(800, 160);
     // mais faces alternadas antes da segunda descida brusca
     for (let i = 0; i < 2; i++) c.next({ gap: 250, drop: 250, len: 1500, descent: 280, ...ONE, ...(i % 2 === 0 ? Lf : R) });
     c.next({ gap: 250, drop: 250, len: 1700, descent: 300, ...ONE, ...Lf });
     c.next({ gap: 520, drop: 760 + k * 10, len: 2600, descent: 300, ...ONE, ...R });
-    c.curveFor(90, 2300, 90).straight(700, 140);
+    c.curveFor(90, 2400, 90).straight(700, 140);
   }
+  // reta final: mais três faces alternadas até a chegada
+  for (let i = 0; i < 3; i++) c.next({ gap: 250, drop: 250, len: 1600, descent: 320, ...ONE, ...(i % 2 === 0 ? Lf : R) });
   return linearMapDef(skillMapMeta('hollow_moon'), c.linear([0, 32002, 0], endAfter(c.last, 560, 520, 1100, 900)));
 }

@@ -30,6 +30,12 @@ export const PHYSICS = {
   walkableNormalY: 0.7,
   /** Altura máxima de degrau que o jogador sobe andando. */
   stepSize: 18,
+  /**
+   * Acima desta velocidade horizontal, encostar num plano de bisel "andável" de uma peça de curva
+   * (aresta da crista, junta de peças) não conta como chão: sem atrito, sem subir degrau, sem grudar
+   * no chão. É o anti "ramp bug" (o surf travando do nada). Abaixo dela dá para ficar parado no cume.
+   */
+  surfBevelSpeed: 500,
   /** Raio (meia-largura) da caixa de colisão do jogador. */
   playerRadius: 16,
   playerHeight: 72,

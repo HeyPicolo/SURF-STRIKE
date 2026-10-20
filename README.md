@@ -124,7 +124,7 @@ Terceiro modo, ao lado de Partida e Treino, inspirado nos mapas de Surf Skill do
 ### Formatos: staged e linear
 
 - **Staged**: stages separados, cada um com zona de início e de fim. A zona de fim leva, parado, à zona de início do próximo stage.
-- **Linear**: um percurso contínuo dividido por **checkpoints**. Cada checkpoint é um portal (paredes ciano) no começo de uma rampa: passar por ele gera um split, sem parar. Cair leva ao último checkpoint tocado, parado, numa plataforma de retorno acima da rampa; o tempo continua. Backspace volta ao último checkpoint e o menu (M) lista os checkpoints.
+- **Linear**: um percurso contínuo dividido por **checkpoints**. Cada checkpoint é um portal (paredes ciano) no começo de uma rampa: passar por ele gera um split, sem parar. Cair leva ao último checkpoint tocado, parado, numa plataforma de retorno acima da rampa; o tempo continua. A plataforma de retorno só é sólida para quem reaparece nela: quem passa voando atravessa. Backspace volta ao último checkpoint e o menu (M) lista os checkpoints.
 - Recordes, melhores segmentos, Sum of Best e splits funcionam igual para stages e checkpoints ("segmentos").
 
 ### Regras
@@ -163,7 +163,14 @@ R, Z e X são as mesmas teclas de recarregar e dos checkpoints do treino: cada m
 
 A "velocidade mínima de projeto" é, para o pior gap de cada mapa, a velocidade abaixo da qual quem sai da rampa (na inclinação da saída) cai antes de alcançar o próximo apoio, pela balística com a gravidade do jogo. As rampas de cada stage têm a cor do stage, e cada mapa tem sua cor de destaque.
 
-Metadados (nome, tier, cores, stages com nome e spawn) ficam em `shared/config/skill.ts`; os construtores dos mapas ficam em `shared/maps/skySteps.ts`, `driftCanyon.ts` e `stormSpire.ts`, usando o kit `shared/maps/skillKit.ts`.
+Metadados (nome, tier, cores, nomes dos stages e altura dos spawns) ficam em `shared/config/skill.ts`; as posições dos stages saem do layout automático (abaixo); os construtores dos mapas ficam em `shared/maps/skySteps.ts`, `driftCanyon.ts` e `stormSpire.ts`, usando o kit `shared/maps/skillKit.ts`.
+
+### Layout dos stages (rodada 9)
+
+- Os stages dos mapas staged não ficam mais numa grade escrita à mão. O construtor monta cada stage em coordenadas locais, mede o **envelope** real (brushes, lava, zonas, anel e número) e empacota os stages em fileiras com folga mínima de `STAGE_LAYOUT.clearance` (3000 u) entre envelopes, centralizados e dentro de ±38000 u. Se não couber em planta, usa duas camadas em altitudes diferentes (hoje só o OBSIDIAN GAUNTLET).
+- A lava de cada stage tem folga de 1200 u em volta das rampas (era 2500, e invadia o stage vizinho); a queda continua detectada abaixo do `fallY` do stage.
+- Nuvens: as que caem a menos de 600 u de um brush, zona ou trecho do percurso de referência (o corredor de voo inclui os gaps) descem para baixo da pista ou somem.
+- `npm run skill:layout` confere tudo (folga entre stages, lava, brushes cruzando, trechos não vizinhos dos mapas linear a menos de 400 u, nuvens no corredor); o mesmo vale como teste.
 
 ### Mapas de desafio
 
@@ -193,16 +200,16 @@ Gerada por `npm run skill:metrics`, que corre o percurso de referência de cada 
 | STORM SPIRE | T3 | staged | 5 | 110 / 129 | 0.45–0.68 | 1300 u | 1197 u/s | 1.27 s | 17 | 33° | 00:42.26 | 2357 u/s | 111.5 |
 | D1 · CORAL RUSH | T2 | staged | 6 | 195 / 195 | 0.52–0.52 | 460 u | 552 u/s | 0.93 s | 32 | 12° | 01:22.22 | 2340 u/s | 114 |
 | D2 · VELVET DUNES | T2 | linear | 6 | 210 / 210 | 0.54–0.54 | 356 u | 469 u/s | 0.99 s | 42 | 24° | 01:23.17 | 2317 u/s | 120.4 |
-| D3 · LANTERN PASS | T3 | staged | 7 | 150 / 157 | 0.51–0.54 | 300 u | 383 u/s | 0.94 s | 31 | 60° | 02:13.27 | 2541 u/s | 145.1 |
-| D4 · GLACIER RUN | T3 | linear | 7 | 165 / 165 | 0.54–0.54 | 840 u | 869 u/s | 0.99 s | 43 | 50° | 01:46.18 | 2634 u/s | 148.8 |
-| D5 · IRON CATHEDRAL | T4 | staged | 8 | 132 / 137 | 0.52–0.54 | 320 u | 864 u/s | 0.95 s | 55 | 45° | 02:06.42 | 2719 u/s | 165.9 |
-| D6 · SKYWIRE | T4 | linear | 7 | 150 / 155 | 0.53–0.54 | 1359 u | 1027 u/s | 1.39 s | 50 | 75° | 02:28.17 | 2745 u/s | 189.8 |
-| D7 · ECLIPSE BOWL | T5 | staged | 8 | 125 / 125 | 0.52–0.52 | 320 u | 450 u/s | 0.96 s | 30 | 300° | 03:19.95 | 2410 u/s | 208.4 |
-| D8 · REBEL SIGNAL | T5 | staged | 9 | 122 / 124 | 0.51–0.68 | 1148 u | 1102 u/s | 1.22 s | 61 | 180° | 02:43.24 | 2701 u/s | 218.8 |
-| D9 · HOLLOW MOON | T5 | linear | 8 | 110 / 110 | 0.50–0.50 | 560 u | 471 u/s | 1.36 s | 72 | 90° | 03:10.81 | 2915 u/s | 223.6 |
-| D10 · THUNDERHEAD | T6 | linear | 9 | 115 / 117 | 0.50–0.52 | 1860 u | 1609 u/s | 1.19 s | 55 | 90° | 03:51.42 | 3198 u/s | 254.4 |
-| D11 · OBSIDIAN GAUNTLET | T6 | staged | 11 | 100 / 101 | 0.42–0.46 | 1800 u | 1627 u/s | 1.31 s | 97 | 180° | 03:55.60 | 3241 u/s | 304.5 |
-| D12 · ZENITH | T6 | linear | 12 | 96 / 141 | 0.41–0.50 | 1550 u | 1515 u/s | 1.36 s | 132 | 90° | 05:23.40 | 3507 u/s | 356.5 |
+| D3 · LANTERN PASS | T3 | staged | 7 | 150 / 157 | 0.51–0.54 | 301 u | 383 u/s | 0.94 s | 31 | 60° | 02:14.03 | 2589 u/s | 145.7 |
+| D4 · GLACIER RUN | T3 | linear | 7 | 165 / 165 | 0.54–0.54 | 840 u | 869 u/s | 0.99 s | 43 | 50° | 01:46.13 | 2634 u/s | 148.8 |
+| D5 · IRON CATHEDRAL | T4 | staged | 8 | 132 / 137 | 0.52–0.54 | 320 u | 864 u/s | 0.95 s | 55 | 45° | 02:10.23 | 2717 u/s | 167.8 |
+| D6 · SKYWIRE | T4 | linear | 7 | 150 / 155 | 0.53–0.54 | 1359 u | 1027 u/s | 1.47 s | 50 | 75° | 02:15.52 | 2722 u/s | 184 |
+| D7 · ECLIPSE BOWL | T5 | staged | 8 | 125 / 125 | 0.52–0.52 | 320 u | 450 u/s | 0.96 s | 30 | 300° | 03:07.90 | 2423 u/s | 202.5 |
+| D8 · REBEL SIGNAL | T5 | staged | 9 | 122 / 124 | 0.51–0.68 | 1148 u | 1102 u/s | 1.22 s | 61 | 180° | 02:43.15 | 2701 u/s | 218.7 |
+| D9 · HOLLOW MOON | T5 | linear | 8 | 110 / 110 | 0.50–0.50 | 560 u | 471 u/s | 1.36 s | 75 | 90° | 03:02.45 | 2970 u/s | 222 |
+| D10 · THUNDERHEAD | T6 | linear | 9 | 115 / 117 | 0.50–0.52 | 1860 u | 1609 u/s | 1.19 s | 55 | 90° | 03:29.99 | 3198 u/s | 243.7 |
+| D11 · OBSIDIAN GAUNTLET | T6 | staged | 11 | 100 / 101 | 0.42–0.46 | 1800 u | 1627 u/s | 1.31 s | 97 | 180° | 03:50.58 | 3241 u/s | 302 |
+| D12 · ZENITH | T6 | linear | 12 | 96 / 141 | 0.41–0.50 | 1550 u | 1515 u/s | 1.36 s | 132 | 90° | 05:25.36 | 3448 u/s | 357.2 |
 
 O **índice de dificuldade** (`shared/maps/skillMetrics.ts`) é a soma ponderada das métricas, cada uma normalizada: 12 × (200 / meia-largura média) + 10 × ((0,7 − normal Y mínima) / 0,3) + 10 × (maior gap / 1000) + 10 × (velocidade mínima / 1000) + 8 × tempo de ar máximo + 15 × (transições / 20) + 10 × (curva máxima / 90°) + 30 × (tempo de referência / 1 min) + 10 × (pico / 2000). Pesa técnica e resistência (quanto mais longo, mais chances de errar). Um teste garante que ele cresce estritamente do D1 ao último desafio e que todo desafio fica acima do STORM SPIRE.
 
@@ -234,13 +241,13 @@ Onde o pedido deixava espaço, segui o mais próximo do Surf Skill do CS2:
 - Cair no stage 1 depois de largar não zera o cronômetro (só o R zera), para manter a regra "cair não zera o tempo".
 - Na tela de fim, a comparação de cada stage é com o stage da corrida PB anterior (estrela dourada quando o stage virou o melhor da história).
 - Rodada 8: o pulo na zona de início foi liberado; o cap continua igual, então os recordes antigos continuam valendo (a geometria dos mapas de treino não mudou: os hashes são os mesmos).
-- Nos mapas linear, a plataforma de retorno de cada checkpoint fica atrás do portal e bem acima da linha de voo (pelo menos 430 u acima do cume, mais se a rampa anterior lança para cima), para não atrapalhar quem passa embalado.
+- Nos mapas linear, a plataforma de retorno de cada checkpoint fica atrás do portal e bem acima da linha de voo (pelo menos 430 u acima do cume, mais se a rampa anterior lança para cima). Desde a rodada 9 ela é sólida só para quem foi colocado nela (queda, Backspace, menu): o jogador fica com ela como chão até sair da zona e da plataforma; para quem passa voando ela não existe (antes, 40 de 112 passagens de teste em alturas diferentes batiam nela). Os números e anéis sempre foram só visuais.
 - Curvas: mudanças grandes de direção são feitas na própria rampa (segmentos curvos emendados, surfando a face de dentro), com o raio calculado para a velocidade esperada (`Course.curveFor`): acima dela o jogador sobe na face. Nos gaps, as curvas são menores, e surfa-se a face de fora da curva segurando para dentro.
 - Túneis: entre duas rampas de túnel a queda é curta (70–100 u); vindo de rampa aberta, a boca do túnel fica no meio da rampa e o teto do gap é horizontal (um teto inclinado empurraria o jogador para baixo). A queda é medida por trecho (abaixo da parte mais baixa do trecho), para não precisar cair até o fundo do mapa.
 - O fantasma do PB só é trocado quando a corrida vira PB (como no CS2): quem já tinha recorde da rodada 7 ganha o fantasma ao bater o próprio tempo.
-- Curvas rápidas: nas emendas da face de dentro sobra um degrau de ~q·meia-largura·tan α·(1 − cos θ). Os desafios D7, D8 e D11 usam passos de 5° (`curveFor(..., { stepDeg: 5 })`) para ele ficar abaixo do que o teste de emendas tolera a 2400 u/s.
-- ZENITH é surfado perto do teto de 3500 u/s. Nessa velocidade, a caixa do jogador (alinhada aos eixos) encosta nos planos de bisel da crista e das emendas das curvas, que têm normal "andável" — e o movimento tratava isso como chão (o "ramp bug": atrito no meio do surf). As rampas do ZENITH são marcadas como lisas (`slick`): nelas um contato com bisel andável não vira chão. O resto do jogo não muda (o teste de física e os tempos de referência dos outros mapas são os mesmos).
-- Para caber em ±40000, a maratona desce menos por rampa (descidas × 0,3, rampas × 1,9 de comprimento) e as transições comuns caem 190 u em vez de 300. O OBSIDIAN GAUNTLET fica em duas fileiras de 6 stages.
+- **Emendas sem ramp bug (rodada 9)**: as peças de curva (e as retas emendadas) têm as tampas em meia-esquadria: na junta as duas peças usam a mesma seção, e as faces se encontram exatamente (antes sobrava um degrau de ~q·meia-largura·tan α·(1 − cos θ) e uma fresta tapada por uma cunha). Na dobra côncava da face de dentro, a caixa do jogador às vezes entra na peça seguinte pela tampa ou por um bisel dela: esses planos são internos, então o movimento sobe a caixa para a face da peça seguinte e o surf continua (`Mover.liftOntoFace`). E nas peças de curva (`surfOnly`; no ZENITH, em todas as rampas) um contato com bisel "andável" não vira chão em velocidade de surf (≥ 500 u/s): sem atrito, sem subir degrau, sem grudar no chão. Antes, no LANTERN PASS, 316 das 880 passadas do teste de emendas ficavam "no chão" numa rampa; agora nenhuma, em nenhum mapa, e a maior perda num tick perto de uma junta é 2,6%.
+- Sem o "freio" do ramp bug, algumas curvas ficaram rápidas demais para o raio antigo e foram reprojetadas para a velocidade real: LANTERN PASS (2300 → 2600 u/s), IRON CATHEDRAL (2100 → 2400), SKYWIRE (2400 → 2600, descendo menos na curva) e HOLLOW MOON (2300 → 2400, com uma reta final de três faces).
+- Para caber em ±40000, a maratona desce menos por rampa (descidas × 0,3, rampas × 1,9 de comprimento) e as transições comuns caem 190 u em vez de 300. 
 - Os cabos (curva no ar) ficaram fora do ZENITH: na velocidade da maratona as viradas no ar não fecham; eles aparecem no D6, D8 e D11.
 
 ## Parâmetros
@@ -314,5 +321,5 @@ O ambiente onde o projeto foi construído não tinha acesso ao registro npm nem 
 
 ## Testes
 
-- `npm test`: 123 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots e, no Surf Skill, cronômetro, zonas, prespeed, splits, quedas, reinícios, prática, recordes, versão do mapa, formato linear com checkpoints, fantasma (gravação, compressão, PB, sincronia por segmento, tamanho), regras de projeto dos desafios (inclinação, largura mínima, zonas), cada segmento de cada mapa completado pelo percurso de referência (de ponta a ponta e a partir de cada stage/checkpoint), emendas das curvas a 2400 u/s e o índice de dificuldade crescente).
+- `npm test`: 130 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots e, no Surf Skill, cronômetro, zonas, prespeed, splits, quedas, reinícios, prática, recordes, versão do mapa, formato linear com checkpoints, fantasma (gravação, compressão, PB, sincronia por segmento, tamanho), regras de projeto dos desafios (inclinação, largura mínima, zonas), cada segmento de cada mapa completado pelo percurso de referência (de ponta a ponta e a partir de cada stage/checkpoint), emendas das curvas a 2400 u/s, sonda das emendas de todos os mapas (800–3000 u/s, várias alturas na face, os dois strafes), layout dos stages, nuvens fora da pista, plataformas de checkpoint atravessáveis e o índice de dificuldade crescente).
 - `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint automático, caminhar e slide pelo teclado, habilidade, eliminação e fim de round com placar; no Surf Skill, menu dos mapas, cronômetro ao sair da zona, queda de volta ao início do stage, reinício do mapa e um stage completo com split; aba Desafio, entrar no D1 e pular na base sem passar do cap, completar um segmento do D1, uma corrida curta de teste até o fim e o fantasma aparecendo na tentativa seguinte.

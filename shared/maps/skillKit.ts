@@ -15,9 +15,10 @@
 // =============================================================
 import { V3, yawFromDir } from '../math/vec3';
 import { Brush, boxBrush, rampBrush, prismBrush, makeBrush } from '../physics/brush';
-import type { MapDef, NavPoint, SkillSegmentDef, TriggerVolume, Decor, SpawnPoint, SegmentDesign } from './types';
-import { SKILL, SkillMapMeta } from '../config/skill';
+import type { MapDef, NavPoint, SkillSegmentDef, TriggerVolume, Decor, SpawnPoint, SegmentDesign, CurvePiece } from './types';
+import { SKILL, SkillMapMeta, STAGE_LAYOUT } from '../config/skill';
 import { PHYSICS } from '../config/physics';
+import { cloudBlocked, cloudRadius, CLOUD_MARGIN } from './skillLayout';
 
 export type P3 = [number, number, number];
 
@@ -37,8 +38,8 @@ export interface RampSeg {
   join?: boolean;
   /** túnel: teto a esta distância acima do cume, com paredes laterais */
   ceiling?: number;
-  /** peça lisa: biséis andáveis não viram chão (curvas muito rápidas) */
-  slick?: boolean;
+  /** rampa só de surf mesmo sem juntas (biséis não viram chão em velocidade de surf) */
+  surfOnly?: boolean;
 }
 
 export interface LocalNav { p: P3; mode: NavPoint['mode']; r?: number; jump?: boolean }
@@ -110,20 +111,50 @@ export function obbVolume(c: V3, yaw: number, hl: number, hw: number, hh: number
 
 // ------------------------------------------------------------------ geometria das peças
 
-/** Cunha que fecha a emenda de dois segmentos curvos no lado de fora da curva. */
-function seamFiller(prev: RampSeg, next: RampSeg, L: (p: P3) => V3, color: number, glow: number, tag: string): Brush | null {
-  const a = dirOf(prev), b = dirOf(next);
-  const cross = a.x * b.z - a.z * b.x; // > 0: virou para a direita (+X quando se olha para −Z)
-  if (Math.abs(cross) < 1e-4) return null;
-  // lado de fora da curva: oposto ao sentido da virada
-  const out = cross > 0 ? -1 : 1;
-  const sides = next.sides ?? 'both';
-  if ((sides === 'left' && out > 0) || (sides === 'right' && out < 0)) return null; // lado de fora é o fundo vertical
-  const P = L(next.s);
-  const sa = v(-a.z, 0, a.x).scale(out * prev.hw), sb = v(-b.z, 0, b.x).scale(out * next.hw);
-  const down = v(P.x, P.y - next.h, P.z);
-  const verts = [P.clone(), down, v(P.x + sa.x, P.y - prev.h, P.z + sa.z), v(P.x + sb.x, P.y - next.h, P.z + sb.z)];
-  return makeBrush(verts, [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]], { color, edgeGlow: glow, kind: 'ramp', tag });
+/** Seção transversal de uma rampa: (lateral, vertical) a partir do cume. */
+function rampSection(r: RampSeg): [number, number][] {
+  const sd = r.sides ?? 'both';
+  if (sd === 'both') return [[-r.hw, -r.h], [r.hw, -r.h], [0, 0]];
+  if (sd === 'left') return [[-r.hw, -r.h], [0, -r.h], [0, 0]];
+  return [[0, -r.h], [r.hw, -r.h], [0, 0]];
+}
+
+/**
+ * Rampa com as tampas em meia-esquadria nas juntas com a peça anterior/seguinte. Os cantos sobre o eixo
+ * (cume, fundo central) já são comuns às duas peças; cada canto lateral vai para a interseção das duas
+ * faces que o contêm (na mesma altura), então a face de surf de uma peça continua exatamente na da
+ * outra: a emenda vira só uma dobra, sem o degrau de ~q·hw·tanα·(1 − cos θ) das tampas retas.
+ */
+function miterRamp(r: RampSeg, prev: RampSeg | undefined, next: RampSeg | undefined, L: (p: P3) => V3, opt: { color: number; edgeGlow?: number; tag?: string }): Brush {
+  const s = L(r.s), e = L(r.e);
+  const sec = rampSection(r);
+  const frame = (a: V3, b: V3) => { const f = v(b.x - a.x, 0, b.z - a.z).normalize(); return { dir: v(b.x - a.x, b.y - a.y, b.z - a.z), side: v(-f.z, 0, f.x) }; };
+  const me = frame(s, e);
+  const corner = (base: V3, fr: { side: V3 }, u: number, w: number) => v(base.x + fr.side.x * u, base.y + w, base.z + fr.side.z * u);
+  /** canto (u, w) na junta J entre esta peça e `other` (de as → ae) */
+  const joint = (J: V3, other: RampSeg, u: number, w: number) => {
+    if (u === 0) return v(J.x, J.y + w, J.z);
+    const os = L(other.s), oe = L(other.e), fo = frame(os, oe);
+    // normal da face que contém o cume e o canto: dir × (lateral·u + vertical·w)
+    const offA = v(me.side.x * u, w, me.side.z * u), offB = v(fo.side.x * u, w, fo.side.z * u);
+    const nA = new V3().crossVectors(me.dir, offA).normalize(), nB = new V3().crossVectors(fo.dir, offB).normalize();
+    const line = new V3().crossVectors(nA, nB);
+    if (line.lenSq() < 1e-10 || Math.abs(line.y) < 1e-6) return corner(J, me, u, w);
+    const t = w / line.y;
+    return v(J.x + line.x * t, J.y + w, J.z + line.z * t);
+  };
+  const verts: V3[] = [];
+  for (const [u, w] of sec) verts.push(prev ? joint(s, prev, u, w) : corner(s, me, u, w));
+  for (const [u, w] of sec) verts.push(next ? joint(e, next, u, w) : corner(e, me, u, w));
+  const n = sec.length;
+  const faces: number[][] = [[...Array(n).keys()], [...Array(n).keys()].map((i) => i + n)];
+  for (let i = 0; i < n; i++) { const j = (i + 1) % n; faces.push([i, j, j + n, i + n]); }
+  const b = makeBrush(verts, faces, { kind: 'ramp', ...opt });
+  b.joints = [];
+  b.surfOnly = true;
+  if (prev) b.joints.push(b.planes[0]);
+  if (next) b.joints.push(b.planes[1]);
+  return b;
 }
 
 /** Teto e paredes que acompanham a rampa (túnel). */
@@ -160,6 +191,7 @@ function ballistic(a: V3, b: V3, theta: number): { D: number; vmin: number; air:
 interface RampPass {
   brushes: Brush[];
   route: NavPoint[];
+  curves: CurvePiece[][];
   design: Omit<SegmentDesign, 'minSpeed' | 'maxGap' | 'maxAirTime' | 'transitions' | 'bhop'> & { minSpeed: number; maxGap: number; maxAirTime: number; transitions: number };
 }
 
@@ -173,15 +205,21 @@ function buildRamps(ramps: RampSeg[], L: (p: P3) => V3, color: number, glow: num
   const route: NavPoint[] = [];
   let minHw = Infinity, sumHw = 0, maxN = 0, minN = 1, minSpeed = 0, maxGap = 0, maxAir = 0, transitions = 0, maxTurn = 0, chainTurn = 0;
   let tunnel = false, ascending = false;
+  const curves: CurvePiece[][] = [];
   ramps.forEach((r, i) => {
     const s = L(r.s), e = L(r.e);
-    const rb = rampBrush(s, e, r.hw, r.h, r.sides ?? 'both', { color, edgeGlow: glow, tag: `${tag}-${i + routeOffset}` });
-    if (r.slick) rb.slick = true;
-    brushes.push(rb);
-    if (r.join && i > 0) {
-      const f = seamFiller(ramps[i - 1], r, L, color, glow, `${tag}-emenda-${i + routeOffset}`);
-      if (f) brushes.push(f);
+    if (r.join || ramps[i + 1]?.join) {
+      if (!r.join || !curves.length) curves.push([]);
+      curves[curves.length - 1].push({ s, e, hw: r.hw, h: r.h, ride: r.ride, sides: r.sides ?? 'both' });
     }
+    // peças emendadas (curvas contínuas, retas emendadas) têm as tampas em meia-esquadria: na junta as
+    // duas peças compartilham a mesma seção, as faces se encontram exatamente (sem degrau nem fresta)
+    const prev = r.join && i > 0 ? ramps[i - 1] : undefined;
+    const nxt = ramps[i + 1]?.join ? ramps[i + 1] : undefined;
+    const opt = { color, edgeGlow: glow, tag: `${tag}-${i + routeOffset}` };
+    const rb = prev || nxt ? miterRamp(r, prev, nxt, L, opt) : rampBrush(s, e, r.hw, r.h, r.sides ?? 'both', opt);
+    if (r.surfOnly) rb.surfOnly = true;
+    brushes.push(rb);
     if (r.ceiling) {
       tunnel = true;
       // a boca do túnel fica um pouco depois do início (dá para cair na rampa vindo de cima);
@@ -220,7 +258,7 @@ function buildRamps(ramps: RampSeg[], L: (p: P3) => V3, color: number, glow: num
       }
     }
   });
-  return { brushes, route, design: { minHalfWidth: minHw, sumHalfWidth: sumHw, maxNormalY: maxN, minNormalY: minN, ramps: ramps.length, minSpeed, maxGap, maxAirTime: maxAir, transitions, maxTurn, tunnel, ascending } };
+  return { brushes, route, curves, design: { minHalfWidth: minHw, sumHalfWidth: sumHw, maxNormalY: maxN, minNormalY: minN, ramps: ramps.length, minSpeed, maxGap, maxAirTime: maxAir, transitions, maxTurn, tunnel, ascending } };
 }
 
 /** Métrica do último gap: da saída da última rampa até a borda mais próxima de uma plataforma. */
@@ -259,71 +297,165 @@ export function buildCourse(meta: SkillMapMeta, specs: StageSpec[]): BuiltCourse
   const brushes: Brush[] = [];
   const segments: SkillSegmentDef[] = [];
   const decor: Decor[] = [];
+  // posições: escritas à mão (mapas de treino, hashes fixos) ou empacotadas pelo envelope real
+  const origins = meta.layoutY !== undefined ? packStages(meta, specs) : specs.map((_, k) => {
+    const sp = meta.segments[k].spawn;
+    if (!sp) throw new Error(`${meta.id}: stage ${k + 1} sem spawn em config`);
+    return sp;
+  });
   specs.forEach((spec, k) => {
-    const sm = meta.segments[k];
-    if (!sm.spawn) throw new Error(`${meta.id}: stage ${k + 1} sem spawn em config`);
-    // o spawn fica 2u acima do piso; z local relativo a spawn.z − 120 (os mapas de treino têm spawn.z = 120)
-    const ox = sm.spawn[0], oy = sm.spawn[1] - 2, oz = sm.spawn[2] - 120;
-    const L = (p: P3) => v(ox + p[0], oy + p[1], oz + p[2]);
-    const color = meta.segmentColors[k % meta.segmentColors.length];
-    const glow = meta.color;
-    const last = k === specs.length - 1;
-
-    // ---- plataforma de início + zona verde ----
-    brushes.push(box(v(ox - 320, oy - 80, oz - 300), v(ox + 320, oy, oz + 320), 0xdfe6f0, glow, `skill-start-${k}`));
-    brushes.push(box(v(ox - 320, oy, oz + 280), v(ox + 320, oy + 140, oz + 320), 0xa3afc4)); // parede do fundo
-    const startZone: TriggerVolume = { min: v(ox - 320, oy, oz - 170), max: v(ox + 320, oy + SKILL.zoneHeight, oz + 280) };
-
-    // ---- rampas ----
-    const route: NavPoint[] = [];
-    const r0 = spec.ramps[0];
-    const firstFace = rampFacePoint(L(r0.s), L(r0.e), r0.hw, r0.h, 0.02, r0.ride, r0.q ?? 0.35);
-    route.push({ p: v(spec.walkX !== undefined ? ox + spec.walkX : firstFace.x, oy, oz - 292), mode: 'walk', r: 30 });
-    const pass = buildRamps(spec.ramps, L, color, glow, `skill-ramp-${k}`, spec.after, 0);
-    brushes.push(...pass.brushes);
-    route.push(...pass.route);
-    for (const b of spec.boxes ?? []) brushes.push(box(L(b.min), L(b.max), b.color ?? 0xd3dbe8, glow));
-    for (const a of spec.tail ?? []) route.push({ p: L(a.p), mode: a.mode, r: a.r ?? 200, jump: a.jump });
-
-    // ---- plataforma de fim + zona vermelha (ou chegada) ----
-    const E = spec.end;
-    const ec = L([E.x, E.y, E.z]);
-    brushes.push(box(v(ec.x - E.w / 2, ec.y - 80, ec.z - E.d / 2), v(ec.x + E.w / 2, ec.y, ec.z + E.d / 2), last ? 0xfff2c4 : 0xdfe6f0, last ? 0xffd23c : 0xff4757, `skill-end-${k}`));
-    const endZone: TriggerVolume = { min: v(ec.x - E.w / 2, ec.y, ec.z - E.d / 2), max: v(ec.x + E.w / 2, ec.y + SKILL.zoneHeight + 260, ec.z + E.d / 2) };
-    route.push({ p: v(ec.x, ec.y, ec.z), mode: 'air', r: Math.min(E.w, E.d) / 2 - 20, jump: route[route.length - 1].jump });
-
-    // ---- lava ----
-    let lowY = ec.y;
-    let x0 = ox - 400, x1 = ox + 400, z0 = oz - 300, z1 = oz + 320;
-    for (const r of spec.ramps) {
-      for (const p of [L(r.s), L(r.e)]) {
-        lowY = Math.min(lowY, p.y - r.h);
-        x0 = Math.min(x0, p.x - r.hw); x1 = Math.max(x1, p.x + r.hw);
-        z0 = Math.min(z0, p.z - r.hw); z1 = Math.max(z1, p.z + r.hw);
-      }
-    }
-    // (as plataformas extras ficam acima da rampa mais baixa; não entram no cálculo, para manter os mapas de treino idênticos)
-    x0 = Math.min(x0, ec.x - E.w); x1 = Math.max(x1, ec.x + E.w); z0 = Math.min(z0, ec.z - E.d);
-    const pad = 2500;
-    const lavaY = lowY - 350;
-    brushes.push(box(v(x0 - pad, lavaY - 40, z0 - pad), v(x1 + pad, lavaY, z1 + pad), 0xe8502e, 0xffb02e, `skill-lava-${k}`, true));
-    const fall: TriggerVolume[] = [{ min: v(x0 - pad, lavaY - 400, z0 - pad), max: v(x1 + pad, lavaY + 120, z1 + pad) }];
-
-    const lastRamp = spec.ramps[spec.ramps.length - 1];
-    const bhop = (spec.tail ?? []).some((t) => t.jump) || Object.values(spec.after ?? {}).flat().some((t) => t.jump);
-    // chegada com pista de bhop: a pista é o apoio (o gap até a pista não é medido)
-    const lastGap = spec.boxes?.length ? null : exitToPlatform(lastRamp, L, ec, E.w, E.d);
-
-    const spawn: SpawnPoint = { pos: v(sm.spawn[0], sm.spawn[1], sm.spawn[2]), yaw: sm.yaw ?? 0 };
-    segments.push({
-      index: k, name: sm.name, kind: 'stage', spawn, startZone, endZone, fall, fallY: lavaY - 300, color, route, flowFrom: 0,
-      design: finishDesign(pass.design, bhop, lastGap),
-    });
-
-    cloudsAround(decor, 11 + k * 97 + meta.id.length * 13, ox, (z0 + z1) / 2, lavaY, 9000, 14);
-    decor.push({ kind: 'ring', pos: v(ox, oy + 420, oz - 120), scale: 180, color });
+    const st = buildStage(meta, spec, k, specs.length, origins[k]);
+    brushes.push(...st.brushes);
+    segments.push(st.segment);
+    decor.push(...st.decor);
   });
   return { brushes, segments, decor };
+}
+
+/** Caixa (AABB) com tudo o que pertence a um stage: brushes (inclusive a lava), zonas, anel e número. */
+export interface Envelope { min: V3; max: V3 }
+
+export function stageEnvelope(brushes: Brush[], seg: SkillSegmentDef, decor: Decor[]): Envelope {
+  const min = v(Infinity, Infinity, Infinity), max = v(-Infinity, -Infinity, -Infinity);
+  const add = (x: number, y: number, z: number) => { min.x = Math.min(min.x, x); min.y = Math.min(min.y, y); min.z = Math.min(min.z, z); max.x = Math.max(max.x, x); max.y = Math.max(max.y, y); max.z = Math.max(max.z, z); };
+  for (const b of brushes) { add(b.min.x, b.min.y, b.min.z); add(b.max.x, b.max.y, b.max.z); }
+  for (const z of [seg.startZone, seg.endZone]) { add(z.min.x, z.min.y, z.min.z); add(z.max.x, z.max.y, z.max.z); }
+  for (const d of decor) if (d.kind !== 'cloud') add(d.pos.x - d.scale, d.pos.y - d.scale, d.pos.z - d.scale), add(d.pos.x + d.scale, d.pos.y + d.scale, d.pos.z + d.scale);
+  // número do stage (só visual): flutua ~330 u à frente da zona de início, até ~300 u acima do piso
+  const sp = seg.spawn.pos;
+  add(sp.x - 200, sp.y, seg.startZone.min.z - 400); add(sp.x + 200, sp.y + 320, seg.startZone.min.z - 400);
+  return { min, max };
+}
+
+/**
+ * Empacota os stages pelo envelope real, na ordem, em fileiras ao longo de X (fileiras novas em −Z),
+ * com STAGE_LAYOUT.clearance entre envelopes; se não couber em ±limit em planta, empilha camadas em
+ * altitudes diferentes. Devolve o spawn de cada stage.
+ */
+function packStages(meta: SkillMapMeta, specs: StageSpec[]): P3[] {
+  const C = STAGE_LAYOUT.clearance, lim = STAGE_LAYOUT.limit;
+  const y0 = meta.layoutY!;
+  // envelopes locais (stage construído com o spawn em x = z = 0)
+  const env = specs.map((spec, k) => {
+    const st = buildStage(meta, spec, k, specs.length, [0, y0, 0]);
+    return stageEnvelope(st.brushes, st.segment, st.decor);
+  });
+  /** fileiras de largura rowW (os stages entram em ordem; a fileira seguinte fica em −Z) */
+  const fits = (rowW: number) => {
+    const pos: P3[] = [];
+    let cx = 0, zTop = 0, rowDepth = 0, inRow = 0;
+    for (let k = 0; k < env.length; k++) {
+      const e = env[k], w = e.max.x - e.min.x, d = e.max.z - e.min.z;
+      if (inRow && cx + w > rowW) { zTop -= rowDepth + C; rowDepth = 0; cx = 0; inRow = 0; }
+      pos[k] = [cx - e.min.x, 0, zTop - e.max.z];
+      cx += w + C; rowDepth = Math.max(rowDepth, d); inRow++;
+    }
+    return { pos, depth: -zTop + rowDepth };
+  };
+  // largura da fileira: a menor que deixa o conjunto caber, preferindo planta quadrada
+  const maxW = Math.max(...env.map((e) => e.max.x - e.min.x));
+  let best: { pos: P3[]; w: number; depth: number } | null = null;
+  for (let rowW = maxW; rowW <= 2 * lim; rowW += 1000) {
+    const f = fits(rowW);
+    const spanX = Math.max(...f.pos.map((p, k) => p[0] + env[k].max.x)) - Math.min(...f.pos.map((p, k) => p[0] + env[k].min.x));
+    if (spanX > 2 * lim) break;
+    const score = Math.max(spanX, f.depth);
+    if (f.depth <= 2 * lim && (!best || score < Math.max(best.w, best.depth))) best = { pos: f.pos, w: spanX, depth: f.depth };
+  }
+  // não cabe em planta: duas camadas em altitudes diferentes (a névoa esconde a outra camada)
+  const pos: P3[] = best ? best.pos : layered(env, Math.ceil(env.length / 2));
+  // centraliza o conjunto em X e Z
+  const bx0 = Math.min(...pos.map((p, k) => p[0] + env[k].min.x)), bx1 = Math.max(...pos.map((p, k) => p[0] + env[k].max.x));
+  const bz0 = Math.min(...pos.map((p, k) => p[2] + env[k].min.z)), bz1 = Math.max(...pos.map((p, k) => p[2] + env[k].max.z));
+  const sx = -Math.round((bx0 + bx1) / 2), sz = -Math.round((bz0 + bz1) / 2);
+  return pos.map((p) => [Math.round(p[0] + sx), y0 + p[1], Math.round(p[2] + sz)] as P3);
+
+  function layered(e: Envelope[], per: number): P3[] {
+    const out: P3[] = [];
+    let yOff = 0;
+    for (let start = 0; start < e.length; start += per) {
+      let cx = 0, rowDepth = 0, zTop = 0;
+      const layerH = Math.max(...e.slice(start, start + per).map((x) => x.max.y - x.min.y));
+      for (let k = start; k < Math.min(e.length, start + per); k++) {
+        const w = e[k].max.x - e[k].min.x;
+        if (cx > 0 && cx + w > 2 * lim) { zTop -= rowDepth + C; rowDepth = 0; cx = 0; }
+        out[k] = [cx - e[k].min.x, yOff, zTop - e[k].max.z];
+        cx += w + C; rowDepth = Math.max(rowDepth, e[k].max.z - e[k].min.z);
+      }
+      yOff -= layerH + C;
+    }
+    return out;
+  }
+}
+
+/** Constrói um stage com o spawn em `sp` (o piso fica 2 u abaixo; z local relativo a spawn.z − 120). */
+function buildStage(meta: SkillMapMeta, spec: StageSpec, k: number, count: number, sp: P3): { brushes: Brush[]; segment: SkillSegmentDef; decor: Decor[] } {
+  const brushes: Brush[] = [];
+  const decor: Decor[] = [];
+  const sm = meta.segments[k];
+  const ox = sp[0], oy = sp[1] - 2, oz = sp[2] - 120;
+  const L = (p: P3) => v(ox + p[0], oy + p[1], oz + p[2]);
+  const color = meta.segmentColors[k % meta.segmentColors.length];
+  const glow = meta.color;
+  const last = k === count - 1;
+
+  // ---- plataforma de início + zona verde ----
+  brushes.push(box(v(ox - 320, oy - 80, oz - 300), v(ox + 320, oy, oz + 320), 0xdfe6f0, glow, `skill-start-${k}`));
+  brushes.push(box(v(ox - 320, oy, oz + 280), v(ox + 320, oy + 140, oz + 320), 0xa3afc4)); // parede do fundo
+  const startZone: TriggerVolume = { min: v(ox - 320, oy, oz - 170), max: v(ox + 320, oy + SKILL.zoneHeight, oz + 280) };
+
+  // ---- rampas ----
+  const route: NavPoint[] = [];
+  const r0 = spec.ramps[0];
+  const firstFace = rampFacePoint(L(r0.s), L(r0.e), r0.hw, r0.h, 0.02, r0.ride, r0.q ?? 0.35);
+  route.push({ p: v(spec.walkX !== undefined ? ox + spec.walkX : firstFace.x, oy, oz - 292), mode: 'walk', r: 30 });
+  const pass = buildRamps(spec.ramps, L, color, glow, `skill-ramp-${k}`, spec.after, 0);
+  brushes.push(...pass.brushes);
+  route.push(...pass.route);
+  for (const b of spec.boxes ?? []) brushes.push(box(L(b.min), L(b.max), b.color ?? 0xd3dbe8, glow));
+  for (const a of spec.tail ?? []) route.push({ p: L(a.p), mode: a.mode, r: a.r ?? 200, jump: a.jump });
+
+  // ---- plataforma de fim + zona vermelha (ou chegada) ----
+  const E = spec.end;
+  const ec = L([E.x, E.y, E.z]);
+  brushes.push(box(v(ec.x - E.w / 2, ec.y - 80, ec.z - E.d / 2), v(ec.x + E.w / 2, ec.y, ec.z + E.d / 2), last ? 0xfff2c4 : 0xdfe6f0, last ? 0xffd23c : 0xff4757, `skill-end-${k}`));
+  const endZone: TriggerVolume = { min: v(ec.x - E.w / 2, ec.y, ec.z - E.d / 2), max: v(ec.x + E.w / 2, ec.y + SKILL.zoneHeight + 260, ec.z + E.d / 2) };
+  route.push({ p: v(ec.x, ec.y, ec.z), mode: 'air', r: Math.min(E.w, E.d) / 2 - 20, jump: route[route.length - 1].jump });
+
+  // ---- lava ----
+  let lowY = ec.y;
+  let x0 = ox - 400, x1 = ox + 400, z0 = oz - 300, z1 = oz + 320;
+  for (const r of spec.ramps) {
+    for (const p of [L(r.s), L(r.e)]) {
+      lowY = Math.min(lowY, p.y - r.h);
+      x0 = Math.min(x0, p.x - r.hw); x1 = Math.max(x1, p.x + r.hw);
+      z0 = Math.min(z0, p.z - r.hw); z1 = Math.max(z1, p.z + r.hw);
+    }
+  }
+  // (as plataformas extras ficam acima da rampa mais baixa; não entram no cálculo, para manter os mapas de treino idênticos)
+  x0 = Math.min(x0, ec.x - E.w); x1 = Math.max(x1, ec.x + E.w); z0 = Math.min(z0, ec.z - E.d);
+  // folga da lava: 2500 nos mapas de treino (geometria da rodada 7); menor nos empacotados, para não
+  // invadir o vizinho (a queda é detectada por fallY de qualquer jeito)
+  const pad = meta.layoutY !== undefined ? STAGE_LAYOUT.lavaPad : 2500;
+  const lavaY = lowY - 350;
+  brushes.push(box(v(x0 - pad, lavaY - 40, z0 - pad), v(x1 + pad, lavaY, z1 + pad), 0xe8502e, 0xffb02e, `skill-lava-${k}`, true));
+  const fall: TriggerVolume[] = [{ min: v(x0 - pad, lavaY - 400, z0 - pad), max: v(x1 + pad, lavaY + 120, z1 + pad) }];
+
+  const lastRamp = spec.ramps[spec.ramps.length - 1];
+  const bhop = (spec.tail ?? []).some((t) => t.jump) || Object.values(spec.after ?? {}).flat().some((t) => t.jump);
+  // chegada com pista de bhop: a pista é o apoio (o gap até a pista não é medido)
+  const lastGap = spec.boxes?.length ? null : exitToPlatform(lastRamp, L, ec, E.w, E.d);
+
+  const spawn: SpawnPoint = { pos: v(sp[0], sp[1], sp[2]), yaw: sm.yaw ?? 0 };
+  const segment: SkillSegmentDef = {
+    index: k, name: sm.name, kind: 'stage', spawn, startZone, endZone, fall, fallY: lavaY - 300, color, route, flowFrom: 0,
+    design: finishDesign(pass.design, bhop, lastGap), curves: pass.curves,
+  };
+  for (const b of brushes) b.group = k;
+
+  cloudsAround(decor, 11 + k * 97 + meta.id.length * 13, ox, (z0 + z1) / 2, lavaY, 9000, 14);
+  decor.push({ kind: 'ring', pos: v(ox, oy + 420, oz - 120), scale: 180, color });
+  return { brushes, segment, decor };
 }
 
 // ------------------------------------------------------------------ LINEAR
@@ -350,12 +482,13 @@ export function buildLinear(meta: SkillMapMeta, spec: LinearSpec): BuiltCourse {
   const ec = A([E.x, E.y, E.z]);
 
   for (let k = 0; k < cps.length - 1; k++) {
+    const firstBrush = brushes.length;
     const from = cps[k], to = cps[k + 1];
     const ramps = spec.ramps.slice(from, to);
     const color = meta.segmentColors[k % meta.segmentColors.length];
     const isLast = k === cps.length - 2;
     const route: NavPoint[] = [];
-    let spawn: SpawnPoint, startZone: TriggerVolume;
+    let spawn: SpawnPoint, startZone: TriggerVolume, spawnFloor: number | undefined;
     const r0 = ramps[0];
     const s0 = A(r0.s), e0 = A(r0.e);
     const d0 = dirOf(r0);
@@ -375,7 +508,11 @@ export function buildLinear(meta: SkillMapMeta, spec: LinearSpec): BuiltCourse {
       const lift = Math.max(CHECKPOINT_LIFT, pe.y - s0.y + 380 + (climbing > 0 ? 260 + climbing * 0.5 : 0));
       const top = s0.y + lift;
       const back = v(P0.x - d0.x * 230, top - 24, P0.z - d0.z * 230), front = v(P0.x, top - 24, P0.z);
-      brushes.push(prismBrush(back, front, [[-100, 0], [100, 0], [100, 24], [-100, 24]], { color: 0xe6f6ff, edgeGlow: 0x7fe9ff, tag: `skill-cp-${k}` }));
+      // plataforma de retorno: sólida só para quem reaparece nela (quem passa voando atravessa)
+      const cp = prismBrush(back, front, [[-100, 0], [100, 0], [100, 24], [-100, 24]], { color: 0xe6f6ff, edgeGlow: 0x7fe9ff, tag: `skill-cp-${k}` });
+      cp.spawnOnly = true;
+      spawnFloor = cp.id;
+      brushes.push(cp);
       const yaw = yawFromDir(d0.x, d0.z);
       spawn = { pos: v(P0.x - d0.x * 150, top + 2, P0.z - d0.z * 150), yaw };
       startZone = obbVolume(v(P0.x - d0.x * 115, top + SKILL.zoneHeight / 2, P0.z - d0.z * 115), yaw, 115, 100, SKILL.zoneHeight / 2);
@@ -421,8 +558,9 @@ export function buildLinear(meta: SkillMapMeta, spec: LinearSpec): BuiltCourse {
     segments.push({
       index: k, name: meta.segments[k]?.name ?? `Checkpoint ${k}`, kind: k === 0 ? 'stage' : 'checkpoint', spawn, startZone, endZone,
       fall: [{ min: v(-1e6, fallY - 5000, -1e6), max: v(1e6, fallY, 1e6) }], fallY, color, route, flowFrom: k === 0 ? 0 : 1,
-      design: finishDesign(pass.design, bhop, lastGap),
+      design: finishDesign(pass.design, bhop, lastGap), curves: pass.curves, spawnFloor,
     });
+    for (let b = firstBrush; b < brushes.length; b++) brushes[b].group = k;
   }
 
   // lava visual: um plano só, no fundo de tudo
@@ -450,7 +588,7 @@ function offsetAfter(after: Record<number, LocalNav[]> | undefined, from: number
 
 function mapDefFrom(meta: SkillMapMeta, c: BuiltCourse): MapDef {
   const s0 = c.segments[0].spawn;
-  return {
+  const map: MapDef = {
     name: meta.name,
     brushes: c.brushes,
     triggers: [],
@@ -468,6 +606,25 @@ function mapDefFrom(meta: SkillMapMeta, c: BuiltCourse): MapDef {
     trainingTargets: [],
     skill: { id: meta.id, tier: meta.tier, format: meta.format, segments: c.segments },
   };
+  map.decor = clearClouds(map);
+  return map;
+}
+
+/**
+ * As nuvens são sorteadas sem olhar a pista: as que caem a menos de CLOUD_MARGIN de um brush, zona
+ * ou trecho do percurso de referência descem (ficam abaixo da pista) ou, se ainda atrapalharem, somem.
+ */
+function clearClouds(map: MapDef): Decor[] {
+  const out: Decor[] = [];
+  for (const d of map.decor) {
+    if (d.kind !== 'cloud') { out.push(d); continue; }
+    const r = cloudRadius(d.scale) + CLOUD_MARGIN;
+    for (const dy of [0, -1800, -3600]) {
+      const p = v(d.pos.x, d.pos.y + dy, d.pos.z);
+      if (!cloudBlocked(map, p, r)) { out.push({ ...d, pos: p }); break; }
+    }
+  }
+  return out;
 }
 
 /** Monta o MapDef completo de um mapa staged do Surf Skill (sem bots, itens, duelos). */
@@ -507,7 +664,7 @@ export function endAfter(r: RampSeg, dist: number, drop: number, w: number, d: n
   return { x: Math.round(r.e[0] + (dx / l) * dist), y: r.e[1] - drop, z: Math.round(r.e[2] + (dz / l) * dist), w, d };
 }
 
-export interface ChainOpts { gap?: number; drop?: number; turn?: number; yaw?: number; len: number; descent: number; hw?: number; h?: number; ride?: 1 | -1; sides?: RampSeg['sides']; q?: number; ceiling?: number; slick?: boolean }
+export interface ChainOpts { gap?: number; drop?: number; turn?: number; yaw?: number; len: number; descent: number; hw?: number; h?: number; ride?: 1 | -1; sides?: RampSeg['sides']; q?: number; ceiling?: number }
 
 /**
  * Montador de percursos: encadeia rampas a partir de uma primeira, com curvas contínuas,
@@ -529,7 +686,6 @@ export class Course {
     const l = this.last;
     const yawDeg = o.yaw ?? this.yaw + (o.turn ?? 0);
     this.ramps.push(chainRamp(l, { gap: o.gap ?? 300, drop: o.drop ?? 300, yawDeg, len: o.len, descent: o.descent, hw: o.hw ?? l.hw, h: o.h ?? l.h, ride: o.ride ?? l.ride, sides: o.sides, q: o.q, ceiling: o.ceiling }));
-    if (o.slick) this.last.slick = true;
     return this;
   }
 
@@ -545,7 +701,6 @@ export class Course {
       const a = (yaw * Math.PI) / 180;
       const p = this.last.e;
       const r: RampSeg = { s: [p[0], p[1], p[2]], e: [Math.round(p[0] + Math.sin(a) * segLen), p[1] - descentPerSeg, Math.round(p[2] - Math.cos(a) * segLen)], hw: l.hw, h: l.h, ride: l.ride, q: l.q, sides: l.sides, join: true };
-      if (l.slick) r.slick = true;
       if (o.ceiling ?? l.ceiling) r.ceiling = o.ceiling ?? l.ceiling;
       this.ramps.push(r);
     }
@@ -571,7 +726,6 @@ export class Course {
   straight(len: number, descent: number): this {
     const l = this.last, a = (this.yaw * Math.PI) / 180;
     const r: RampSeg = { s: [l.e[0], l.e[1], l.e[2]], e: [Math.round(l.e[0] + Math.sin(a) * len), l.e[1] - descent, Math.round(l.e[2] - Math.cos(a) * len)], hw: l.hw, h: l.h, ride: l.ride, q: l.q, sides: l.sides, join: true };
-    if (l.slick) r.slick = true;
     if (l.ceiling) r.ceiling = l.ceiling;
     this.ramps.push(r);
     return this;

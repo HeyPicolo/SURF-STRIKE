@@ -24,7 +24,7 @@ export function buildSkywire(): MapDef {
   const bend = () => {
     // rampa de ligação na face de dentro da curva e curva larga para a direita
     c.next({ gap: 320, drop: 320, len: 1600, descent: 300, ride: 1, hw: W.hw, h: W.h });
-    c.curveFor(75, 2400).straight(1200, 200);
+    c.curveFor(75, 2600, 40).straight(1200, 120);
   };
   for (let k = 0; k < 7; k++) {
     if (k > 0) c.checkpoint();
@@ -37,7 +37,7 @@ export function buildSkywire(): MapDef {
     wire(k, 2, ws[2]);
     c.next({ gap: 320, drop: 320, len: 1800, descent: -250, ride: 1, hw: W.hw, h: W.h }); // subida: segura a velocidade
     c.next({ gap: 520, drop: 160, len: 1800, descent: 300, ride: 1, hw: W.hw, h: W.h });
-    c.curveFor(75, 2400).straight(1200, 200);
+    c.curveFor(75, 2600, 40).straight(1200, 120);
   }
   return linearMapDef(skillMapMeta('skywire'), c.linear([0, 32002, 0], endAfter(c.last, 560, 520, 1100, 900)));
 }

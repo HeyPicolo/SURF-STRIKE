@@ -12,7 +12,8 @@
     "test": "tsx --test tests/*.test.ts",
     "test:e2e": "node scripts/e2e.mjs",
     "skill:versions": "tsx scripts/skill-versions.ts",
-    "skill:metrics": "tsx scripts/skill-metrics.ts"
+    "skill:metrics": "tsx scripts/skill-metrics.ts",
+    "skill:layout": "tsx scripts/skill-layout.ts"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",

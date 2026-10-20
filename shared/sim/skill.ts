@@ -135,6 +135,7 @@ export class SkillRun {
       p.phys.ducked = s.ducked; p.phys.maxs.y = s.ducked ? PHYSICS.playerCrouchHeight : PHYSICS.playerHeight;
       p.resetMovementState();
       this.inStart = insideVolume(this.stageDef.startZone, p.phys.pos, p.phys.mins, p.phys.maxs);
+      p.phys.spawnFloor = this.inStart ? this.stageDef.spawnFloor ?? -1 : -1;
       this.emit({ t: 'skillReset', reason: 'loadloc', stage: this.stage });
     }
   }
@@ -173,6 +174,9 @@ export class SkillRun {
       this.emit({ t: 'skillStart', stage: this.stage, practice: this.practice });
     }
     this.inStart = inStart;
+    // a plataforma de retorno deixa de ser sólida para quem saiu da zona de início dela e já não está
+    // pisando nela (sai pela borda como de uma plataforma comum)
+    if (!inStart && !st.onGround) st.spawnFloor = -1;
 
     if (this.state === 'running' && insideVolume(sd.endZone, st.pos, st.mins, st.maxs)) {
       const total = this.ticks;
@@ -243,6 +247,7 @@ export class SkillRun {
     p.yaw = sd.spawn.yaw; p.pitch = 0;
     p.input.cmd.yaw = sd.spawn.yaw; p.input.cmd.pitch = 0;
     p.resetMovementState();
+    p.phys.spawnFloor = sd.spawnFloor ?? -1;
     this.inStart = true;
   }
 }

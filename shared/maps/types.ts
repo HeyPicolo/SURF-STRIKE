@@ -95,7 +95,13 @@ export interface SkillSegmentDef {
   flowFrom: number;
   /** Dados de projeto do segmento (documentação e testes de dificuldade). */
   design: SegmentDesign;
+  /** Peças emendadas (curvas contínuas e retas emendadas), em cadeias, para o teste de emendas. */
+  curves?: CurvePiece[][];
+  /** linear: id do brush da plataforma de retorno (sólida só para quem reaparece nela) */
+  spawnFloor?: number;
 }
+
+export interface CurvePiece { s: V3; e: V3; hw: number; h: number; ride: 1 | -1; sides: 'both' | 'left' | 'right' }
 /** compatibilidade com a rodada 7 */
 export type SkillStageDef = SkillSegmentDef;
 

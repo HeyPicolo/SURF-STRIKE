@@ -30,8 +30,23 @@ export interface Brush {
   /** Only collidable, not rendered (clip). */
   invisible?: boolean;
   tag?: string;
-  /** Rampa sem "ramp bug": contatos com biséis andáveis não contam como chão (ver movement.ts). */
-  slick?: boolean;
+  /** Stage/trecho do Surf Skill a que o brush pertence (layout e testes de sobreposição). */
+  group?: number;
+  /**
+   * Normais das tampas internas de uma rampa emendada (juntas de curva): essas tampas encostam na peça
+   * vizinha e nunca são parede de verdade (ver Mover.flyMove).
+   */
+  joints?: Plane[];
+  /**
+   * Rampa só de surf: em velocidade de surf, os biséis andáveis dela não contam como chão (ver
+   * movement.ts). Ligado nas peças de curva e em mapas inteiros que pedem (ZENITH).
+   */
+  surfOnly?: boolean;
+  /**
+   * Sólido só para quem foi colocado em cima dele (plataforma de retorno de checkpoint): para quem
+   * passa voando, atravessável. Ver CollisionWorld.allowSpawnOnly e PhysState.spawnFloor.
+   */
+  spawnOnly?: boolean;
 }
 
 let nextBrushId = 1;

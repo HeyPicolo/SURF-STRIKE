@@ -50,6 +50,8 @@ export class PhysState {
   landImpact = 0;
   lastSafe = new V3();
   stuckTicks = 0;
+  /** plataforma `spawnOnly` em que o jogador foi colocado (sólida só para ele, até sair da zona); −1: nenhuma */
+  spawnFloor = -1;
   mins = new V3(-PHYSICS.playerRadius, 0, -PHYSICS.playerRadius);
   maxs = new V3(PHYSICS.playerRadius, PHYSICS.playerHeight, PHYSICS.playerRadius);
 
@@ -110,20 +112,34 @@ export function applyFriction(st: PhysState, dt: number, friction: number = PHYS
 
 /** Movement simulation (one fixed tick). Pure function of state + command + world. */
 /**
- * Rampa lisa (`slick`, sem face andável): um contato com normal andável nela só pode vir de um plano
- * de bisel (aresta da crista ou emenda de peças de curva vista por uma caixa alinhada aos eixos).
- * Tratar isso como chão é o "ramp bug" — atrito no meio do surf; nessas peças o jogador continua no ar.
- * Só vale para brushes marcados (as curvas da espiral do ZENITH); o resto do jogo não muda.
+ * Rampa só de surf (`surfOnly`: peças de curva e mapas que pedem): um contato com normal andável nela só pode vir de um plano de
+ * bisel (aresta da crista ou da junta vista por uma caixa alinhada aos eixos). Em velocidade de surf
+ * (≥ PHYSICS.surfBevelSpeed) isso não vira chão — senão o atrito, o "subir degrau" e o grudar no chão
+ * travam o surf (o ramp bug). Parado ou devagar, continua dando para ficar em pé no cume. Nas rampas
+ * retas comuns o comportamento não muda (os pousos perto do cume foram calibrados assim).
  */
+/** distância (do centro dos pés à tampa) em que um contato conta como na junta */
+const JOINT_REACH = 48;
 const pureRampCache = new WeakMap<Brush, boolean>();
-function rampBevel(b: Brush | null): boolean {
-  if (!b || !b.slick || b.kind !== 'ramp') return false;
+function pureRamp(b: Brush | null): boolean {
+  if (!b || b.kind !== 'ramp') return false;
   let v = pureRampCache.get(b);
   if (v === undefined) {
     v = b.planes.slice(0, b.faces.length).every((pl) => pl.n.y < PHYSICS.walkableNormalY);
     pureRampCache.set(b, v);
   }
   return v;
+}
+/** O plano tocado é uma das faces de surf do brush (e não uma tampa ou um bisel)? */
+function isSurfFace(b: Brush, n: V3): boolean {
+  for (let i = 0; i < b.faces.length; i++) {
+    const pl = b.planes[i];
+    if (pl.n.y > 0.05 && pl.n.y < PHYSICS.walkableNormalY && pl.n.dot(n) > 0.9999) return true;
+  }
+  return false;
+}
+function rampBevel(b: Brush | null, st: PhysState): boolean {
+  return !!b?.surfOnly && pureRamp(b) && Math.hypot(st.vel.x, st.vel.z) >= PHYSICS.surfBevelSpeed;
 }
 
 export class Mover {
@@ -141,6 +157,11 @@ export class Mover {
     const fallSpeed = -st.vel.y;
 
     if (mods.fly) { this.flyNoclip(st, cmd, dt); return ev; }
+    this.world.allowSpawnOnly = st.spawnFloor;
+    try { return this.moveInner(st, cmd, dt, mods, ev, wasOnGround, fallSpeed); } finally { this.world.allowSpawnOnly = -1; }
+  }
+
+  private moveInner(st: PhysState, cmd: MoveCmd, dt: number, mods: MoveModifiers, ev: MoveEvents, wasOnGround: boolean, fallSpeed: number): MoveEvents {
 
     this.handleDuck(st, cmd);
     this.unstick(st);
@@ -264,7 +285,7 @@ export class Mover {
     if (st.vel.y > 180) { st.onGround = false; return; }
     const down = this.t1.copy(st.pos); down.y -= 2;
     const t = this.world.traceBox(st.pos, down, st.mins, st.maxs, this.tr);
-    if (t.fraction < 1 && t.normal.y >= PHYSICS.walkableNormalY && !rampBevel(t.brush)) {
+    if (t.fraction < 1 && t.normal.y >= PHYSICS.walkableNormalY && !rampBevel(t.brush, st)) {
       st.onGround = true;
       st.groundNormal.copy(t.normal);
       if (!t.startSolid) st.pos.copy(t.endPos);
@@ -306,6 +327,15 @@ export class Mover {
         if (!this.world.boxSolid(nudged, st.mins, st.maxs)) st.pos.copy(nudged);
       }
 
+      // junta de curva: a caixa entrou na peça seguinte pela tampa ou por um bisel dela (numa dobra
+      // côncava a face seguinte fica um pouco acima da atual). A tampa é interna, não é parede: sobe para
+      // a face da peça seguinte e continua surfando.
+      if (t.brush?.joints?.length && !isSurfFace(t.brush, t.normal)
+        && t.brush.joints.some((pl) => Math.abs(pl.n.dot(st.pos) - pl.d) < JOINT_REACH) && this.liftOntoFace(st, t.brush)) {
+        timeLeft -= timeLeft * t.fraction;
+        continue;
+      }
+
       if (t.normal.y > PHYSICS.walkableNormalY) blocked |= 1;
       if (t.normal.y === 0) blocked |= 2;
       if (t.normal.y > 0.05 && t.normal.y < PHYSICS.walkableNormalY) {
@@ -342,6 +372,30 @@ export class Mover {
       if (st.vel.dot(primal) <= 0) { st.vel.set(0, 0, 0); break; }
     }
     return blocked;
+  }
+
+  /**
+   * Põe a caixa por cima da face surfável de `b` em que ela menos penetra (até PHYSICS.stepSize) e tira
+   * da velocidade a parte que entra nessa face. Usado nas juntas internas das rampas emendadas.
+   */
+  private liftOntoFace(st: PhysState, b: Brush): boolean {
+    let best = Infinity, bn: V3 | null = null;
+    for (let i = 0; i < b.faces.length; i++) {
+      const pl = b.planes[i];
+      if (pl.n.y <= 0.05 || pl.n.y >= PHYSICS.walkableNormalY) continue;
+      // canto da caixa mais fundo em relação ao plano
+      const cx = pl.n.x >= 0 ? st.mins.x : st.maxs.x, cy = pl.n.y >= 0 ? st.mins.y : st.maxs.y, cz = pl.n.z >= 0 ? st.mins.z : st.maxs.z;
+      const pen = pl.d - (pl.n.x * (st.pos.x + cx) + pl.n.y * (st.pos.y + cy) + pl.n.z * (st.pos.z + cz));
+      if (pen > -0.5 && pen < best) { best = pen; bn = pl.n; }
+    }
+    if (!bn || best > PHYSICS.stepSize) return false;
+    const p = this.t1.copy(st.pos).addScaled(bn, Math.max(0, best) + 0.05);
+    if (this.world.boxSolid(p, st.mins, st.maxs)) return false;
+    st.pos.copy(p);
+    const into = st.vel.dot(bn);
+    if (into < 0) st.vel.addScaled(bn, -into);
+    st.surfing = true; st.surfNormal.copy(bn);
+    return true;
   }
 
   /** Ground move with stair stepping and slope sticking. */
