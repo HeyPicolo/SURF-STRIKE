@@ -33,14 +33,15 @@ export const DRIFT_CANYON_STAGES: StageSpec[] = [
       { s: [0, -150, -450], e: [0, -900, -3200], hw: 180, h: 260, ride: -1 },
     ],
     boxes: [
-      { min: [-300, -1380, -4400], max: [300, -1300, -3700] },
-      { min: [-300, -1380, -5250], max: [300, -1300, -4650] },
-      { min: [-300, -1380, -6100], max: [300, -1300, -5500] },
+      // a primeira pista é longa: quem chega embalado do stage anterior também pousa nela
+      { min: [-300, -1380, -4760], max: [300, -1300, -3700] },
+      { min: [-300, -1380, -5560], max: [300, -1300, -4880] },
+      { min: [-300, -1380, -6340], max: [300, -1300, -5680] },
     ],
     tail: [
       { p: [0, -1300, -4050], mode: 'air', r: 200, jump: true },
-      { p: [0, -1300, -4950], mode: 'walk', r: 200, jump: true },
-      { p: [0, -1300, -5800], mode: 'walk', r: 200, jump: true },
+      { p: [0, -1300, -5220], mode: 'walk', r: 200, jump: true },
+      { p: [0, -1300, -5890], mode: 'walk', r: 200, jump: true },
     ],
     end: { x: 0, y: -1300, z: -6650, w: 600, d: 600 } },
   // 5 · Cânion final: curva, mudança de altura e bhop até a chegada

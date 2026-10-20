@@ -106,6 +106,12 @@ export function mapVersion(map: MapDef): string {
 
 export function recordKey(mapId: string, version: string) { return `surfstrike.skill.${mapId}.${version}`; }
 
+/**
+ * Versão usada nas chaves dos recordes e fantasmas: hash da geometria + versão das regras
+ * (SKILL.rulesVersion). PBs feitos com regras antigas não se misturam com os novos.
+ */
+export function recordVersion(geometryHash: string, rules = SKILL.rulesVersion) { return `${geometryHash}.r${rules}`; }
+
 /** Interface de armazenamento: troque por um backend no futuro. */
 export interface RecordStore {
   load(mapId: string, version: string, stageCount: number): MapRecords;

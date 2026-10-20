@@ -7,7 +7,7 @@ import type { World } from '../../../shared/sim/world';
 import type { Team } from '../../../shared/maps/types';
 import { Settings, saveSettings, ACTION_LABELS, Action, keyLabel, DEFAULT_KEYS } from '../game/settings';
 import { esc } from './hud';
-import { SkillMapMeta, TIER_COLORS, TIER_LABELS, TIER_STYLE, SKILL, formatTicks, formatDiff, skillMapsOf, SkillCategory, segmentWord, SkillTier } from '../../../shared/config/skill';
+import { SkillMapMeta, TIER_COLORS, TIER_LABELS, TIER_STYLE, SKILL, formatTicks, formatDiff, skillMapsOf, SkillCategory, segmentWord, SkillTier, nextSkillMap, skillMapMeta } from '../../../shared/config/skill';
 import { MapRecords, FinishResult, sumOfBest } from '../../../shared/sim/records';
 import type { SkillEvent } from '../../../shared/sim/skill';
 
@@ -36,6 +36,12 @@ export class Menu {
   constructor(public settings: Settings, public act: MenuActions) {
     const saved = (() => { try { return JSON.parse(localStorage.getItem('surfstrike.setup') ?? 'null'); } catch { return null; } })();
     this.setup = { teamSize: 3, difficulty: 'medium', team: 'blue', classId: 'runner', ...(saved ?? {}) };
+    // atalho N na tela de fim do Surf Skill: próximo mapa (Enter também, pelo foco no botão principal)
+    document.addEventListener('keydown', (e) => {
+      if (e.code !== 'KeyN' || $('panel').classList.contains('hidden')) return;
+      const b = document.getElementById('sknext');
+      if (b) { e.preventDefault(); b.click(); }
+    });
     $('main-nav').addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest('button');
       if (!b) return;
@@ -211,7 +217,7 @@ export class Menu {
     saveSettings(this.settings);
   }
 
-  /** Tela de fim: tempo total, os 5 stages (tempo, PB, diferença) e Reiniciar / Voltar. */
+  /** Tela de fim: tempo total, os segmentos (tempo, PB, diferença) e Próximo mapa / Reiniciar / Voltar. */
   showSkillFinish(meta: SkillMapMeta, e: Extract<SkillEvent, { t: 'skillFinish' }>, prevPb: MapRecords['pb'], res: FinishResult | null, rec: MapRecords) {
     this.inGame = true;
     const cls = (d: number | null) => (d === null ? '' : d < 0 ? 'better' : d > 0 ? 'worse' : 'even');
@@ -224,6 +230,8 @@ export class Menu {
       return `<tr><td>${linear ? (i === 0 ? 'Largada' : `CP ${i}`) : i + 1} · ${esc(st.name)}</td><td>${time !== undefined ? formatTicks(time) : '—'}${gold}</td><td>${pbStage !== null ? formatTicks(pbStage) : '—'}</td><td class="${cls(diff)}">${diff !== null ? formatDiff(diff) : '—'}</td></tr>`;
     }).join('');
     const sob = sumOfBest(rec);
+    // próximo mapa na ordem (some no último; respeita o desbloqueio progressivo)
+    const next = nextSkillMap(meta.id, (id) => (id === meta.id ? rec : this.act.skillRecords(id)).completions > 0);
     const head = e.practice
       ? '<div class="skill-record" style="color:#ffd23c">PRÁTICA — tempo não conta para recordes</div>'
       : res?.newPb ? `<div class="skill-record">NOVO RECORDE${res.rank ? ` · #${res.rank} no ranking local` : ''}</div>`
@@ -233,9 +241,10 @@ export class Menu {
       ${head}
       <table class="skill-res"><tr><th>${linear ? 'Trecho' : 'Stage'}</th><th>Tempo</th><th>PB</th><th>Diferença</th></tr>${rows}</table>
       <p class="muted">Recorde pessoal: <b>${rec.pb ? formatTicks(rec.pb.ticks) : '—'}</b> · Sum of Best: <b>${sob !== null ? formatTicks(sob) : '—'}</b> · ${rec.attempts} tentativas, ${rec.completions} concluídas</p>
-      <div class="panel-actions"><button class="btn primary" id="skagain">Reiniciar</button><button class="btn" id="sktomenu">Voltar ao menu</button></div>`);
+      <div class="panel-actions">${next ? `<button class="btn primary" id="sknext" title="Atalho: N ou Enter">Próximo mapa · ${esc(skillMapMeta(next).name)} <span class="kbd" style="margin:0 0 0 8px">N</span></button><button class="btn" id="skagain">Reiniciar</button>` : '<button class="btn primary" id="skagain">Reiniciar</button>'}<button class="btn" id="sktomenu">Voltar ao menu</button></div>`);
     $('skagain').onclick = () => { this.act.click(); this.hidePanel(); this.act.skillRestart(); };
     $('sktomenu').onclick = () => { this.act.click(); this.inGame = false; this.act.quitToMenu(); };
+    if (next) $('sknext').onclick = () => { this.act.click(); this.act.startSkill(next); };
   }
 
   showMultiplayer(kind: 'create' | 'join') {

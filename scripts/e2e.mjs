@@ -235,7 +235,12 @@ for (let i = 0; i < 80; i++) {
 }
 const jumped = await S(() => ({ state: window.__surf.game.world.skill.state, jumps: true }));
 await page.keyboard.up('Space'); await page.keyboard.up('KeyW');
-check('21. entra no D1 e pula na base sem passar do prespeed cap', d1.map === 'CORAL RUSH' && d1.state === 'zone' && jumped.state === 'running' && maxZone <= 420.5 && exitV <= 420.5, `maxNaZona=${maxZone.toFixed(0)} saida=${exitV.toFixed(0)}`);
+// rodada 9: sem prespeed cap — uma velocidade alta dentro da zona de início não é cortada
+await page.keyboard.press('KeyR'); await waitSim(0.2);
+// um tick da simulação logo depois de dar a velocidade (sem depender do FPS do navegador de teste)
+const noCap = await S(() => { const w = window.__surf.game.world; w.local.phys.vel.set(0, 0, -1200); w.step(0.01); return { st: w.skill.state, v: Math.hypot(w.local.phys.vel.x, w.local.phys.vel.z) }; });
+check('21. entra no D1, pula na base e não há limitador de velocidade na zona', d1.map === 'CORAL RUSH' && d1.state === 'zone' && jumped.state === 'running' && noCap.v > 800, `pulou=${jumped.state} saida=${exitV.toFixed(0)} semCap=${noCap.v.toFixed(0)}`);
+await page.keyboard.press('KeyR'); await waitSim(0.2);
 // completa o stage 1 do D1 pelo percurso de referência
 await page.keyboard.press('KeyR'); await waitSim(0.2);
 await S(() => { window.__surf.game.autopilot = true; });
@@ -264,6 +269,17 @@ const ghost2 = await S(() => ({ state: window.__surf.game.world.skill.state, vis
 await page.screenshot({ path: join(shots, '14-skill-ghost.png') });
 await S(() => { window.__surf.game.autopilot = false; });
 check('24. o fantasma aparece na tentativa seguinte, com a diferença ao vivo', ghost2.state === 'running' && ghost2.visible && ghost2.diff !== null && ghost2.label.startsWith('PB'), JSON.stringify(ghost2));
+// rodada 9: tela de fim → "Próximo mapa" carrega o mapa seguinte direto na zona de início
+await S(() => { window.__surf.game.autopilot = false; window.__surf.input.keys.clear(); window.__surf.menu.act.startSkill('teste_curto'); window.__surf.input.enabled = true; window.__surf.game.paused = false; document.getElementById('panel').classList.add('hidden'); window.__surf.game.autopilot = true; });
+for (let i = 0; i < 200; i++) { await waitSim(0.25); if (await S(() => window.__surf.game.world?.skill?.state === 'finished')) break; }
+for (let i = 0; i < 40; i++) { await wait(150); if (await page.isVisible('#sknext')) break; }
+const nextBtn = await page.isVisible('#sknext');
+await S(() => { window.__surf.game.autopilot = false; });
+if (nextBtn) await page.click('#sknext');
+await wait(800);
+const nextMap = await S(() => ({ map: window.__surf.game.world?.map?.name, state: window.__surf.game.world?.skill?.state, panel: !document.getElementById('panel').classList.contains('hidden') }));
+await page.screenshot({ path: join(shots, '15-skill-next.png') });
+check('26. "Próximo mapa" na tela de fim carrega o mapa seguinte na zona de início', nextBtn && nextMap.map === 'SKY STEPS' && nextMap.state === 'zone' && !nextMap.panel, JSON.stringify({ nextBtn, ...nextMap }));
 
 const fps = await S(() => new Promise((res) => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 2000) requestAnimationFrame(f); else res(n / 2); }; requestAnimationFrame(f); }));
 console.log(`fps (software renderer): ${fps}`);

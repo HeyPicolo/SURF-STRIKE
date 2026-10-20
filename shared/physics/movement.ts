@@ -291,7 +291,9 @@ export class Mover {
       if (!t.startSolid) st.pos.copy(t.endPos);
     } else {
       st.onGround = false;
-      if (t.fraction < 1 && t.normal.y > 0.05) { st.surfing = true; st.surfNormal.copy(t.normal); }
+      if (t.fraction < 1 && t.normal.y > 0.05) {
+        st.surfing = true; st.surfNormal.copy(t.normal);
+      }
     }
     // also detect ramp contact sideways (pressing into a ramp face)
     if (!st.onGround && !st.surfing) {
@@ -379,14 +381,18 @@ export class Mover {
    * da velocidade a parte que entra nessa face. Usado nas juntas internas das rampas emendadas.
    */
   private liftOntoFace(st: PhysState, b: Brush): boolean {
-    let best = Infinity, bn: V3 | null = null;
+    // a face certa é a do mesmo lado da que o jogador estava surfando (perto do cume as duas faces
+    // da peça podem estar a poucas unidades da caixa); sem contato anterior, a de menor penetração
+    let best = Infinity, bn: V3 | null = null, bestAlign = -Infinity;
     for (let i = 0; i < b.faces.length; i++) {
       const pl = b.planes[i];
       if (pl.n.y <= 0.05 || pl.n.y >= PHYSICS.walkableNormalY) continue;
       // canto da caixa mais fundo em relação ao plano
       const cx = pl.n.x >= 0 ? st.mins.x : st.maxs.x, cy = pl.n.y >= 0 ? st.mins.y : st.maxs.y, cz = pl.n.z >= 0 ? st.mins.z : st.maxs.z;
       const pen = pl.d - (pl.n.x * (st.pos.x + cx) + pl.n.y * (st.pos.y + cy) + pl.n.z * (st.pos.z + cz));
-      if (pen > -0.5 && pen < best) { best = pen; bn = pl.n; }
+      if (pen <= -0.5 || pen > PHYSICS.stepSize) continue;
+      const align = st.surfing ? pl.n.dot(st.surfNormal) : -pen;
+      if (align > bestAlign) { bestAlign = align; best = pen; bn = pl.n; }
     }
     if (!bn || best > PHYSICS.stepSize) return false;
     const p = this.t1.copy(st.pos).addScaled(bn, Math.max(0, best) + 0.05);

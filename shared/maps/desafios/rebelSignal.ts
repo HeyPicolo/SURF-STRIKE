@@ -48,9 +48,10 @@ function bhopStage(): StageSpec {
   c.next({ gap: 320, drop: 320, len: 2400, descent: 480, ride: 1 });
   c.next({ gap: 320, drop: 320, len: 2200, descent: 300, ride: -1 });
   // ritmo do bhop para quem chega a ~1900 u/s: um pulo dura ~0,75 s (≈ 1430 u)
-  c.bhop({ firstDist: 450, drop: 420, pads: 5, pitch: 1430, padLen: 820, width: 520, firstLen: 1500 });
+  c.bhop({ firstDist: 450, drop: 360, pads: 4, pitch: 1450, padLen: 1250, width: 520, firstLen: 1500 });
   const t = c.tail[c.tail.length - 1].p;
-  return c.stage({ x: t[0], y: t[1], z: t[2] - 1500, w: 760, d: 900 });
+  // chegada logo depois da última pista (quem sai do bhop um pouco fora do ritmo ainda pousa)
+  return c.stage({ x: t[0], y: t[1], z: t[2] - 1050, w: 760, d: 1300 });
 }
 
 function wireStage(): StageSpec {

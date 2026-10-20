@@ -10,8 +10,25 @@ export const SKILL = {
   knifeOnly: true,
   /** Mantém o sprint automático do jogo principal. */
   autoSprint: true,
-  /** Velocidade horizontal máxima dentro de uma zona de início e no tick em que sai dela (prespeed cap). */
-  prespeedCap: 420,
+  /**
+   * Velocidade horizontal máxima dentro de uma zona de início e no tick em que sai dela (prespeed cap).
+   * Desligado na rodada 9 (Infinity); o código continua: 420 religa o cap da rodada 7/8.
+   */
+  prespeedCap: Infinity,
+  /** Mapas staged: ao entrar na zona de fim, o jogador entra no próximo stage com a mesma velocidade. */
+  keepVelocityBetweenStages: true,
+  /**
+   * limite da componente vertical (para baixo) da velocidade levada para o próximo stage (u/s): ela
+   * acompanha a descida da primeira rampa, sem passar disto (a vertical de quem chega é descartada)
+   */
+  carryMaxDown: 2000,
+  /** abaixo desta velocidade, a entrada embalada fica mais alta (até a plataforma de início, parado) */
+  carryRiseUntil: 1200,
+  /**
+   * Versão das regras: entra na chave dos recordes e fantasmas, junto do hash do mapa.
+   * 1 = rodadas 7–8 (cap de 420, parado entre stages); 2 = rodada 9 (sem cap, velocidade mantida).
+   */
+  rulesVersion: 2,
   /** Pular dentro da zona de início. Liberado na rodada 8: ajuda a se posicionar, mas o cap impede embalo extra. */
   blockJumpInStart: false,
   /** Tempo oficial em ticks da simulação. */
@@ -224,6 +241,29 @@ export const SKILL_MAPS: SkillMapMeta[] = [
 
 /** Mapas visíveis no menu, por categoria. */
 export function skillMapsOf(cat: SkillCategory): SkillMapMeta[] { return SKILL_MAPS.filter((m) => m.category === cat && !m.hidden); }
+
+/** Ordem de "Próximo mapa": SKY STEPS → DRIFT CANYON → STORM SPIRE → D1 … D12 (o TESTE CURTO fica fora). */
+export function skillMapOrder(): string[] {
+  return [...skillMapsOf('treino'), ...skillMapsOf('desafio').sort((a, b) => (a.num ?? 0) - (b.num ?? 0))].map((m) => m.id);
+}
+
+/**
+ * Mapa depois de `id` na ordem, ou null no último (ZENITH) ou se o próximo ainda estiver bloqueado pelo
+ * desbloqueio progressivo (SKILL.progressiveUnlock: um desafio abre quando o anterior foi concluído).
+ * `completed(id)` diz se o mapa já foi concluído alguma vez.
+ */
+export function nextSkillMap(id: string, completed: (id: string) => boolean): string | null {
+  const order = skillMapOrder();
+  const i = order.indexOf(id);
+  if (i < 0) return order[0]; // mapa fora da ordem (o TESTE CURTO): o próximo é o primeiro
+  if (i === order.length - 1) return null;
+  const next = order[i + 1];
+  if (SKILL.progressiveUnlock && skillMapMeta(next).category === 'desafio') {
+    const prev = order[i];
+    if (skillMapMeta(prev).category === 'desafio' && !completed(prev)) return null;
+  }
+  return next;
+}
 
 /** "STAGE" ou "CHECKPOINT" conforme o formato. */
 export function segmentWord(format: SkillFormat, plural = false): string {

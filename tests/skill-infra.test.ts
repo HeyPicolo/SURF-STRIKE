@@ -46,15 +46,15 @@ test('tiers 1 to 6 with colors and labels; Treino × Desafio; progressive unlock
   assert.ok(SKILL_MAPS.find((m) => m.id === 'teste_curto')!.hidden, 'test map stays out of the menu');
 });
 
-test('map versions: static file is up to date and the training maps keep their round-9 geometry', () => {
+test('map versions: static file is up to date and the training maps keep their round-9b geometry', () => {
   for (const [id, build] of Object.entries(SKILL_MAP_BUILDERS)) {
     assert.equal(SKILL_MAP_VERSIONS[id], mapVersion(build()), `${id}: rode npm run skill:versions`);
   }
-  // geometria dos mapas de treino fixada na rodada 9 (layout automático dos stages): mudar o kit sem
-  // querer não pode zerar recordes. Rodada 7: 0f22f531 / 430069a2 / 57badaf3.
-  assert.equal(SKILL_MAP_VERSIONS.sky_steps, '866f9eb3');
-  assert.equal(SKILL_MAP_VERSIONS.drift_canyon, 'bc59e3f3');
-  assert.equal(SKILL_MAP_VERSIONS.storm_spire, 'f56ea498');
+  // geometria dos mapas de treino fixada na rodada 9b (layout automático, chegada estendida para quem
+  // chega embalado): mudar o kit sem querer não pode zerar recordes. Rodada 7: 0f22f531 / 430069a2 / 57badaf3.
+  assert.equal(SKILL_MAP_VERSIONS.sky_steps, '3019fd2f');
+  assert.equal(SKILL_MAP_VERSIONS.drift_canyon, '9c7ff963');
+  assert.equal(SKILL_MAP_VERSIONS.storm_spire, '13d99fa7');
 });
 
 test('all skill maps stay within ±40000 (float precision)', () => {

@@ -99,6 +99,12 @@ export interface SkillSegmentDef {
   curves?: CurvePiece[][];
   /** linear: id do brush da plataforma de retorno (sólida só para quem reaparece nela) */
   spawnFloor?: number;
+  /**
+   * staged: ponto de entrada para quem chega embalado do stage anterior (no ar, logo acima do começo da
+   * primeira rampa, na linha de surf), a direção da rampa (unitária, 3D) e quanto sobe para quem chega
+   * devagar (até a altura da plataforma de início).
+   */
+  carry?: { pos: V3; dir: V3; rise: number; len: number };
 }
 
 export interface CurvePiece { s: V3; e: V3; hw: number; h: number; ride: 1 | -1; sides: 'both' | 'left' | 'right' }

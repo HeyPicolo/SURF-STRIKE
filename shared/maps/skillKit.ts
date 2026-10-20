@@ -291,6 +291,9 @@ const finishDesign = (p: RampPass['design'], bhop: boolean, last: { D: number; v
 
 // ------------------------------------------------------------------ STAGED
 
+/** Entrada de quem chega embalado: fração da primeira rampa e altura acima da linha de surf. */
+export const CARRY_ENTRY = { f: 0.05, lift: 48, endExtend: 1800 };
+
 export interface BuiltCourse { brushes: Brush[]; segments: SkillSegmentDef[]; decor: Decor[] }
 
 export function buildCourse(meta: SkillMapMeta, specs: StageSpec[]): BuiltCourse {
@@ -333,7 +336,7 @@ export function stageEnvelope(brushes: Brush[], seg: SkillSegmentDef, decor: Dec
  * altitudes diferentes. Devolve o spawn de cada stage.
  */
 function packStages(meta: SkillMapMeta, specs: StageSpec[]): P3[] {
-  const C = STAGE_LAYOUT.clearance, lim = STAGE_LAYOUT.limit;
+  const C = STAGE_LAYOUT.clearance + 2, lim = STAGE_LAYOUT.limit; // +2: arredondamento das posições
   const y0 = meta.layoutY!;
   // envelopes locais (stage construído com o spawn em x = z = 0)
   const env = specs.map((spec, k) => {
@@ -418,8 +421,16 @@ function buildStage(meta: SkillMapMeta, spec: StageSpec, k: number, count: numbe
   // ---- plataforma de fim + zona vermelha (ou chegada) ----
   const E = spec.end;
   const ec = L([E.x, E.y, E.z]);
-  brushes.push(box(v(ec.x - E.w / 2, ec.y - 80, ec.z - E.d / 2), v(ec.x + E.w / 2, ec.y, ec.z + E.d / 2), last ? 0xfff2c4 : 0xdfe6f0, last ? 0xffd23c : 0xff4757, `skill-end-${k}`));
-  const endZone: TriggerVolume = { min: v(ec.x - E.w / 2, ec.y, ec.z - E.d / 2), max: v(ec.x + E.w / 2, ec.y + SKILL.zoneHeight + 260, ec.z + E.d / 2) };
+  // a plataforma se estende para a frente (no sentido de chegada): quem chega embalado não passa por cima
+  const from = route[route.length - 1].p;
+  const ad = v(ec.x - from.x, 0, ec.z - from.z);
+  const al = ad.hLen() || 1;
+  const ext = SKILL.keepVelocityBetweenStages ? CARRY_ENTRY.endExtend : 0;
+  const ex0 = ad.x < 0 ? (-ad.x / al) * ext : 0, ex1 = ad.x > 0 ? (ad.x / al) * ext : 0;
+  const ez0 = ad.z < 0 ? (-ad.z / al) * ext : 0, ez1 = ad.z > 0 ? (ad.z / al) * ext : 0;
+  const pMin = v(ec.x - E.w / 2 - ex0, ec.y, ec.z - E.d / 2 - ez0), pMax = v(ec.x + E.w / 2 + ex1, ec.y, ec.z + E.d / 2 + ez1);
+  brushes.push(box(v(pMin.x, ec.y - 80, pMin.z), v(pMax.x, ec.y, pMax.z), last ? 0xfff2c4 : 0xdfe6f0, last ? 0xffd23c : 0xff4757, `skill-end-${k}`));
+  const endZone: TriggerVolume = { min: v(pMin.x, ec.y, pMin.z), max: v(pMax.x, ec.y + SKILL.zoneHeight + 260, pMax.z) };
   route.push({ p: v(ec.x, ec.y, ec.z), mode: 'air', r: Math.min(E.w, E.d) / 2 - 20, jump: route[route.length - 1].jump });
 
   // ---- lava ----
@@ -447,9 +458,16 @@ function buildStage(meta: SkillMapMeta, spec: StageSpec, k: number, count: numbe
   const lastGap = spec.boxes?.length ? null : exitToPlatform(lastRamp, L, ec, E.w, E.d);
 
   const spawn: SpawnPoint = { pos: v(sp[0], sp[1], sp[2]), yaw: sm.yaw ?? 0 };
+  // entrada embalada (velocidade mantida entre stages): no ar, logo acima do começo da primeira rampa
+  const rs = L(r0.s), re = L(r0.e);
+  const cpos = rampFacePoint(rs, re, r0.hw, r0.h, CARRY_ENTRY.f, r0.ride, r0.q ?? 0.35).add(v(0, CARRY_ENTRY.lift, 0));
+  // quem chega devagar entra mais alto (até a altura da plataforma de início): a mesma energia de quem
+  // sai andando da plataforma
+  const carry = { pos: cpos, dir: v(re.x - rs.x, re.y - rs.y, re.z - rs.z).normalize(), rise: Math.max(0, oy + 20 - cpos.y), len: Math.hypot(re.x - rs.x, re.z - rs.z) * (1 - CARRY_ENTRY.f) };
   const segment: SkillSegmentDef = {
-    index: k, name: sm.name, kind: 'stage', spawn, startZone, endZone, fall, fallY: lavaY - 300, color, route, flowFrom: 0,
-    design: finishDesign(pass.design, bhop, lastGap), curves: pass.curves,
+    // quem chega embalado já está na rampa: o percurso de referência segue do primeiro ponto de surf
+    index: k, name: sm.name, kind: 'stage', spawn, startZone, endZone, fall, fallY: lavaY - 300, color, route, flowFrom: 1,
+    design: finishDesign(pass.design, bhop, lastGap), curves: pass.curves, carry,
   };
   for (const b of brushes) b.group = k;
 

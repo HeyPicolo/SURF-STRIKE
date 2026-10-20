@@ -5,7 +5,7 @@ import { World } from '../shared/sim/world';
 import { SIM_DT } from '../shared/config/physics';
 import { SKILL, skillMapsOf, formatTicks, formatDiff } from '../shared/config/skill';
 import { getSkillMap } from '../shared/maps/skillMaps';
-import { RouteDriver } from '../shared/bots/routeDriver';
+import { RouteDriver, referenceRun, speedProfile } from '../shared/bots/routeDriver';
 import { insideVolume, SkillPb } from '../shared/sim/skill';
 import {
   emptyRecords, applyFinish, addAttempt, sumOfBest, splitDiff, mapVersion, MemoryRecordStore, sanitizeRecords, recordKey,
@@ -30,6 +30,8 @@ function leaveZone(w: World) {
 /** Dirige o jogador pelo percurso de referência do stage atual até o stage mudar (ou terminar). */
 function driveStage(w: World, maxTicks = 3000) {
   const sk = w.skill!, p = w.local, start = sk.stage, d = new RouteDriver(sk.stageDef.route);
+  // depois do primeiro stage o jogador chega embalado (velocidade mantida): segue do primeiro ponto de surf
+  if (start > 0 && sk.state === 'running' && !p.phys.onGround) { d.idx = sk.stageDef.flowFrom; d.speedCap = speedProfile(w, start); }
   const ev: SimEvent[] = [];
   for (let t = 0; t < maxTicks; t++) {
     d.drive(p.phys, p.input.cmd, SIM_DT);
@@ -157,8 +159,8 @@ test('splits: stage time and difference against the personal best', () => {
   assert.equal(sp.stageTicks, sp.total);
   assert.equal(sp.diffTotal, sp.total - 600);
   assert.equal(sp.diffStage, sp.stageTicks - 600);
-  assert.equal(sk.stage, 1, 'end zone leads into the next stage start');
-  assert.ok(insideVolume(sk.stageDef.startZone, w.local.phys.pos, w.local.phys.mins, w.local.phys.maxs));
+  assert.equal(sk.stage, 1, 'end zone leads into the next stage (velocidade mantida: entra na primeira rampa)');
+  assert.ok(w.local.phys.pos.distTo(sk.stageDef.carry!.pos) < 1200, 'entrada embalada no começo da primeira rampa');
   // segundo split: tempo do stage = total − split anterior
   const ev2 = driveStage(w);
   const sp2 = ev2.find((e) => e.t === 'skillSplit');
@@ -298,24 +300,14 @@ for (const { meta } of maps) {
   test(`${meta.name}: every stage is completable with the reference route (pure physics, no assist)`, () => {
     const w = skillWorld(meta.id), sk = w.skill!;
     leaveZone(w);
-    let peak = 0;
-    for (let s = 0; s < 5; s++) {
-      assert.equal(sk.stage, s);
-      const d = new RouteDriver(sk.stageDef.route), p = w.local;
-      let ev: SimEvent[] = [];
-      for (let t = 0; t < 3000 && sk.stage === s && sk.state !== 'finished'; t++) {
-        d.drive(p.phys, p.input.cmd, SIM_DT);
-        w.step(SIM_DT);
-        peak = Math.max(peak, Math.hypot(p.phys.vel.x, p.phys.vel.z));
-        ev = w.drainEvents();
-        assert.ok(!ev.some((e) => e.t === 'skillReset'), `${meta.name} stage ${s + 1}: fell at ${p.phys.pos.toArray().map(Math.round)}`);
-      }
-    }
+    // velocidade mantida entre stages: o percurso de referência entra embalado em cada stage
+    const r = referenceRun(w, { stopOnFall: true });
+    assert.ok(r.finished, `${meta.name} stage ${(r.fail?.segment ?? -1) + 1}: fell at ${r.fail?.pos.map(Math.round)}`);
     assert.equal(sk.state, 'finished');
     assert.equal(sk.splits.length, 5);
     assert.equal(sk.stageTimes.reduce((a, b) => a + b, 0), sk.ticks, 'stage times add up to the total');
-    (meta as { peak?: number }).peak = peak;
-    console.log(`  ${meta.name}: ${formatTicks(sk.ticks)} · pico ${Math.round(peak)} u/s`);
+    (meta as { peak?: number }).peak = r.peak;
+    console.log(`  ${meta.name}: ${formatTicks(sk.ticks)} · pico ${Math.round(r.peak)} u/s`);
   });
 }
 

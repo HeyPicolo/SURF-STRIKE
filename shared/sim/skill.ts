@@ -4,7 +4,7 @@
 //  reinícios, ir para stage e prática (saveloc). Emite SimEvents que o cliente traduz em HUD e som.
 //  Nada daqui toca na lógica de rounds/duelos.
 // =============================================================
-import { V3 } from '../math/vec3';
+import { V3, yawFromDir } from '../math/vec3';
 import { SKILL } from '../config/skill';
 import { PHYSICS } from '../config/physics';
 import type { MoveCmd } from '../physics/movement';
@@ -204,8 +204,11 @@ export class SkillRun {
       if (this.linear) {
         // linear: passa pelo portal sem parar
         this.inStart = insideVolume(this.stageDef.startZone, st.pos, st.mins, st.maxs);
+      } else if (SKILL.keepVelocityBetweenStages && this.stageDef.carry) {
+        // staged: entra no próximo stage com a mesma velocidade, girada para a direção dele
+        this.carry(p, this.stageDef, Math.hypot(st.vel.x, st.vel.z));
       } else {
-        // staged: o fim do stage leva direto à zona de início do próximo
+        // staged (regras antigas): o fim do stage leva parado à zona de início do próximo
         this.place(p, this.stageDef);
       }
     }
@@ -235,6 +238,29 @@ export class SkillRun {
     this.segmentEnteredAt = 0;
     this.place(p, this.stageDef);
     this.emit({ t: 'skillReset', reason: 'map', stage: 0 });
+  }
+
+  /**
+   * Entrada embalada num stage (como os teleportes keepVelocity do CLOUDS): no ar, logo acima do começo
+   * da primeira rampa, com a velocidade horizontal `hs` na direção dela, a componente vertical seguindo a
+   * descida da rampa (limitada a SKILL.carryMaxDown) e 0,45 s sem atrito.
+   */
+  carry(p: Player, sd: SkillSegmentDef, hs: number) {
+    const c = sd.carry!;
+    this.snapNext = true;
+    const hl = Math.hypot(c.dir.x, c.dir.z) || 1;
+    const hx = c.dir.x / hl, hz = c.dir.z / hl, slope = c.dir.y / hl;
+    const pos = c.pos.clone(); pos.y += c.rise * Math.max(0, 1 - hs / SKILL.carryRiseUntil);
+    p.phys.pos.copy(pos); p.prevPos.copy(pos); p.phys.lastSafe.copy(pos);
+    p.phys.vel.set(hx * hs, Math.max(-SKILL.carryMaxDown, Math.min(0, slope * hs)) - 80, hz * hs);
+    p.phys.onGround = false; p.phys.surfing = false;
+    p.phys.ducked = false; p.phys.maxs.y = PHYSICS.playerHeight;
+    p.phys.spawnFloor = -1;
+    const yaw = yawFromDir(hx, hz);
+    p.yaw = yaw; p.input.cmd.yaw = yaw;
+    p.resetMovementState();
+    p.teleportGlide = PHYSICS.teleportGlide;
+    this.inStart = false;
   }
 
   /** Coloca o jogador no spawn de um stage, parado. */

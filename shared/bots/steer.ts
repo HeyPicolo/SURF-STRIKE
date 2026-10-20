@@ -12,7 +12,7 @@ export interface SteerResult { reached: boolean; }
 const tmp = new V3();
 
 /** idealStrafe: ângulo de strafe ótimo no ar (percursos de referência do Surf Skill). Os bots usam o antigo. */
-export function steerToward(st: PhysState, target: NavPoint, prev: V3 | null, cmd: MoveCmd, dt: number, assistDegPerSec: number, idealStrafe = false): SteerResult {
+export function steerToward(st: PhysState, target: NavPoint, prev: V3 | null, cmd: MoveCmd, dt: number, assistDegPerSec: number, idealStrafe = false, bevelAsAir = false): SteerResult {
   const dx = target.p.x - st.pos.x, dz = target.p.z - st.pos.z;
   const dist = Math.hypot(dx, dz);
   const r = target.r ?? 80;
@@ -35,7 +35,8 @@ export function steerToward(st: PhysState, target: NavPoint, prev: V3 | null, cm
   if (target.mode === 'walk' && st.onGround) {
     cmd.yaw = desiredYaw;
     cmd.forward = 1;
-  } else if (st.surfing) {
+  } else if (st.surfing && !(bevelAsAir && st.surfNormal.y >= PHYSICS.walkableNormalY)) {
+    // (com bevelAsAir, um bisel "andável" encostado na crista não é face: segue como no ar)
     // Like a human surfer: look along the ramp (its horizontal tangent), biased a little toward
     // the target, and hold the strafe key that points INTO the ramp.
     const nh = Math.hypot(st.surfNormal.x, st.surfNormal.z) || 1;

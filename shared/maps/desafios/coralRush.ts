@@ -19,6 +19,8 @@ type N = { len: number; descent: number; ride?: 1 | -1; gap?: number; drop?: num
 function stage(first: RampSeg, nexts: N[]): StageSpec {
   const c = new Course(first);
   for (const n of nexts) c.next({ gap: n.gap ?? 320, drop: n.drop ?? 330, len: n.len, descent: n.descent, ride: n.ride, turn: n.turn });
+  // rodada 9: com a velocidade mantida entre stages o mapa ficou curto; uma rampa a mais por stage
+  for (let i = 0; i < 1; i++) c.next({ gap: 320, drop: 330, len: 2600, descent: 520, ride: c.last.ride === 1 ? -1 : 1 });
   return c.stage(endAfter(c.last, 450, 480, 900, 700));
 }
 const r = (len: number, descent: number, o: Partial<N> = {}): N => ({ len, descent, ...o });

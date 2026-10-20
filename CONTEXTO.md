@@ -3,7 +3,7 @@
 Registro vivo das decisões, do estado atual e das pendências. **Atualizado a cada rodada de mudanças, no mesmo commit.**
 Serve para qualquer sessão (de código ou de apoio) entender o projeto sem reler o histórico inteiro.
 
-- **Última rodada:** 9a (de 9a/9b) · 19/10/2026 · 8c = `6ecdbba`
+- **Última rodada:** 9b (fecha a rodada 9) · 19/10/2026 · 9a = `d1eb0fa`
 - **No ar:** https://surf-strike.vercel.app (deploy automático da Vercel a cada push na `main`)
 - **Repositório:** github.com/HeyPicolo/SURF-STRIKE
 
@@ -20,12 +20,12 @@ Serve para qualquer sessão (de código ou de apoio) entender o projeto sem rele
 npm install
 npm run dev            # servidor local com rebuild
 npm run build          # gera dist/ (o que a Vercel publica)
-npm test               # 130 testes unitários (node:test via tsx, ~25 s)
+npm test               # 153 testes unitários (node:test via tsx, ~60 s)
 npm run skill:metrics  # corre o percurso de referência de todos os mapas, grava skillReference.ts e imprime a tabela de métricas
 npm run skill:versions # regrava shared/maps/skillVersions.ts depois de mudar um mapa do Surf Skill
 npm run skill:layout   # confere folga entre stages, lava, brushes cruzando, trechos não vizinhos e nuvens
 npx tsc --noEmit -p tsconfig.json
-CHROME_PATH=/opt/pw-browsers/chromium node scripts/e2e.mjs   # 25 verificações no navegador
+CHROME_PATH=/opt/pw-browsers/chromium node scripts/e2e.mjs   # 26 verificações no navegador
 ```
 
 ## O jogo hoje
@@ -72,6 +72,16 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
   - Curvas recalibradas por ficarem rápidas sem o "freio" do ramp bug: LANTERN PASS 2600, IRON CATHEDRAL 2400, SKYWIRE 2600 (descida 40 por peça), HOLLOW MOON 2400 + reta final de 3 faces.
   - Checkpoints: a plataforma `skill-cp-k` é `spawnOnly` — sólida só para o jogador colocado nela (`PhysState.spawnFloor`, ligado em `SkillRun.place` e no loadloc; desligado quando ele sai da zona e não está mais no chão). Números, suporte e anéis já eram só visuais.
   - **PB e fantasma invalidados** (hash novo) em todos os 15 mapas: staged pelo layout, linear pelas emendas e pelas plataformas. Os hashes de treino fixados no teste agora são os da rodada 9.
+- **Rodada 9b — regras e Próximo mapa:**
+  - `SKILL.prespeedCap = Infinity` (o código do cap continua; 420 religa). Pulo na base liberado.
+  - Staged: a zona de fim chama `SkillRun.carry` (se `SKILL.keepVelocityBetweenStages`): o jogador vai para `segment.carry` (no ar, 48 u acima da linha de surf a 5% da primeira rampa; mais alto quem chega devagar, até a plataforma: `carry.rise` × (1 − v/`carryRiseUntil`)), com a velocidade horizontal girada para a primeira rampa, a vertical acompanhando a descida (até `carryMaxDown` = 2000) e `teleportGlide` (0,45 s sem atrito). Queda e Backspace continuam parados no spawn. Plataforma de fim de cada stage estendida 1800 u para a frente (`CARRY_ENTRY.endExtend`). `flowFrom` dos stages = 1.
+  - `SKILL.rulesVersion` = 2 entra na chave dos recordes e fantasmas (`recordVersion(hash)` em `records.ts`; usado no `main.ts`). PBs antigos (cap, parado entre stages) ficam de fora.
+  - Percurso de referência ao chegar embalado (`referenceRun`): `RouteDriver.speedCap` = perfil do stage saindo parado (`speedProfile`, ×1,15 + 300) — freia (tecla para trás, dosada para ~450 u/s por tick) só acima disso; e `bevelAsAir`: um bisel "andável" na crista não vale como face para a direção do bot. Os bots da partida não mudaram.
+  - Movimento: `liftOntoFace` escolhe a face do mesmo lado da que o jogador surfava.
+  - Ajustes de mapa para a velocidade mantida: DRIFT CANYON (pistas do bhop mais longas, buracos menores), REBEL SIGNAL e OBSIDIAN GAUNTLET (bhop com 4–5 pistas longas, chegada logo depois), OBSIDIAN GAUNTLET Vidro (`curveStage(..., 2300, 1.1, 300)`) e Manopla (curva de −120° na face de dentro, 2900 u/s), CORAL RUSH (+1 rampa por stage).
+  - "Próximo mapa" na tela de fim (`nextSkillMap`/`skillMapOrder` em config; atalho N, Enter pelo foco). Do TESTE CURTO vai para o SKY STEPS; some no ZENITH; respeita `progressiveUnlock`.
+  - Checagem completa dos dois jeitos: teste por mapa (corrida embalada + cada segmento parado) e `tests/skill-rules9.test.ts` (entrada a 600–3500 u/s e chegada a 3500 u/s em todo stage).
+  - O bot de referência é caótico: mexer numa curva ou numa pista de bhop pode fazer outro stage falhar. Depois de qualquer ajuste, rode `npm test` (os testes dos desafios rodam a corrida embalada e cada segmento parado) e `npm run skill:metrics`.
 - `curveFor(..., { stepDeg: 5 })`: passos de 5° (D7, D8 e D11) — com a meia-esquadria não é mais necessário para o degrau, mas mantém as curvas mais redondas.
 - Como projetar um mapa que o percurso de referência completa: curvas grandes na rampa (`curveFor`, face de dentro); curvas em gaps ≤ ~24° com a face de fora; queda do gap proporcional ao tempo de ar na velocidade esperada (ver `dropFor` no SKYWIRE); túneis com queda curta; checkpoint sempre seguido de uma descida longa (quem volta dele começa devagar); chegadas generosas; espiral para caber em ±40000. Depois de mudar um mapa: `npm run skill:versions` e `npm run skill:metrics`.
 - Kit (`skillKit.ts`): `Course` (encadeia rampas: `next`, `curve` contínua com emendas fechadas por cunha, `checkpoint`, `bhop`), rampas ascendentes, túneis (`ceiling`), rampas de uma face, `buildLinear` e métricas de projeto por segmento (meia-largura, inclinação, gaps, velocidade mínima balística, tempo de ar, transições, curva máxima).
@@ -116,7 +126,8 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 | 8a · `a615840` | Infraestrutura do Surf Skill para os desafios: Treino × Desafio, tiers 1–6, formatos staged/linear com checkpoints, segmentos genéricos, fantasma do PB (gravação, IndexedDB, sincronia, diferença ao vivo), pulo nas bases, menu com abas, versões estáticas dos mapas, kit estendido. |
 | 8b · `e3bfd84` | Desafios D1–D6, métricas e índice de dificuldade, tabela no README, testes de cada segmento, das emendas das curvas e do índice crescente. |
 | 8c · `6ecdbba` | Desafios D7–D12, `gapDrop`, `stepDeg`, rampas lisas no ZENITH, chegada de destaque, tabela dos 15 mapas, índice crescente até o D12. |
-| 9a | Layout automático dos stages pelo envelope, lava menor, nuvens fora da pista, emendas em meia-esquadria sem ramp bug, plataformas de checkpoint atravessáveis, `skill:layout`. |
+| 9a · `d1eb0fa` | Layout automático dos stages pelo envelope, lava menor, nuvens fora da pista, emendas em meia-esquadria sem ramp bug, plataformas de checkpoint atravessáveis, `skill:layout`. |
+| 9b | Sem prespeed cap, velocidade mantida entre stages, versão das regras na chave dos recordes, Próximo mapa, referência com controle de velocidade, ajustes de bhop e curvas, recalibração. |
 
 ## Decisões tomadas (não desfazer sem pedido)
 
@@ -141,8 +152,8 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 
 ## Pendências e ideias
 
-- **Rodada 9b:** sem prespeed cap, velocidade mantida entre stages (girada para o próximo stage), `SKILL.rulesVersion` na chave dos recordes/fantasmas, botão Próximo mapa, recalibração.
 - Multiplayer online (a simulação já é separada do cliente; recordes e fantasmas já têm as interfaces `RecordStore` e `GhostStore` para um backend).
+- Calibrar jogando a rodada 9: como fica chegar embalado em cada stage (principalmente bhop e curvas logo depois da entrada), se a extensão de 1800 u das chegadas é o bastante, e os tempos de referência que caíram abaixo da faixa (D8 2:28, D11 3:22).
 - Calibrar jogando os desafios: velocidade mínima do THUNDERHEAD/ZENITH (1700 u/s pode ser pouco ou demais para humanos), largura das curvas do ZENITH (feitas para 3500 u/s), U-turns do ECLIPSE BOWL e quedas bruscas do HOLLOW MOON.
 - Calibrar jogando: gaps do STORM SPIRE (stages 3 e 5, feitos no limite do percurso de referência), ritmo da pista de bhop do DRIFT CANYON (stage 4, espaçada para ~1170 u/s), prespeed cap (420), atraso da tela de fim (1,8 s), dano ×1,4 e caminhar ×0,55.
 - Renderização por software nos testes roda a ~15 FPS (às vezes ~1,5 FPS nesta máquina, e aí as verificações e2e 4/5, 7, 13 e 18 oscilam — também no commit da 8b); em GPU real é normal.
