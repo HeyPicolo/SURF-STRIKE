@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { inflateSync } from 'node:zlib';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'dist');
@@ -370,6 +371,31 @@ for (const [id, key] of [['rifle', 'Digit1'], ['smg', 'Digit1'], ['shotgun', 'Di
   adsRes.push({ ...st, off });
 }
 check('31. ADS: clique direito traz a alça de cada arma ao centro (KESTREL, HORNET, BREAKER-12, VEX-9)', adsRes.every((r) => r.zoomed && r.adsK === 1 && r.cross < 0.2 && r.off === 0), JSON.stringify(adsRes));
+
+// rodada 12b: attachments nos modelos — com mira de ponto o ponto vermelho fica no centro da tela no ADS;
+// luneta 2x mostra a retícula; mira térmica na LONGBOW; laser de um alvo visível em terceira pessoa
+const centerPixel = async () => {
+  const buf = await page.screenshot({ clip: { x: 480, y: 270, width: 1, height: 1 } });
+  const chunks = []; let o = 8;
+  while (o < buf.length) { const len = buf.readUInt32BE(o), type = buf.toString('ascii', o + 4, o + 8); if (type === 'IDAT') chunks.push(buf.subarray(o + 8, o + 8 + len)); o += 12 + len; }
+  const raw = inflateSync(Buffer.concat(chunks));
+  return [raw[1], raw[2], raw[3]];
+};
+const attRes = {};
+for (const [name, id, b] of [['reddot', 'rifle', { optic: 'reddot', laser: 'laserTac', muzzle: 'supp' }], ['x2', 'rifle', { optic: 'x2', magazine: 'magDrum' }], ['thermal', 'sniper', { optic: 'thermal', barrel: 'heavy' }]]) {
+  await S(([id, b]) => { const w = window.__surf.game.world, p = w.local; p.builds = { [id]: b }; p.giveWeapon(id); p.slot = 0; p.switchTime = 0; p.phys.pos.set(0, 2, 5450); p.phys.vel.set(0, 0, 0); window.__surf.input.yaw = Math.PI; window.__surf.input.pitch = -0.04; }, [id, b]);
+  await waitSim(0.6);
+  await page.mouse.down({ button: 'right' }); await page.mouse.up({ button: 'right' }); await waitSim(0.8);
+  attRes[name] = await S(() => { const p = window.__surf.game.world.local; return { adsK: p.adsK, zoomed: p.zoomed, optic: document.getElementById('optic').className, scope: document.getElementById('scope').className }; });
+  attRes[name].px = await centerPixel();
+  await page.screenshot({ path: join(shots, `20-attach-${name}.png`) });
+  await page.mouse.down({ button: 'right' }); await page.mouse.up({ button: 'right' }); await waitSim(0.4);
+}
+await S(() => { const w = window.__surf.game.world, d = w.players.find((q) => q.isDummy && q.alive), p = w.local; d.builds = { rifle: { laser: 'laserTac', optic: 'x2', muzzle: 'supp' } }; d.giveWeapon('rifle'); d.slot = 0; p.slot = 2; p.phys.pos.set(d.phys.pos.x + 120, d.phys.pos.y, d.phys.pos.z + 160); window.__surf.input.yaw = Math.atan2(120, 160); window.__surf.input.pitch = -0.1; d.yaw = Math.atan2(-120, -160) + 0.6; d.pitch = 0.05; });
+await waitSim(0.5);
+await page.screenshot({ path: join(shots, '21-attach-laser-3p.png') });
+const rd = attRes.reddot.px;
+check('34. attachments: ponto vermelho no centro no ADS, retícula da 2x e mira térmica (screenshots)', attRes.reddot.adsK === 1 && rd[0] > 200 && rd[1] < 150 && attRes.x2.optic.includes('x2') && attRes.thermal.scope.includes('thermal'), JSON.stringify(attRes));
 
 // rodada 10: tela Arsenal com todos os modelos (detalhado e simplificado) e screenshot de cada um
 const arsDir = join(shots, 'arsenal');

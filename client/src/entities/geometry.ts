@@ -11,8 +11,50 @@ import type { ClassId } from '../../../shared/config/classes';
 import { CLASSES } from '../../../shared/config/classes';
 import { characterAssembled } from './characters';
 import { PALETTES, Palette, STYLE, NADE_STYLE, GLOVE, PICKUP_COLORS, ITEM_STYLE, WEAPON_REFS, shade } from './style';
+import type { Build } from '../../../shared/sim/loadout';
+import { ATTACH_SLOTS } from '../../../shared/config/attachments';
+import { isProgWeapon } from '../../../shared/config/progression';
+import { barrelFor, drawBarrel, drawMuzzle, drawAttachment, rearGripStyle, BARRELS } from './attachGeometry';
 
 export type Lod = 'view' | 'world' | 'far';
+
+// ---------------------------------------------------------------- build (rodada 12b)
+/** Peças desenhadas (testes: 'default:<categoria>' some quando o build troca a peça; 'att:<id>' aparece). */
+let LOG = null as string[] | null;
+const logPart = (name: string) => { LOG?.push(name); };
+/** Peça padrão da categoria: só desenha (e registra) se o build não trocou a peça. */
+function dflt(B: Build, slot: keyof Build, fn: () => void) { if (B[slot]) return; logPart('default:' + slot); fn(); }
+/** Peças com ponto de montagem (mira, laser, empunhadura frontal, coronha, carregador) que o build tem. */
+function attachAll(m: MeshBuilder, id: 'rifle' | 'sniper' | 'smg' | 'shotgun' | 'pistol', B: Build, hi: boolean) {
+  for (const slot of ATTACH_SLOTS) {
+    const att = B[slot];
+    if (!att) continue;
+    logPart('att:' + att);
+    if (slot === 'barrel' || slot === 'muzzle' || slot === 'rearGrip') continue; // desenhados pela arma
+    if (id === 'shotgun' && att === 'magExt') continue; // tubo estendido desenhado pela arma
+    drawAttachment(m, id, slot, att, hi);
+  }
+}
+/** Punho com a empunhadura traseira do build. */
+function gripB(m: MeshBuilder, P: Palette, B: Build, prof: P2[], hw: number, tapeY: [number, number], hi: boolean) {
+  const g = rearGripStyle(P, B.rearGrip);
+  if (!B.rearGrip) logPart('default:rearGrip');
+  m.prism('x', prof, -hw, hw, g.color);
+  if (g.tape !== null) m.tapeProfileX(prof, B.rearGrip === 'tape' ? tapeY[0] - 0.8 : tapeY[0], B.rearGrip === 'tape' ? tapeY[1] + 0.6 : tapeY[1], -hw, hw, g.tape, hi ? g.bands : 1);
+  else if (hi) {
+    // borracha: pontilhado em relevo
+    for (let i = 0; i < 3; i++) for (const s of [-1, 1]) m.box(s > 0 ? hw : -hw - 0.1, tapeY[0] + 0.4 + i * 0.9, prof[0][0] + 1.0 + i * 0.3, s > 0 ? hw + 0.1 : -hw, tapeY[0] + 0.8 + i * 0.9, prof[0][0] + 1.6 + i * 0.3, 0x34373d);
+  }
+}
+/** Cano e peça de boca (a padrão some com o build). `dev` desenha a boca padrão a partir de z1. */
+function barrelAndMuzzle(m: MeshBuilder, id: 'rifle' | 'sniper' | 'smg' | 'shotgun' | 'pistol', B: Build, color: number, hi: boolean, dev: (z1: number) => void) {
+  const b = barrelFor(id, B);
+  if (!B.barrel) logPart('default:barrel');
+  drawBarrel(m, id, B, color, hi);
+  if (B.muzzle) drawMuzzle(m, id, B.muzzle, b.y, b.z1, Math.max(b.r, BARRELS[id].deviceR * 0.75), PALETTES[id], hi);
+  else if (BARRELS[id].device > 0) { logPart('default:muzzle'); dev(b.z1); }
+  return b;
+}
 
 // ---------------------------------------------------------------- peças comuns
 
@@ -44,7 +86,7 @@ function grip(m: MeshBuilder, prof: P2[], hw: number, color: number, tape: numbe
 const sides = (hi: boolean) => (hi ? STYLE.sides : STYLE.sidesLo);
 
 // ---------------------------------------------------------------- LONGBOW (sniper)
-function sniper(m: MeshBuilder, hi: boolean) {
+function sniper(m: MeshBuilder, hi: boolean, B: Build = {}) {
   const P = PALETTES.sniper, S = sides(hi), ch = STYLE.chamfer, lip = shade(P.body, 1.12);
   // caixa da culatra e guarda-mão com recortes hexagonais
   m.chamferBox(-1.8, -1, -6, 1.8, 4.2, 7.2, P.body, ch);
@@ -62,22 +104,32 @@ function sniper(m: MeshBuilder, hi: boolean) {
   if (hi) m.rail(0, 4.2, -25.5, 6.5, 1.8, P.metal, '+y', { pitch: STYLE.railPitch });
   else m.box(-0.9, 4.2, -25.5, 0.9, 4.7, 6.5, P.metal);
   // cano, freio de boca e fita
-  m.tube('z', [0, 2, 0], 0.85, -26, -40.8, P.dark, S, { caps: 'none' });
-  m.chamferBox(-1.3, 0.75, -44, 1.3, 3.25, -40.6, P.dark, 0.35);
-  if (hi) {
-    insetsX(m, 1.3, [[2, -41.6], [2, -43.0]], MeshBuilder.rect(0.6, 1.6), P.hole);
-    m.inset([0, 2, -44], '-z', MeshBuilder.hex(0.42, 1), P.hole);
-  }
-  m.tapeTube('z', [0, 2, 0], 0.85, -32, -29.6, P.accent, hi ? 2 : 1, S);
+  barrelAndMuzzle(m, 'sniper', B, P.dark, hi, (z1) => {
+    m.chamferBox(-1.3, 0.75, z1 - 3.4, 1.3, 3.25, z1 + 0.2, P.dark, 0.35);
+    if (hi) {
+      insetsX(m, 1.3, [[2, z1 - 0.8], [2, z1 - 2.2]], MeshBuilder.rect(0.6, 1.6), P.hole);
+      m.inset([0, 2, z1 - 3.4], '-z', MeshBuilder.hex(0.42, 1), P.hole);
+    }
+  });
+  if (!B.barrel) m.tapeTube('z', [0, 2, 0], 0.85, -32, -29.6, P.accent, hi ? 2 : 1, S);
   // bipé dobrado sob o guarda-mão
-  m.chamferBox(-1.2, -1.8, -25.2, 1.2, -0.7, -22.6, P.dark, 0.25);
-  for (const s of [-1, 1]) {
-    m.tube('z', [s * 0.75, -1.35, 0], 0.36, -22.6, -11.5, P.dark, hi ? 6 : 4, { caps: 'none' });
-    if (hi) m.tube('z', [s * 0.75, -1.35, 0], 0.5, -17.6, -16.6, P.metal, 6, { caps: 'none' });
-    if (hi) m.chamferBox(s * 0.75 - 0.45, -1.95, -11.6, s * 0.75 + 0.45, -0.95, -10.3, P.metal, 0.15);
-  }
-  if (hi) boltsX(m, P, 1.2, [[-1.25, -23.9]]);
+  dflt(B, 'underbarrel', () => {
+    m.chamferBox(-1.2, -1.8, -25.2, 1.2, -0.7, -22.6, P.dark, 0.25);
+    for (const s of [-1, 1]) {
+      m.tube('z', [s * 0.75, -1.35, 0], 0.36, -22.6, -11.5, P.dark, hi ? 6 : 4, { caps: 'none' });
+      if (hi) m.tube('z', [s * 0.75, -1.35, 0], 0.5, -17.6, -16.6, P.metal, 6, { caps: 'none' });
+      if (hi) m.chamferBox(s * 0.75 - 0.45, -1.95, -11.6, s * 0.75 + 0.45, -0.95, -10.3, P.metal, 0.15);
+    }
+    if (hi) boltsX(m, P, 1.2, [[-1.25, -23.9]]);
+  });
   // luneta: anéis, tubo, objetiva, ocular, torres e tampas
+  dflt(B, 'optic', () => sniperDefaultScope(m, P, S, hi));
+  // ferrolho
+  sniperRest(m, P, S, hi, B);
+  attachAll(m, 'sniper', B, hi);
+}
+
+function sniperDefaultScope(m: MeshBuilder, P: Palette, S: number, hi: boolean) {
   const sy = 7.8, C: [number, number, number] = [0, sy, 0];
   for (const z of [-7.5, 0.4]) {
     m.chamferBox(-1.0, 4.88, z - 0.75, 1.0, 6.6, z + 0.75, P.metal, 0.2);
@@ -99,18 +151,30 @@ function sniper(m: MeshBuilder, hi: boolean) {
   m.tube('y', [0, 0, -3.6], 0.8, sy + 1.15, sy + 1.95, P.dark, S, { caps: 'end' });
   m.tube('x', [0, sy, -3.6], 0.75, 1.2, 2.2, P.dark, S, { caps: 'end' });
   m.tube('x', [0, sy, -3.6], 0.75, -1.2, -2.2, P.dark, S, { caps: 'end' });
-  // ferrolho
+}
+
+function sniperRest(m: MeshBuilder, P: Palette, S: number, hi: boolean, B: Build) {
   m.tube('z', [0, 2.4, 0], 1.15, 7.2, 8.6, P.metal, S, { caps: 'end' });
   if (hi) m.beam([1.7, 2.9, 5.2], [2.15, 1.7, 6.0], 0.22, P.metal, 0);
   m.chamferBox(1.85, 0.9, 5.6, 2.42, 1.9, 6.6, P.metal, 0.18);
   // carregador em bloco
-  m.chamferBox(-1.35, -5.4, -5.4, 1.35, -1, -1.8, P.dark, 0.3);
-  m.chamferBox(-1.5, -5.9, -5.6, 1.5, -5.4, -1.6, P.metal, 0.15);
-  if (hi) insetsX(m, 1.35, [[-3.2, -3.6]], MeshBuilder.rect(2.2, 2.6), shade(P.dark, 0.7));
+  dflt(B, 'magazine', () => {
+    m.chamferBox(-1.35, -5.4, -5.4, 1.35, -1, -1.8, P.dark, 0.3);
+    m.chamferBox(-1.5, -5.9, -5.6, 1.5, -5.4, -1.6, P.metal, 0.15);
+    if (hi) insetsX(m, 1.35, [[-3.2, -3.6]], MeshBuilder.rect(2.2, 2.6), shade(P.dark, 0.7));
+  });
   // guarda-mato, gatilho e punho com fita
   triggerGuard(m, P.metal, -1.7, 1.2, -1, -3.3, hi);
-  grip(m, [[-0.3, -1], [2.8, -1], [3.9, -6.3], [1.1, -6.7]], 1.1, P.body, P.accent, [-4.9, -2.3], hi);
+  gripB(m, { ...P, dark: P.body }, B, [[-0.3, -1], [2.8, -1], [3.9, -6.3], [1.1, -6.7]], 1.1, [-4.9, -2.3], hi);
+  if (hi) {
+    boltsX(m, P, 1.9, [[0.0, -24.4], [0.0, -18.6], [0.0, -12.8], [0.0, -7.6]]);
+    boltsX(m, P, 1.8, [[0.2, -3.4], [0.2, 5.0]]);
+  }
   // coronha esqueletizada com apoio de bochecha
+  dflt(B, 'stock', () => sniperStock(m, P, hi));
+}
+
+function sniperStock(m: MeshBuilder, P: Palette, hi: boolean) {
   m.chamferBox(-1.25, 2.2, 7.2, 1.25, 4.4, 19.5, P.body, 0.35);
   m.chamferBox(-1.15, 4.4, 10.5, 1.15, 5.5, 16.8, P.body, 0.3);
   m.prism('x', [[7.2, 0.6], [7.2, -1.0], [20, -5.6], [20, -3.9]], -1.0, 1.0, P.body);
@@ -121,8 +185,6 @@ function sniper(m: MeshBuilder, hi: boolean) {
   m.tapeBox('z', -1.25, 2.2, 8.4, 1.25, 4.4, 10.2, P.accent, hi ? 2 : 1);
   m.tapeBox('y', -1.0, -3.6, 18.2, 1.0, -1.4, 19.8, P.accent, hi ? 2 : 1);
   if (hi) {
-    boltsX(m, P, 1.9, [[0.0, -24.4], [0.0, -18.6], [0.0, -12.8], [0.0, -7.6]]);
-    boltsX(m, P, 1.8, [[0.2, -3.4], [0.2, 5.0]]);
     boltsX(m, P, 1.15, [[4.95, 12.0], [4.95, 15.4]]);
     boltsX(m, P, 1.25, [[3.3, 18.7]]);
     m.bolt([0, -5.9, -3.6], '-y', 0.28, P.bolt);
@@ -130,7 +192,7 @@ function sniper(m: MeshBuilder, hi: boolean) {
 }
 
 // ---------------------------------------------------------------- KESTREL AR (rifle)
-function rifle(m: MeshBuilder, hi: boolean) {
+function rifle(m: MeshBuilder, hi: boolean, B: Build = {}) {
   const P = PALETTES.rifle, S = sides(hi), lip = shade(P.body, 1.15);
   // caixa superior e inferior
   m.chamferBox(-1.6, 0.8, -8.5, 1.6, 3.6, 5.6, P.dark, 0.35);
@@ -147,22 +209,29 @@ function rifle(m: MeshBuilder, hi: boolean) {
   }
   m.tapeBox('z', -1.75, -0.7, -11.6, 1.75, 3.6, -9.6, P.accent, hi ? 2 : 1);
   // cano e quebra-chamas
-  m.tube('z', [0, 2, 0], 0.62, -25, -31, P.metal, S, { caps: 'none' });
-  m.tube('z', [0, 2, 0], 0.88, -31, -34, P.metal, 6);
-  if (hi) {
-    insetsX(m, 0.762, [[2, -32.5]], MeshBuilder.rect(1.6, 0.3), P.hole);
-    m.inset([0, 2, -34], '-z', MeshBuilder.hex(0.32, 1), P.hole);
-  }
+  barrelAndMuzzle(m, 'rifle', B, P.metal, hi, (z1) => {
+    m.tube('z', [0, 2, 0], 0.88, z1, z1 - 3, P.metal, 6);
+    if (hi) {
+      insetsX(m, 0.762, [[2, z1 - 1.5]], MeshBuilder.rect(1.6, 0.3), P.hole);
+      m.inset([0, 2, z1 - 3], '-z', MeshBuilder.hex(0.32, 1), P.hole);
+    }
+  });
   // massa e alça de mira rebatíveis (de pé): a ponta da massa fica no centro do furo da alça (ADS)
   const SY = WEAPON_REFS.rifle.sight!.y;
   m.chamferBox(-0.7, 4.3, -24.2, 0.7, 4.9, -22.6, P.metal, 0.15);
-  m.prism('x', [[-23.9, 4.9], [-23.1, 4.9], [-23.38, SY], [-23.62, SY]], -0.18, 0.18, P.metal);
-  for (const s of [-1, 1]) m.box(s > 0 ? 0.42 : -0.64, 4.9, -23.9, s > 0 ? 0.64 : -0.42, SY + 0.3, -23.1, P.metal);
+  if (B.optic) m.chamferBox(-0.6, 4.9, -24.0, 0.6, 5.25, -21.8, P.metal, 0.1); // com mira: massa rebatida
+  else {
+    m.prism('x', [[-23.9, 4.9], [-23.1, 4.9], [-23.38, SY], [-23.62, SY]], -0.18, 0.18, P.metal);
+    for (const s of [-1, 1]) m.box(s > 0 ? 0.42 : -0.64, 4.9, -23.9, s > 0 ? 0.64 : -0.42, SY + 0.3, -23.1, P.metal);
+  }
   m.chamferBox(-0.75, 4.3, 1.8, 0.75, 4.9, 3.8, P.metal, 0.15);
-  // alça de abertura: moldura vazada (dá para ver a massa pelo furo)
-  m.box(-0.65, 4.9, 2.6, 0.65, SY - 0.25, 3.2, P.metal);
-  m.box(-0.65, SY + 0.25, 2.6, 0.65, SY + 0.6, 3.2, P.metal);
-  for (const s of [-1, 1]) m.box(s > 0 ? 0.22 : -0.65, SY - 0.25, 2.6, s > 0 ? 0.65 : -0.22, SY + 0.25, 3.2, P.metal);
+  // alça de abertura: moldura vazada (dá para ver a massa pelo furo); com mira, fica rebatida
+  if (B.optic) m.chamferBox(-0.65, 4.9, 2.0, 0.65, 5.3, 3.8, P.metal, 0.1);
+  else {
+    m.box(-0.65, 4.9, 2.6, 0.65, SY - 0.25, 3.2, P.metal);
+    m.box(-0.65, SY + 0.25, 2.6, 0.65, SY + 0.6, 3.2, P.metal);
+    for (const s of [-1, 1]) m.box(s > 0 ? 0.22 : -0.65, SY - 0.25, 2.6, s > 0 ? 0.65 : -0.22, SY + 0.25, 3.2, P.metal);
+  }
   // alavanca de manejo, assistente e janela de ejeção
   m.chamferBox(-1.9, 3.0, 5.6, 1.9, 3.55, 6.6, P.metal, 0.15);
   if (hi) {
@@ -170,71 +239,87 @@ function rifle(m: MeshBuilder, hi: boolean) {
     m.inset([1.6, 2.2, -1.5], '+x', MeshBuilder.rect(3.4, 1.0), P.hole, lip);
   }
   // carregador curvo facetado
-  const back: P2[] = [], front: P2[] = [];
-  for (let i = 0; i <= 4; i++) {
-    const t = i / 4, y = -1.5 - 7.3 * t, dz = -2.5 * t * t;
-    back.push([-2.6 + dz, y]); front.push([-5.8 + dz, y]);
-  }
-  m.prism('x', [...back, ...front.reverse()], -1.05, 1.05, P.dark);
-  m.prism('x', [[-4.9, -8.6], [-8.5, -8.6], [-8.6, -9.3], [-4.8, -9.3]], -1.2, 1.2, P.metal);
-  if (hi) insetsX(m, 1.05, [[-5.0, -5.1]], MeshBuilder.rect(1.8, 4.6), shade(P.dark, 0.75));
+  dflt(B, 'magazine', () => {
+    const back: P2[] = [], front: P2[] = [];
+    for (let i = 0; i <= 4; i++) {
+      const t = i / 4, y = -1.5 - 7.3 * t, dz = -2.5 * t * t;
+      back.push([-2.6 + dz, y]); front.push([-5.8 + dz, y]);
+    }
+    m.prism('x', [...back, ...front.reverse()], -1.05, 1.05, P.dark);
+    m.prism('x', [[-4.9, -8.6], [-8.5, -8.6], [-8.6, -9.3], [-4.8, -9.3]], -1.2, 1.2, P.metal);
+    if (hi) insetsX(m, 1.05, [[-5.0, -5.1]], MeshBuilder.rect(1.8, 4.6), shade(P.dark, 0.75));
+  });
   // punho, guarda-mato
   triggerGuard(m, P.metal, -2.3, 1.0, -1.5, -3.5, hi);
-  grip(m, [[-0.2, -1.4], [2.6, -1.4], [3.6, -6.2], [1.0, -6.6]], 1.05, P.dark, P.accent, [-5.4, -3.0], hi);
+  gripB(m, P, B, [[-0.2, -1.4], [2.6, -1.4], [3.6, -6.2], [1.0, -6.6]], 1.05, [-5.4, -3.0], hi);
   // tubo e coronha ajustável
-  m.tube('z', [0, 2.0, 0], 0.72, 5.6, 12.5, P.metal, S);
-  m.prism('x', [[8.6, 3.5], [16, 3.5], [16, -3.6], [14.6, -3.6], [9.4, 0.6], [8.6, 0.6]], -1.3, 1.3, P.body);
-  m.chamferBox(-1.4, -3.8, 16, 1.4, 3.7, 16.9, P.metal, 0.35);
+  dflt(B, 'stock', () => {
+    m.tube('z', [0, 2.0, 0], 0.72, 5.6, 12.5, P.metal, S);
+    m.prism('x', [[8.6, 3.5], [16, 3.5], [16, -3.6], [14.6, -3.6], [9.4, 0.6], [8.6, 0.6]], -1.3, 1.3, P.body);
+    m.chamferBox(-1.4, -3.8, 16, 1.4, 3.7, 16.9, P.metal, 0.35);
+    if (hi) {
+      m.box(-0.35, 0.3, 10, 0.35, 1.2, 12.5, P.metal);
+      insetsX(m, 1.3, [[1.6, 13.4]], MeshBuilder.rect(2.6, 1.4), P.hole, lip);
+      boltsX(m, P, 1.3, [[2.6, 14.8]]);
+    }
+  });
   if (hi) {
-    m.box(-0.35, 0.3, 10, 0.35, 1.2, 12.5, P.metal);
-    insetsX(m, 1.3, [[1.6, 13.4]], MeshBuilder.rect(2.6, 1.4), P.hole, lip);
     boltsX(m, P, 1.75, [[0.0, -23.2], [0.0, -17.2], [0.0, -12.2]]);
     boltsX(m, P, 1.5, [[-0.4, -4.6], [-0.4, 2.8]]);
-    boltsX(m, P, 1.3, [[2.6, 14.8]]);
   }
+  attachAll(m, 'rifle', B, hi);
 }
 
 // ---------------------------------------------------------------- HORNET (SMG)
-function smg(m: MeshBuilder, hi: boolean) {
+function smg(m: MeshBuilder, hi: boolean, B: Build = {}) {
   const P = PALETTES.smg, lip = shade(P.body, 1.12);
   m.chamferBox(-1.8, -1, -12, 1.8, 4.0, 4, P.dark, 0.4);
   m.chamferBox(-1.55, 4.0, -11.2, 1.55, 4.5, 3.2, P.body, 0.2);
   m.rail(0, 4.5, -9.5, 0.5, 1.4, P.metal, '+y', { teeth: hi, pitch: STYLE.railPitch });
   // mira de ponto vermelho (red dot) sobre o trilho: moldura vazada e o ponto no centro (ADS)
   const RD = WEAPON_REFS.smg.sight!;
-  m.chamferBox(-0.75, 5.16, RD.frontZ - 0.3, 0.75, 5.5, RD.rearZ, P.dark, 0.12);
-  for (const s of [-1, 1]) m.box(s > 0 ? 0.55 : -0.78, 5.5, RD.frontZ - 0.3, s > 0 ? 0.78 : -0.55, RD.y + 0.75, RD.frontZ + 0.5, P.dark);
-  m.box(-0.78, RD.y + 0.55, RD.frontZ - 0.3, 0.78, RD.y + 0.8, RD.frontZ + 0.5, P.dark);
-  for (const s of [-1, 1]) m.box(s > 0 ? 0.55 : -0.78, 5.5, RD.rearZ - 0.4, s > 0 ? 0.78 : -0.55, RD.y + 0.6, RD.rearZ, P.dark);
-  m.box(-0.06, RD.y - 0.06, RD.frontZ - 0.02, 0.06, RD.y + 0.06, RD.frontZ + 0.02, 0xff3b30, 1);
+  dflt(B, 'optic', () => {
+    m.chamferBox(-0.75, 5.16, RD.frontZ - 0.3, 0.75, 5.5, RD.rearZ, P.dark, 0.12);
+    for (const s of [-1, 1]) m.box(s > 0 ? 0.55 : -0.78, 5.5, RD.frontZ - 0.3, s > 0 ? 0.78 : -0.55, RD.y + 0.75, RD.frontZ + 0.5, P.dark);
+    m.box(-0.78, RD.y + 0.55, RD.frontZ - 0.3, 0.78, RD.y + 0.8, RD.frontZ + 0.5, P.dark);
+    for (const s of [-1, 1]) m.box(s > 0 ? 0.55 : -0.78, 5.5, RD.rearZ - 0.4, s > 0 ? 0.78 : -0.55, RD.y + 0.6, RD.rearZ, P.dark);
+    m.box(-0.06, RD.y - 0.06, RD.frontZ - 0.02, 0.06, RD.y + 0.06, RD.frontZ + 0.02, 0xff3b30, 1);
+  });
   // capa do cano com respiros
   m.chamferBox(-1.0, 0.85, -17.4, 1.0, 3.15, -12, P.body, 0.4);
   if (hi) insetsX(m, 1.0, [[2.0, -16.4], [2.0, -14.9], [2.0, -13.4]], MeshBuilder.hex(0.36), P.hole, lip);
-  m.tube('z', [0, 2, 0], 0.5, -17.4, -19.2, P.metal, 6, { caps: 'none' });
-  m.tube('z', [0, 2, 0], 0.72, -19.2, -20.6, P.metal, 6);
-  if (hi) m.inset([0, 2, -20.6], '-z', MeshBuilder.hex(0.28, 1), P.hole);
+  barrelAndMuzzle(m, 'smg', B, P.metal, hi, (z1) => {
+    m.tube('z', [0, 2, 0], 0.72, z1, z1 - 1.4, P.metal, 6);
+    if (hi) m.inset([0, 2, z1 - 1.4], '-z', MeshBuilder.hex(0.28, 1), P.hole);
+  });
   // carregador reto longo com fita
   m.chamferBox(-1.15, -2.4, -6.9, 1.15, -1, -3.9, P.dark, 0.25);
-  m.chamferBox(-0.9, -10.6, -6.6, 0.9, -2.6, -4.2, P.metal, 0.25);
-  m.chamferBox(-1.05, -11.4, -6.8, 1.05, -10.6, -4.0, P.dark, 0.15);
-  m.tapeBox('y', -0.9, -8.6, -6.6, 0.9, -7.0, -4.2, P.accent, hi ? 2 : 1);
-  if (hi) insetsX(m, 0.9, [[-4.6, -5.4]], MeshBuilder.rect(1.4, 3.0), shade(P.metal, 1.6));
+  dflt(B, 'magazine', () => {
+    m.chamferBox(-0.9, -10.6, -6.6, 0.9, -2.6, -4.2, P.metal, 0.25);
+    m.chamferBox(-1.05, -11.4, -6.8, 1.05, -10.6, -4.0, P.dark, 0.15);
+    m.tapeBox('y', -0.9, -8.6, -6.6, 0.9, -7.0, -4.2, P.accent, hi ? 2 : 1);
+    if (hi) insetsX(m, 0.9, [[-4.6, -5.4]], MeshBuilder.rect(1.4, 3.0), shade(P.metal, 1.6));
+  });
   // empunhadura frontal
-  const fg: P2[] = [[-11.2, -1], [-9.6, -1], [-9.8, -4.0], [-11.0, -4.0]];
-  m.prism('x', fg, -0.75, 0.75, P.body);
-  m.tapeProfileX(fg, -3.4, -2.0, -0.75, 0.75, P.accent, hi ? 2 : 1);
-  m.chamferBox(-0.85, -4.4, -11.2, 0.85, -4.0, -9.6, P.metal, 0.15);
+  dflt(B, 'underbarrel', () => {
+    const fg: P2[] = [[-11.2, -1], [-9.6, -1], [-9.8, -4.0], [-11.0, -4.0]];
+    m.prism('x', fg, -0.75, 0.75, P.body);
+    m.tapeProfileX(fg, -3.4, -2.0, -0.75, 0.75, P.accent, hi ? 2 : 1);
+    m.chamferBox(-0.85, -4.4, -11.2, 0.85, -4.0, -9.6, P.metal, 0.15);
+  });
   // punho e guarda-mato
   triggerGuard(m, P.metal, -2.0, 1.0, -1, -3.0, hi);
-  grip(m, [[-0.2, -1], [2.6, -1], [3.5, -6.2], [0.9, -6.5]], 1.05, P.dark, P.accent, [-5.2, -2.8], hi);
+  gripB(m, P, B, [[-0.2, -1], [2.6, -1], [3.5, -6.2], [0.9, -6.5]], 1.05, [-5.2, -2.8], hi);
   // coronha de arame (vigas finas)
   m.chamferBox(-1.25, 0.2, 4, 1.25, 3.5, 5.2, P.metal, 0.25);
-  for (const s of [-1.05, 1.05]) {
-    m.beam([s, 3.1, 5.2], [s, 2.9, 12.4], 0.22, P.metal, 0);
-    m.beam([s, 0.5, 5.2], [s, -0.2, 12.4], 0.22, P.metal, 0);
-    if (hi) m.beam([s, 0.7, 6.0], [s, 2.7, 11.6], 0.2, P.metal, 0);
-  }
-  m.chamferBox(-1.3, -0.6, 12.2, 1.3, 3.4, 13.0, P.metal, 0.2);
+  dflt(B, 'stock', () => {
+    for (const s of [-1.05, 1.05]) {
+      m.beam([s, 3.1, 5.2], [s, 2.9, 12.4], 0.22, P.metal, 0);
+      m.beam([s, 0.5, 5.2], [s, -0.2, 12.4], 0.22, P.metal, 0);
+      if (hi) m.beam([s, 0.7, 6.0], [s, 2.7, 11.6], 0.2, P.metal, 0);
+    }
+    m.chamferBox(-1.3, -0.6, 12.2, 1.3, 3.4, 13.0, P.metal, 0.2);
+  });
   // alavanca de manejo (lado esquerdo), seletor e janela de ejeção
   m.chamferBox(-2.25, 3.0, -9.5, -1.8, 3.7, -8.3, P.metal, 0.12);
   if (hi) {
@@ -245,29 +330,33 @@ function smg(m: MeshBuilder, hi: boolean) {
     boltsX(m, P, 1.0, [[1.25, -16.9]], 0.2);
     boltsX(m, P, 1.55, [[4.25, -10.4], [4.25, 2.4]], 0.2);
   }
+  attachAll(m, 'smg', B, hi);
 }
 
 // ---------------------------------------------------------------- BREAKER-12 (shotgun)
-function shotgun(m: MeshBuilder, hi: boolean) {
+function shotgun(m: MeshBuilder, hi: boolean, B: Build = {}) {
   const P = PALETTES.shotgun, S = sides(hi), lip = shade(P.body, 1.08);
   m.chamferBox(-1.8, -1, -12, 1.8, 4.1, 4, P.body, 0.45);
   if (hi) m.inset([1.8, 2.4, -5], '+x', MeshBuilder.rect(4.6, 1.3), P.hole, lip);
   // cano com faixa de ventilação, massa e anel da boca
-  m.tube('z', [0, 3, 0], 1.0, -12, -36.6, P.metal, S, { caps: 'none' });
-  m.tube('z', [0, 3, 0], 1.18, -36.6, -37.6, P.metal, S);
-  if (hi) m.inset([0, 3, -37.6], '-z', MeshBuilder.hex(0.6, 1), P.hole);
-  m.box(-0.32, 3.9, -36.4, 0.32, 4.3, -12, P.metal);
-  m.tube('y', [0, 0, -36.0], 0.22, 4.3, WEAPON_REFS.shotgun.sight!.y, P.bolt, 6);
+  const bz = barrelAndMuzzle(m, 'shotgun', B, P.metal, hi, (z1) => {
+    m.tube('z', [0, 3, 0], 1.18, z1, z1 - 1, P.metal, S);
+    if (hi) m.inset([0, 3, z1 - 1], '-z', MeshBuilder.hex(0.6, 1), P.hole);
+  }).z1;
+  m.box(-0.32, 3.9, bz + 0.2, 0.32, 4.3, -12, P.metal);
+  m.tube('y', [0, 0, bz + 0.6], 0.22, 4.3, WEAPON_REFS.shotgun.sight!.y, P.bolt, 6);
   // alça "ghost ring": anel vazado alinhado com a massa (ADS)
   const GY = WEAPON_REFS.shotgun.sight!.y;
   m.chamferBox(-0.7, 4.1, 1.5, 0.7, 4.35, 3.2, P.metal, 0.08);
   m.box(-0.6, GY + 0.3, 2.4, 0.6, GY + 0.55, 3.2, P.metal);
   for (const s of [-1, 1]) m.box(s > 0 ? 0.2 : -0.6, 4.35, 2.4, s > 0 ? 0.6 : -0.2, GY + 0.3, 3.2, P.metal);
-  m.tapeTube('z', [0, 3, 0], 1.0, -30.4, -28.4, P.accent, hi ? 2 : 1, S);
-  // tubo do carregador e abraçadeira
-  m.tube('z', [0, 0.95, 0], 0.8, -12, -33.4, P.metal, S, { caps: 'none' });
-  m.tube('z', [0, 0.95, 0], 0.9, -33.4, -34.4, P.metal, S);
-  m.chamferBox(-1.0, 0.3, -33.0, 1.0, 3.9, -31.8, P.metal, 0.3);
+  if (!B.barrel) m.tapeTube('z', [0, 3, 0], 1.0, -30.4, -28.4, P.accent, hi ? 2 : 1, S);
+  // tubo do carregador e abraçadeira (o tubo acompanha o cano; estendido vai até a boca)
+  const tz = B.magazine === 'magExt' ? bz + 0.4 : Math.min(-20, bz + 3.2);
+  m.tube('z', [0, 0.95, 0], 0.8, -12, tz, P.metal, S, { caps: 'none' });
+  dflt(B, 'magazine', () => m.tube('z', [0, 0.95, 0], 0.9, tz, tz - 1, P.metal, S));
+  if (B.magazine === 'magExt') { m.tube('z', [0, 0.95, 0], 0.9, tz, tz - 0.6, P.accent, S); m.tapeTube('z', [0, 0.95, 0], 0.8, tz + 4, tz + 2.6, P.accent, 1, S); }
+  m.chamferBox(-1.0, 0.3, tz + 0.4, 1.0, 3.9, tz + 1.6, P.metal, 0.3);
   // telha com ranhuras
   m.chamferBox(-1.9, -0.7, -27.5, 1.9, 2.4, -17, P.dark, 0.55);
   if (hi) for (let i = 0; i < 6; i++) { const z = -26.3 + i * 1.6; m.box(-1.96, -0.76, z, 1.96, 1.6, z + 0.45, shade(P.dark, 0.62)); }
@@ -281,20 +370,22 @@ function shotgun(m: MeshBuilder, hi: boolean) {
   if (hi) m.box(-2.76, 1.9, -10.4, -2.0, 2.3, -3.2, P.dark);
   // punho, coronha e soleira
   triggerGuard(m, P.metal, -2.2, 1.2, -1, -3.2, hi);
-  grip(m, [[-0.2, -1], [2.8, -1], [3.8, -6.0], [1.2, -6.3]], 1.1, P.dark, P.accent, [-5.0, -2.4], hi);
-  m.prism('x', [[4, 4.1], [17.4, 3.3], [17.4, -4.6], [15.8, -4.6], [5.6, -1.0], [4, -1.0]], -1.4, 1.4, P.dark);
-  m.chamferBox(-1.5, -4.9, 17.4, 1.5, 3.6, 18.6, P.metal, 0.4);
+  gripB(m, P, B, [[-0.2, -1], [2.8, -1], [3.8, -6.0], [1.2, -6.3]], 1.1, [-5.0, -2.4], hi);
+  dflt(B, 'stock', () => {
+    m.prism('x', [[4, 4.1], [17.4, 3.3], [17.4, -4.6], [15.8, -4.6], [5.6, -1.0], [4, -1.0]], -1.4, 1.4, P.dark);
+    m.chamferBox(-1.5, -4.9, 17.4, 1.5, 3.6, 18.6, P.metal, 0.4);
+    if (hi) { insetsX(m, 1.4, [[1.4, 11.5]], MeshBuilder.rect(6, 0.3), shade(P.dark, 0.6)); boltsX(m, P, 1.4, [[2.4, 16.2]]); }
+  });
+  attachAll(m, 'shotgun', B, hi);
   if (hi) {
-    insetsX(m, 1.4, [[1.4, 11.5]], MeshBuilder.rect(6, 0.3), shade(P.dark, 0.6));
-    boltsX(m, P, 1.0, [[2.0, -32.4]], 0.2);
+    boltsX(m, P, 1.0, [[2.0, tz + 1.0]], 0.2);
     m.bolt([1.8, 0.0, -11.3], '+x', STYLE.boltR, P.bolt); m.bolt([-1.8, 0.0, -11.3], '-x', STYLE.boltR, P.bolt);
     boltsX(m, P, 1.8, [[0.0, 2.6]]);
-    boltsX(m, P, 1.4, [[2.4, 16.2]]);
   }
 }
 
 // ---------------------------------------------------------------- VEX-9 (pistola)
-function pistol(m: MeshBuilder, hi: boolean) {
+function pistol(m: MeshBuilder, hi: boolean, B: Build = {}) {
   const P = PALETTES.pistol, ser = shade(P.body, 0.75);
   // ferrolho com serrilhas em blocos
   m.chamferBox(-1.42, 1.2, -14.4, 1.42, 4.0, 2.4, P.body, 0.55);
@@ -306,8 +397,8 @@ function pistol(m: MeshBuilder, hi: boolean) {
     }
     m.inset([0.25, 4.0, -4.5], '+y', MeshBuilder.rect(3.2, 1.6), P.hole, shade(P.body, 1.15));
   }
-  m.tube('z', [0, 2.5, 0], 0.6, -14.4, -14.9, P.metal, 8);
-  if (hi) m.inset([0, 2.5, -14.9], '-z', MeshBuilder.hex(0.3, 1), P.hole);
+  const pb = barrelAndMuzzle(m, 'pistol', B, P.metal, hi, () => {});
+  if (!B.muzzle && hi) m.inset([0, 2.5, pb.z1], '-z', MeshBuilder.hex(0.3, 1), P.hole);
   // miras de ferro
   m.chamferBox(-0.26, 4.0, -13.8, 0.26, WEAPON_REFS.pistol.sight!.y, -12.9, P.dark, 0.08);
   m.chamferBox(-0.85, 4.0, 0.6, 0.85, 4.4, 1.9, P.dark, 0.1);
@@ -322,8 +413,9 @@ function pistol(m: MeshBuilder, hi: boolean) {
   if (hi) m.prism('x', [[-3.2, -0.5], [-2.7, -0.5], [-2.2, -1.9], [-2.6, -2.0]], -0.2, 0.2, P.metal);
   else m.box(-0.2, -1.9, -3.2, 0.2, -0.5, -2.6, P.metal);
   // punho com fita, base do carregador, rabo de castor e cão
-  grip(m, [[-0.8, -0.5], [2.4, -0.5], [3.3, -6.6], [0.3, -6.9]], 1.25, P.dark, P.accent, [-5.2, -2.6], hi);
-  m.chamferBox(-1.2, -7.4, 0.1, 1.2, -6.8, 3.3, P.metal, 0.15);
+  gripB(m, P, B, [[-0.8, -0.5], [2.4, -0.5], [3.3, -6.6], [0.3, -6.9]], 1.25, [-5.2, -2.6], hi);
+  dflt(B, 'magazine', () => m.chamferBox(-1.2, -7.4, 0.1, 1.2, -6.8, 3.3, P.metal, 0.15));
+  attachAll(m, 'pistol', B, hi);
   m.chamferBox(-1.0, -0.5, 1.8, 1.0, 0.6, 3.4, P.dark, 0.25);
   if (hi) {
     m.chamferBox(-0.35, 1.6, 2.4, 0.35, 3.4, 3.1, P.metal, 0.1);
@@ -516,19 +608,27 @@ function farPickup(m: MeshBuilder, kind: PickupKind) {
 
 // ---------------------------------------------------------------- armas: entrada
 
-export function weaponGeometry(id: WeaponId, lod: Lod = 'view'): MeshBuilder {
+/**
+ * Arma com o build (rodada 12b). A versão 'far' ignora o build (só a silhueta). `parts` recebe os
+ * nomes das peças desenhadas ('default:<categoria>' e 'att:<id>').
+ */
+export function weaponGeometry(id: WeaponId, lod: Lod = 'view', build: Build = {}, parts?: string[]): MeshBuilder {
   const m = new MeshBuilder(), hi = lod === 'view';
   if (lod === 'far') { farWeapon(m, id); return m; }
   if (!hi) m.minChamfer = 0.38; // longe só os chanfros grandes contam
+  const B = isProgWeapon(id) ? build : {};
+  LOG = parts ?? null;
+  try {
   switch (id) {
-    case 'sniper': sniper(m, hi); break;
-    case 'rifle': rifle(m, hi); break;
-    case 'smg': smg(m, hi); break;
-    case 'shotgun': shotgun(m, hi); break;
-    case 'pistol': pistol(m, hi); break;
+    case 'sniper': sniper(m, hi, B); break;
+    case 'rifle': rifle(m, hi, B); break;
+    case 'smg': smg(m, hi, B); break;
+    case 'shotgun': shotgun(m, hi, B); break;
+    case 'pistol': pistol(m, hi, B); break;
     case 'taser': taser(m, hi); break;
     case 'knife': butterflyBlade(m); butterflyHandle(m, 1, hi); butterflyHandle(m, -1, hi); break;
   }
+  } finally { LOG = null; }
   return m;
 }
 

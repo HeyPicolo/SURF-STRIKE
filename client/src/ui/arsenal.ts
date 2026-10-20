@@ -5,7 +5,9 @@
 // =============================================================
 import type { Renderer, GpuMesh } from '../render/Renderer';
 import { trs, child, mat4 } from '../render/glm';
-import { MODEL_LIST, Lod, ModelEntry } from '../entities/geometry';
+import { MODEL_LIST, Lod, ModelEntry, weaponGeometry } from '../entities/geometry';
+import { Build, sanitizeBuild } from '../../../shared/sim/loadout';
+import type { WeaponId } from '../../../shared/config/weapons';
 import { TRI_BUDGET, LOD_FAR_DIST } from '../entities/style';
 import { CHAR_BUDGET } from '../entities/characters';
 
@@ -17,6 +19,8 @@ export class Arsenal {
   lod: Lod = 'view';
   /** pausa a rotação (screenshots) e usa este ângulo */
   fixedYaw: number | null = null;
+  /** attachments mostrados nas armas (rodada 12b; o gunsmith da 12c usa o mesmo) */
+  build: Build = {};
   private time = 0;
   private cache = new Map<string, { mesh: GpuMesh; tris: number; center: [number, number, number]; size: number }>();
   private el: HTMLDivElement | null = null;
@@ -68,6 +72,8 @@ export class Arsenal {
   }
 
   setLod(l: Lod) { this.lod = l; this.updateInfo(); }
+  /** Mostra as armas com estes attachments ({} = padrão). */
+  setBuild(b: Build) { this.build = { ...b }; this.updateInfo(); }
   /** Próxima versão disponível do modelo atual (detalhado → simplificado → longe). */
   toggleLod() { const ls = this.entry.lods; this.setLod(ls[(ls.indexOf(this.curLod()) + 1) % ls.length]); }
   /** Versão mostrada: a escolhida, se o modelo tiver; senão a principal dele. */
@@ -75,10 +81,12 @@ export class Arsenal {
 
   /** Modelo atual (cria a malha uma vez). */
   current() {
-    const e = this.entry, lod = this.curLod(), key = `${e.id}:${lod}`;
+    const e = this.entry, lod = this.curLod();
+    const build = e.kind === 'weapon' ? sanitizeBuild(e.id as WeaponId, this.build) : {}, withBuild = Object.keys(build).length > 0;
+    const key = `${e.id}:${lod}` + (withBuild ? ':' + JSON.stringify(build) : '');
     let c = this.cache.get(key);
     if (!c) {
-      const mb = e.build(lod), b = mb.bounds();
+      const mb = withBuild ? weaponGeometry(e.id as WeaponId, lod, build) : e.build(lod), b = mb.bounds();
       c = {
         mesh: this.r.createMesh(mb.toArray()), tris: mb.triCount,
         center: [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2],
@@ -91,7 +99,7 @@ export class Arsenal {
 
   info() {
     const e = this.entry, c = this.current();
-    return { idx: this.idx, count: MODEL_LIST.length, id: e.id, name: e.name, kind: e.kind, lod: this.curLod(), lods: e.lods, tris: c.tris, budget: e.kind === 'character' ? CHAR_BUDGET[this.curLod() === 'far' ? 'far' : this.curLod() === 'world' ? 'mid' : 'near'] : TRI_BUDGET[e.kind === 'item' && this.curLod() !== 'far' ? 'world' : this.curLod()] };
+    return { idx: this.idx, count: MODEL_LIST.length, id: e.id, name: e.name, kind: e.kind, lod: this.curLod(), lods: e.lods, tris: c.tris, budget: e.kind === 'character' ? CHAR_BUDGET[this.curLod() === 'far' ? 'far' : this.curLod() === 'world' ? 'mid' : 'near'] : e.kind === 'weapon' && this.curLod() === 'world' && Object.keys(sanitizeBuild(e.id as WeaponId, this.build)).length ? TRI_BUDGET.worldBuild : TRI_BUDGET[e.kind === 'item' && this.curLod() !== 'far' ? 'world' : this.curLod()] };
   }
 
   private updateInfo() {

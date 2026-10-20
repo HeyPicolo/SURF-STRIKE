@@ -71,7 +71,7 @@ export const STYLE = {
 };
 
 /** Orçamento de triângulos por modelo: primeira pessoa, perto (chão / terceira pessoa) e longe. */
-export const TRI_BUDGET = { view: 2500, world: 600, far: 150 };
+export const TRI_BUDGET = { view: 2500, world: 600, far: 150, /** arma com attachments (rodada 12b) na versão perto; a 'view' continua ≤ 2500 */ worldBuild: 800 };
 
 /** Distância (u) a partir da qual itens do chão e armas na mão dos outros usam a versão "longe". */
 export const LOD_FAR_DIST = 1100;

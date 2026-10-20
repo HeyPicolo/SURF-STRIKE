@@ -153,7 +153,11 @@ export class Hud {
 
     // crosshair spread & scope
     const scoped = p.zoomed && ws && ws.id === 'sniper';
-    this.set('scope', 'class', scoped ? 'on' : '');
+    const optic = ws ? wdef(ws).fx.optic : undefined;
+    this.set('scope', 'class', scoped ? 'on' + (optic === 'thermal' ? ' thermal' : optic === 'scopeHigh' ? ' high' : '') : '');
+    // lunetas 2x/3x (rodada 12b): retícula e borda da lente na tela quando a mira está toda no olho
+    const magOptic = (optic === 'x2' || optic === 'x3') && p.adsK > 0.85;
+    this.set('optic', 'class', magOptic ? 'on ' + optic : '');
     // correndo (arma levantada) a mira some; volta quando a arma abaixa
     this.set('crosshair', 'style', scoped || p.weaponRaised ? 'none' : 'block', 'display');
     // ADS: a mira de quadril some enquanto a arma vem para a frente do olho

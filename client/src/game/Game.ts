@@ -15,9 +15,15 @@ import { Renderer, GpuMesh } from '../render/Renderer';
 import { trs, child, mat4, multiply, Mat4 } from '../render/glm';
 import { buildWorldMesh } from '../maps/worldMesh';
 import { buildCharacter, buildWeapon, buildPickup, buildGrenade, buildCube, buildButterflyParts, buildGloves, ButterflyParts, GloveMeshes, CharacterMeshes, TEAM_COLORS, PICKUP_COLORS } from '../entities/models';
-import { WEAPON_REFS, LOD_FAR_DIST } from '../entities/style';
+import { LOD_FAR_DIST } from '../entities/style';
 import { CHAR_LOD_DIST, CharLod } from '../entities/characters';
 import { adsPose, adsEase, VM_SCALE } from './adsPose';
+import { muzzleRef, laserRef } from '../entities/attachGeometry';
+import { weaponGeometry } from '../entities/geometry';
+import { buildKey, Build } from '../../../shared/sim/loadout';
+
+/** alcance do feixe do laser desenhado (u) */
+const LASER_RANGE = 2600;
 import { ViewPose, REST, butterflyDraw, butterflyInspect, gunInspect, nadeInspect, BF_DRAW_TIME, BF_INSPECT_TIME, GUN_INSPECT_TIME, NADE_INSPECT_TIME } from './viewAnims';
 import { Effects } from './effects';
 import { Input } from './input';
@@ -48,6 +54,10 @@ interface Assets {
   nades: Map<NadeKind, GpuMesh>;
   nadesView: Map<NadeKind, GpuMesh>;
   flash: GpuMesh;
+  /** feixe do laser (vermelho / infravermelho) */
+  laserRed: GpuMesh; laserIr: GpuMesh;
+  /** armas com build (rodada 12b): uma malha por arma + build + versão, criada quando aparece */
+  weaponBuilds: Map<string, GpuMesh>;
   gloves: GloveMeshes;
   butterfly: ButterflyParts;
 }
@@ -80,6 +90,8 @@ export class Game {
   private specIdx = 0;
   private swayX = 0; private swayY = 0; private lastYaw = 0; private lastPitch = 0;
   private flashTime = 0;
+  /** mira térmica da LONGBOW no zoom: inimigos destacados em calor */
+  private thermalOn = false;
   /** início da animação de sacar a faca borboleta (relógio do cliente) */
   private knifeDrawStart = -10;
   /** inspeção em andamento (tecla F) */
@@ -169,7 +181,7 @@ export class Game {
     for (const k of Object.keys(NADES) as NadeKind[]) { nades.set(k, buildGrenade(r, k, 'world')); nadesView.set(k, buildGrenade(r, k, 'view')); }
     this.assets = {
       maps: new Map(), chars: new Map(), weapons, weaponsView, weaponsFar, pickups, pickupsFar, nades, nadesView,
-      flash: buildCube(r, 0xffe3a0, 1), gloves: buildGloves(r), butterfly: buildButterflyParts(r),
+      flash: buildCube(r, 0xffe3a0, 1), laserRed: buildCube(r, 0xff3b30, 1), laserIr: buildCube(r, 0x6cff9a, 1), weaponBuilds: new Map(), gloves: buildGloves(r), butterfly: buildButterflyParts(r),
     };
   }
 
@@ -181,6 +193,16 @@ export class Game {
       m = { world: this.r.createMesh(wm.opaque), glass: this.r.createMesh(wm.glass), zones: this.r.createMesh(wm.zones) };
       this.assets!.maps.set(map.name, m);
     }
+    return m;
+  }
+
+  /** Malha da arma com o build (sem build = a malha base já carregada; 'far' ignora o build). */
+  weaponMesh(id: WeaponId, build: Build | undefined, lod: 'view' | 'world' | 'far'): GpuMesh {
+    const A = this.assets!;
+    if (lod === 'far' || !build || !Object.keys(build).length) return (lod === 'view' ? A.weaponsView : lod === 'far' ? A.weaponsFar : A.weapons).get(id)!;
+    const key = lod + ':' + buildKey(id, build);
+    let m = A.weaponBuilds.get(key);
+    if (!m) { m = this.r.createMesh(weaponGeometry(id, lod, build).toArray()); A.weaponBuilds.set(key, m); }
     return m;
   }
 
@@ -348,12 +370,15 @@ export class Game {
           const p = w.player(e.pid);
           if (!p) break;
           const isMe = p.id === viewer.id;
+          const cw = p.currentWeapon(), suppressed = !!cw && cw.id === e.weapon && !!wdef(cw).fx.suppressed;
           if (e.pellet === 0) {
             if (isMe) { this.flashTime = 0.05; this.viewKick = Math.min(1, this.viewKick + 0.5); }
             const [pan, g] = this.spatial(e.from);
             this.sfx.shot(e.weapon, isMe ? 0 : pan, isMe ? 1 : g);
-            if (!isMe) this.fx.emit(e.from.x, e.from.y - 6, e.from.z, 3, { color: 0xffd27a, size: 18, speed: 40, max: 0.06, add: true });
+            if (!isMe && !suppressed) this.fx.emit(e.from.x, e.from.y - 6, e.from.z, 3, { color: 0xffd27a, size: 18, speed: 40, max: 0.06, add: true });
           }
+          // supressor: sem tracer nem clarão para os outros (quem atira ainda vê o próprio tracer)
+          if (suppressed && !isMe) { if (e.hitWorld && e.normal) this.fx.impact(e.to.x, e.to.y, e.to.z, e.normal.x, e.normal.y, e.normal.z); break; }
           // tracer starts from the muzzle (approx.) for the viewer
           const from = isMe ? this.muzzleWorld(p) : e.from;
           if (e.weapon === 'taser') this.fx.arc(from, e.to, 0x7fe9ff);
@@ -588,6 +613,7 @@ export class Game {
     // com a Longbow no zoom a mira fica parada: sem balanço, sem pouso e sem recuo visual
     const wsView = viewer.currentWeapon();
     const scopedStatic = viewer.zoomed && !!wsView && wsView.id === 'sniper';
+    this.thermalOn = scopedStatic && wsView!.build?.optic === 'thermal';
     // ADS: a câmera balança bem menos mirando pela alça
     const adsK = wsView && wdef(wsView).ads ? adsEase(viewer.adsK) : 0;
     const bobAmt = (this.settings.viewBob && viewer.phys.onGround && !scopedStatic ? Math.min(1, hs / 250) : 0) * (1 - 0.75 * adsK);
@@ -856,7 +882,8 @@ export class Game {
       const n = p.phys.surfNormal; const rgt = rightFromYaw(p.yaw);
       roll = -(n.x * rgt.x + n.z * rgt.z) * 0.35;
     }
-    const opts = xr ? { xray: xr.xray, tint: xr.tint, tintMix: 1, emissive: 1, alpha: xr.alpha, cull: true } : (p.classId === 'berserker' && p.abilityActive > 0 ? { emissive: 0.25, tint: 0xff9f1c, tintMix: 0.25, cull: true } : { cull: true });
+    const thermal = !xr && this.thermalOn && p.team !== this.viewed().team;
+    const opts = xr ? { xray: xr.xray, tint: xr.tint, tintMix: 1, emissive: 1, alpha: xr.alpha, cull: true } : thermal ? { tint: 0xffd27a, tintMix: 0.85, emissive: 0.9, cull: true } : (p.classId === 'berserker' && p.abilityActive > 0 ? { emissive: 0.25, tint: 0xff9f1c, tintMix: 0.25, cull: true } : { cull: true });
     const root = trs(this.tmpM, pos.x, pos.y, pos.z, p.yaw, 0, roll);
     const hip = 32 - duck * 0.7;
     // legs
@@ -877,13 +904,27 @@ export class Game {
     if (wpn && !xr) {
       const handM = child(this.tmpM2, armR, -4, -24, 0, 0, -Math.PI / 2, 0, 0.9);
       const cam = this.r.cam, far = Math.hypot(pos.x - cam.x, pos.y - cam.y, pos.z - cam.z) > LOD_FAR_DIST;
-      r.drawMesh((far ? this.assets!.weaponsFar : this.assets!.weapons).get(wpn.id)!, handM, { cull: true });
+      r.drawMesh(this.weaponMesh(wpn.id, wpn.build, far ? 'far' : 'world'), handM, { cull: true });
+      const lp = laserRef(wpn.id, wpn.build);
+      if (lp && p.alive) this.drawLaser(p, handM, lp, wpn.build?.laser === 'laserIr');
     }
     // ability FX
     if (!xr && p.abilityActive > 0 && Math.random() < 0.5) {
       this.fx.emit(pos.x, pos.y + 40, pos.z, 1, { color: CLASSES[p.classId].color, size: 12, speed: 40, max: 0.5, add: true, grav: -50 });
     }
     if (!xr && p.tired > 0 && Math.random() < 0.3) this.fx.emit(pos.x, pos.y + 70, pos.z, 1, { color: 0x9b7bff, size: 8, speed: 15, max: 0.6, add: true });
+  }
+
+  /** Feixe do laser de outro jogador: da ponta do laser até onde a mira bate (visível para todos). */
+  private drawLaser(p: Player, handM: Float32Array, lp: [number, number, number], ir: boolean) {
+    const w = this.world!, [x, y, z] = lp, M = handM;
+    const from = new V3(M[0] * x + M[4] * y + M[8] * z + M[12], M[1] * x + M[5] * y + M[9] * z + M[13], M[2] * x + M[6] * y + M[10] * z + M[14]);
+    const dir = forwardFromAngles(p.yaw, p.pitch);
+    const tr = w.collision.traceRay(from, from.clone().addScaled(dir, LASER_RANGE), undefined, 'glass');
+    const len = Math.max(1, tr.fraction * LASER_RANGE), mid = from.clone().addScaled(dir, len / 2);
+    const mesh = ir ? this.assets!.laserIr : this.assets!.laserRed;
+    this.r.drawMesh(mesh, trs(this.tmpM3, mid.x, mid.y, mid.z, p.yaw, p.pitch, 0, 0.6, 0.6, len), { alpha: 0.6 });
+    if (tr.fraction < 1) { const e = from.clone().addScaled(dir, len - 1); this.r.drawMesh(mesh, trs(this.tmpM3, e.x, e.y, e.z, 0, 0, 0, 2.2), {}); }
   }
 
   /** Tecla F: inspeciona a arma na mão (só visual). */
@@ -958,7 +999,7 @@ export class Game {
     const pose = this.viewPose(p, isKnife);
     x += pose.ox; y += pose.oy; z += pose.oz; yawO += pose.yaw; pitchO += pose.pitch; rollO += pose.roll;
     // ADS: leva a linha de visada do modelo para o centro da tela; balanço, sway e recuo visual bem menores
-    const adsT = ws && !isKnife ? adsPose(ws.id) : null;
+    const adsT = ws && !isKnife ? adsPose(ws.id, ws.build) : null;
     if (adsT && p.adsK > 0) {
       const k = adsEase(p.adsK);
       const ax = adsT.x + this.swayX * 0.08 + bx * 0.08, ay = adsT.y - this.swayY * 0.08 - by * 0.08, az = adsT.z + kick * 0.8;
@@ -978,13 +1019,13 @@ export class Game {
       r.drawMesh(bf.bite, child(this.tmpM2, m, 0, 0, 0, 0, pose.bite, 0), C);
       r.drawMesh(this.assets!.gloves.knife, m, C);
     } else if (ws) {
-      r.drawMesh(this.assets!.weaponsView.get(ws.id)!, m, { cull: true });
+      r.drawMesh(this.weaponMesh(ws.id, ws.build, 'view'), m, { cull: true });
       r.drawMesh(this.assets!.gloves.gun, m, { cull: true });
       // muzzle flash
       if (this.flashTime > 0 && !isKnife) {
         this.flashTime -= dt;
-        const mz = WEAPON_REFS[ws.id as Exclude<WeaponId, 'knife'>].muzzle;
-        const s = 3 + Math.random() * 3;
+        const mz = muzzleRef(ws.id, ws.build);
+        const s = (wdef(ws).fx.suppressed ? 0.8 : 3) + Math.random() * (wdef(ws).fx.suppressed ? 0.8 : 3);
         r.drawMesh(this.assets!.flash, child(this.tmpM2, m, 0, mz.y, mz.z - 2, Math.random() * 3, Math.random() * 3, Math.random() * 3, s, s, s * 2));
       }
     }
