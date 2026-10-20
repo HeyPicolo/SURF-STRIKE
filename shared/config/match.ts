@@ -130,7 +130,9 @@ export const BOT_HITRATE: Record<BotDifficulty, Record<'short' | 'medium' | 'lon
 export const BOT_BENCH_DIST = { short: 400, medium: 1200, long: 2400 };
 
 /** Audição dos bots (u): tiros, pulos/pousos e passos de quem corre. */
-export const BOT_HEARING = { shot: 3200, jump: 900, step: 650 };
+export const BOT_HEARING = { shot: 3200, jump: 900, step: 650, /** tiro com silenciador (rodada 12) */ shotSuppressed: 1100 };
+/** Laser visível (rodada 12): o feixe denuncia o atirador — os bots o notam mais longe e fora do campo de visão. */
+export const BOT_LASER = { viewMul: 1.3, anyAngle: true };
 
 export const BOT_NAMES = [
   'n0va', 'driftking', 'Ksenia', 'tobyy', 'slipstream', 'Garrafão', 'zeph', 'm1ra', 'Rafinha_GG', 'pulse',

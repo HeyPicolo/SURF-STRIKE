@@ -17,7 +17,8 @@ try { ({ chromium } = await import('playwright-core')); } catch {
 
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.map': 'application/json' };
 const server = createServer((req, res) => {
-  const p = join(dist, req.url === '/' ? 'index.html' : req.url.split('?')[0]);
+  const url = req.url.split('?')[0];
+  const p = join(dist, url === '/' ? 'index.html' : url);
   if (!existsSync(p)) { res.writeHead(404); res.end(); return; }
   res.writeHead(200, { 'content-type': types[extname(p)] ?? 'application/octet-stream' });
   res.end(readFileSync(p));
@@ -164,6 +165,13 @@ await wait(1000);
 await S(() => { window.__surf.input.enabled = true; window.__surf.game.paused = false; document.getElementById('panel').classList.add('hidden'); });
 await waitSim(8);
 await page.screenshot({ path: join(shots, '05-bots-round.png') });
+// rodada 12: um abate com a KESTREL conta XP para a arma (headshot + dano), só nesta partida contra bots
+const xpKill = await S(() => {
+  const w = window.__surf.game.world, me = w.local, foe = w.players.find((q) => q.team !== me.team && q.alive);
+  w.applyDamage(foe, me, 999, true, false, 'KESTREL', undefined, 'rifle');
+  w.step(0.01); window.__surf.game.xpTracker.feed(w.drainEvents(), w);
+  return { alive: foe.alive, rifle: window.__surf.game.xpTracker.total.rifle ?? 0 };
+});
 // speed things up: let bots fight, make the local player die so the round resolves
 await S(() => { const w = window.__surf.game.world; w.applyDamage(w.local, null, 999, false, false, 'test'); w.match.timer = Math.min(w.match.timer, 25); });
 let scored = false;
@@ -176,6 +184,12 @@ check('11. round termina e placar atualiza', scored, JSON.stringify(await S(() =
 await page.keyboard.down('Tab'); await wait(200);
 await page.screenshot({ path: join(shots, '07-scoreboard.png') });
 await page.keyboard.up('Tab');
+
+// XP vai para o salvo ao sair da partida (abandonar também guarda o XP ganho)
+await S(() => window.__surf.menu.act.quitToMenu());
+await wait(300);
+const savedXp = await S(() => JSON.parse(localStorage.getItem('surfstrike.progression') || 'null'));
+check('32. partida contra bots: abate dá XP à arma e o XP é salvo (schema 2)', !xpKill.alive && xpKill.rifle > 0 && savedXp?.schema === 2 && savedXp.xp.rifle >= xpKill.rifle, JSON.stringify({ xpKill, saved: savedXp?.xp }));
 
 // --- Surf Skill
 await S(() => window.__surf.menu.act.quitToMenu());
@@ -378,6 +392,16 @@ await page.keyboard.press('Escape'); await wait(300);
 const backToMenu = await page.isVisible('#main-nav') && !(await S(() => window.__surf.arsenal.active));
 const overBudget = arsInfo.filter((x) => x.tris > x.budget);
 check('29. Arsenal mostra todos os modelos (setas, versões de detalhe, triângulos) e volta ao menu', arsVisible && arsInfo.length >= 56 && overBudget.length === 0 && arrowIdx === 0 && backToMenu, `modelos=${arsList.length} capturas=${arsInfo.length} acima=${overBudget.length} seta=${arrowIdx} menu=${backToMenu}`);
+
+// rodada 12: ?devxp mostra o painel de desenvolvimento (liberar tudo / zerar)
+await page.goto('http://localhost:5199/?devxp');
+await wait(1200);
+const devPanel = await page.isVisible('#devxp');
+await page.click('#devxp button:first-child'); await wait(100);
+const devAll = await S(() => window.__surf.dev.levels());
+await S(() => window.__surf.dev.reset());
+const devZero = await S(() => window.__surf.dev.levels());
+check('33. ?devxp: painel libera tudo e zera', devPanel && devAll.rifle === 30 && devAll.pistol === 20 && devZero.rifle === 1, JSON.stringify({ devPanel, devAll, devZero }));
 
 const fps = await S(() => new Promise((res) => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 2000) requestAnimationFrame(f); else res(n / 2); }; requestAnimationFrame(f); }));
 console.log(`fps (software renderer): ${fps}`);

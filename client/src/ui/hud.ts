@@ -1,6 +1,6 @@
 // HUD em DOM. Escritas no DOM só acontecem quando um valor muda (evita layout thrash).
 import type { World } from '../../../shared/sim/world';
-import type { Player } from '../../../shared/sim/player';
+import { type Player, wdef } from '../../../shared/sim/player';
 import { WEAPONS, NADES, NadeKind, SLOT_NADES, SLOT_KEYS, reloadDuration, ITEMS } from '../../../shared/config/weapons';
 import { CLASSES } from '../../../shared/config/classes';
 import { forwardFromAngles } from '../../../shared/math/vec3';
@@ -115,21 +115,21 @@ export class Hud {
       this.set('ammo-res', 'text', '');
       this.set('ammo-mag', 'class', '');
     } else if (ws && WEAPONS[ws.id].recharge) {
-      const def = WEAPONS[ws.id];
+      const def = wdef(ws);
       this.set('weapon-name', 'text', `${def.name}  ${def.category}`);
       this.set('ammo-mag', 'text', ws.mag > 0 ? '1' : String(Math.ceil(ws.recharge ?? 0)));
       this.set('ammo-res', 'text', ws.mag > 0 ? 'carga pronta, alcance curto' : 's para recarregar');
       this.set('ammo-res', 'class', 'melee');
       this.set('ammo-mag', 'class', ws.mag > 0 ? '' : 'empty');
     } else if (ws && WEAPONS[ws.id].melee) {
-      const def = WEAPONS[ws.id];
+      const def = wdef(ws);
       this.set('weapon-name', 'text', `${def.name}  ${def.category}`);
       this.set('ammo-mag', 'text', '∞');
       this.set('ammo-res', 'text', 'clique: golpe, direito: estocada');
       this.set('ammo-res', 'class', 'melee');
       this.set('ammo-mag', 'class', '');
     } else if (ws) {
-      const def = WEAPONS[ws.id];
+      const def = wdef(ws);
       this.set('weapon-name', 'text', `${def.name}  ${def.category}`);
       this.set('ammo-mag', 'text', String(ws.mag));
       this.set('ammo-res', 'text', `/ ${ws.reserve}`);
@@ -148,7 +148,7 @@ export class Hud {
       .map((k) => `<i class="nade ${p.slot === SLOT_NADES && p.nadeSel === k ? 'sel' : ''}" style="--c:${hex(NADES[k].color)}" title="${NADES[k].name}"></i>`).join(''));
     if (p.reloadTime > 0 && ws) {
       this.set('reload-bar', 'class', 'on');
-      this.set('reload-fill', 'style', `scaleX(${1 - p.reloadTime / reloadDuration(WEAPONS[ws.id])})`, 'transform');
+      this.set('reload-fill', 'style', `scaleX(${1 - p.reloadTime / reloadDuration(wdef(ws))})`, 'transform');
     } else this.set('reload-bar', 'class', '');
 
     // crosshair spread & scope
@@ -157,7 +157,7 @@ export class Hud {
     // correndo (arma levantada) a mira some; volta quando a arma abaixa
     this.set('crosshair', 'style', scoped || p.weaponRaised ? 'none' : 'block', 'display');
     // ADS: a mira de quadril some enquanto a arma vem para a frente do olho
-    const adsK = ws && WEAPONS[ws.id].ads ? p.adsK : 0;
+    const adsK = ws && wdef(ws).ads ? p.adsK : 0;
     this.set('crosshair', 'style', String(Math.max(0, 1 - adsK * 1.6).toFixed(2)), 'opacity');
     const air = !p.phys.onGround ? 4 : 0;
     const gap = Math.min(14, p.punchPitch * 1.2 + air + (p.zoomed ? 0 : 0));

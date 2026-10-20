@@ -19,6 +19,10 @@ import { MatchMachine, MatchTransition, MatchConfig } from './match';
 import { BotBrain } from '../bots/brain';
 import { SkillRun, SkillEvent, SkillPb } from './skill';
 import { SKILL } from '../config/skill';
+import { DUEL_BUILDS } from '../config/progression';
+import { Builds } from './loadout';
+import { wdef } from './player';
+import { botBuilds } from './progression';
 
 export type GameMode = 'training' | 'bots' | 'skill';
 
@@ -34,6 +38,8 @@ export interface WorldConfig {
   botClasses?: ClassId[];
   /** Surf Skill: corrida de comparação (recorde pessoal) para os splits. */
   skillPb?: SkillPb | null;
+  /** builds do jogador local (rodada 12; partidas e Treino). Os bots recebem builds sorteados pela seed. */
+  localBuilds?: Builds;
 }
 
 export interface PickupRuntime {
@@ -52,8 +58,11 @@ export interface SmokeCloud { id: number; pos: V3; t: number; maxT: number; radi
 
 export type SimEvent =
   | { t: 'shot'; pid: number; weapon: WeaponId; from: V3; to: V3; hitWorld: boolean; normal?: V3; pellet: number }
-  | { t: 'hit'; attacker: number; victim: number; dmg: number; head: boolean; pos: V3; killed: boolean }
-  | { t: 'kill'; killer: number; victim: number; weapon: string; head: boolean }
+  | { t: 'hit'; attacker: number; victim: number; dmg: number; head: boolean; pos: V3; killed: boolean; weaponId?: WeaponId; /** dano que valeu (sem o excesso além da vida) */ dealt?: number }
+  | { t: 'kill'; killer: number; victim: number; weapon: string; head: boolean;
+      /** arma do abate (id), distância atirador→vítima, atirador no ar/surfando, quem deu assistência */
+      weaponId?: WeaponId; dist?: number; air?: boolean; assists?: number[] }
+  | { t: 'duelWin'; winner: number; loser: number; weapon: WeaponId }
   | { t: 'pickup'; pid: number; kind: PickupKind; label: string }
   | { t: 'reload'; pid: number; weapon: WeaponId }
   | { t: 'empty'; pid: number }
@@ -123,13 +132,15 @@ export class World {
     if ((e.t === 'shot' && e.pellet === 0) || e.t === 'jump' || e.t === 'land') {
       const q = this.player(e.pid);
       if (q) {
-        this.noises.push({ pid: e.pid, pos: (e.t === 'shot' ? e.from : q.phys.pos).clone(), time: this.time, kind: e.t === 'shot' ? 'shot' : 'jump' });
+        const cw = q.currentWeapon();
+        const suppressed = e.t === 'shot' && !!cw && !!wdef(cw).fx.suppressed;
+        this.noises.push({ pid: e.pid, pos: (e.t === 'shot' ? e.from : q.phys.pos).clone(), time: this.time, kind: e.t === 'shot' ? 'shot' : 'jump', suppressed });
         if (this.noises.length > 64) this.noises.shift();
       }
     }
   }
   /** últimos sons do jogo (para a audição dos bots) */
-  noises: { pid: number; pos: V3; time: number; kind: 'shot' | 'jump' }[] = [];
+  noises: { pid: number; pos: V3; time: number; kind: 'shot' | 'jump'; /** tiro com silenciador: os bots ouvem de mais perto */ suppressed?: boolean }[] = [];
   drainEvents(): SimEvent[] { const e = this.events; this.events = []; return e; }
 
   get local(): Player { return this.players.find((p) => p.id === this.localId)!; }
@@ -140,6 +151,7 @@ export class World {
     const c = this.config;
     const local = new Player(this.nextId++, c.local.name, c.local.team, c.local.classId, false);
     local.autoBhop = c.autoBhop;
+    local.builds = { ...(c.localBuilds ?? {}) };
     this.localId = local.id;
     this.players.push(local);
     const names = [...BOT_NAMES].sort(() => this.rng() - 0.5);
@@ -170,11 +182,13 @@ export class World {
     const pickClass = (i: number): ClassId => c.botClasses?.[i % c.botClasses.length] ?? CLASS_IDS[Math.floor(this.rng() * CLASS_IDS.length)];
     for (let i = 0; i < c.teamSize - 1; i++) {
       const b = new Player(this.nextId++, names[ni++ % names.length], c.local.team, pickClass(i), true);
+      b.builds = botBuilds(c.difficulty, makeRng((c.seed ^ (b.id * 0x9e3779b1)) >>> 0));
       this.players.push(b);
       this.bots.set(b.id, new BotBrain(this, b, c.difficulty));
     }
     for (let i = 0; i < c.teamSize; i++) {
       const b = new Player(this.nextId++, names[ni++ % names.length], enemy, pickClass(i + 3), true);
+      b.builds = botBuilds(c.difficulty, makeRng((c.seed ^ (b.id * 0x9e3779b1)) >>> 0));
       this.players.push(b);
       this.bots.set(b.id, new BotBrain(this, b, c.difficulty));
     }
@@ -265,8 +279,8 @@ export class World {
     if (weapon) {
       p.weapons = [null, null, null, null];
       p.giveWeapon('knife'); // nos duelos: faca + a arma sorteada (sem taser)
-      const ws = p.giveWeapon(weapon);
-      ws.reserve = WEAPONS[weapon].mag * 4;
+      const ws = p.giveWeapon(weapon, DUEL_BUILDS === 'base' ? {} : undefined);
+      ws.reserve = wdef(ws).mag * 4;
       p.slot = WEAPONS[weapon].slot;
     }
     this.spawnAt(p, sp);
@@ -293,6 +307,8 @@ export class World {
     const winnerId = pair?.find((id) => id !== victim.id);
     const winner = winnerId !== undefined ? this.player(winnerId) : undefined;
     if (!winner || !winner.alive) return;
+    const dw = winner.weapons[0] ?? winner.weapons[1];
+    if (dw) this.emit({ t: 'duelWin', winner: winner.id, loser: victim.id, weapon: dw.id });
     // next challenger of the opposite team?
     const qi = this.duelQueue.findIndex((id) => { const q = this.player(id); return !!q && q.alive && q.team !== winner.team; });
     if (qi >= 0) {
@@ -357,7 +373,7 @@ export class World {
     p.switchTime = Math.max(0, p.switchTime - dt);
     p.teleportGlide = Math.max(0, p.teleportGlide - dt);
     for (const ws of p.weapons) {
-      if (ws?.recharge !== undefined && ws.recharge > 0) { ws.recharge -= dt; if (ws.recharge <= 0) { ws.recharge = 0; ws.mag = WEAPONS[ws.id].mag; } }
+      if (ws?.recharge !== undefined && ws.recharge > 0) { ws.recharge -= dt; if (ws.recharge <= 0) { ws.recharge = 0; ws.mag = wdef(ws).mag; } }
     }
     if (p.shieldTime > 0) { p.shieldTime -= dt; if (p.shieldTime <= 0) p.shield = 0; }
     ABILITIES[p.classId].tick?.(this, p, dt);
@@ -534,7 +550,7 @@ export class World {
     }
     const w = p.currentWeapon();
     if (!w) return;
-    const def = WEAPONS[w.id];
+    const def = wdef(w);
     if (def.recharge) {
       // taser: um disparo, depois volta para a melhor arma e recarrega sozinho
       if (w.mag <= 0) { if (p.switchTime <= 0) this.switchTo(p, this.firstWeaponSlot(p)); return; }
@@ -613,7 +629,7 @@ export class World {
   }
 
   private startReload(p: Player, w: WeaponState) {
-    p.reloadTime = reloadDuration(WEAPONS[w.id]);
+    p.reloadTime = reloadDuration(wdef(w));
     p.zoomed = false; p.aimWant = false; // um clique durante a recarga fica guardado e vale ao terminar
     this.emit({ t: 'reload', pid: p.id, weapon: w.id });
   }
@@ -624,7 +640,7 @@ export class World {
   private hbHead = { min: new V3(), max: new V3() }; private hbBody = { min: new V3(), max: new V3() };
 
   private fire(p: Player, w: WeaponState) {
-    const def = WEAPONS[w.id];
+    const def = wdef(w);
     w.mag--;
     const rateMul = 1 + (p.classId === 'predator' ? p.predatorStacks * CLASSES.predator.params.stackFireRate : 0);
     p.fireCooldown = fireInterval(def, rateMul);
@@ -675,7 +691,7 @@ export class World {
     p.punchYaw += (this.rng() * 2 - 1) * def.kickSide * grow;
     p.punchYaw = Math.max(-5, Math.min(5, p.punchYaw));
     p.shotsFired++;
-    for (const [vid, d] of dmgBy) this.applyDamage(this.player(vid)!, p, d.dmg, d.head, false, WEAPONS[w.id].name, d.pos);
+    for (const [vid, d] of dmgBy) this.applyDamage(this.player(vid)!, p, d.dmg, d.head, false, def.name, d.pos, w.id);
   }
 
   private centerRayHitsEnemy(p: Player, eye: V3, dir: V3, range: number): boolean {
@@ -740,7 +756,7 @@ export class World {
 
   private recoverRecoil(p: Player, dt: number) {
     const w = p.currentWeapon();
-    const def = w ? WEAPONS[w.id] : WEAPONS.pistol;
+    const def = w ? wdef(w) : WEAPONS.pistol;
     const sinceShot = this.time - p.lastShotTime;
     // o recuo começa a voltar logo após o intervalo de tiro (no máximo 0,3 s, para armas lentas como a Longbow)
     if (sinceShot > Math.min(fireInterval(def) * 1.2, 0.3)) {
@@ -751,7 +767,7 @@ export class World {
     }
   }
 
-  applyDamage(victim: Player, attacker: Player | null, base: number, head: boolean, explosion: boolean, weaponLabel: string, pos?: V3) {
+  applyDamage(victim: Player, attacker: Player | null, base: number, head: boolean, explosion: boolean, weaponLabel: string, pos?: V3, weaponId?: WeaponId) {
     if (!victim.alive || base <= 0) return;
     if (this.config.mode === 'skill') return; // Surf Skill: sem dano
     if (attacker && attacker !== victim && attacker.team === victim.team) return; // sem fogo amigo
@@ -778,11 +794,12 @@ export class World {
       }
     }
     const killed = victim.hp <= 0;
-    this.emit({ t: 'hit', attacker: attacker?.id ?? NOBODY, victim: victim.id, dmg: Math.round(res.total), head, pos: pos ?? victim.phys.pos.clone(), killed });
-    if (killed) this.killPlayer(victim, attacker, weaponLabel, head);
+    const dealt = Math.round(Math.min(before, res.hpDamage) + res.armorDamage + res.shieldDamage);
+    this.emit({ t: 'hit', dealt, attacker: attacker?.id ?? NOBODY, victim: victim.id, dmg: Math.round(res.total), head, pos: pos ?? victim.phys.pos.clone(), killed, weaponId });
+    if (killed) this.killPlayer(victim, attacker, weaponLabel, head, weaponId);
   }
 
-  private killPlayer(victim: Player, killer: Player | null, weaponLabel: string, head: boolean) {
+  private killPlayer(victim: Player, killer: Player | null, weaponLabel: string, head: boolean, weaponId?: WeaponId) {
     victim.alive = false;
     victim.hp = 0;
     victim.deathPos.copy(victim.phys.pos);
@@ -793,14 +810,17 @@ export class World {
       if (head) killer.stats.headshots++;
       ABILITIES[killer.classId].onKill?.(this, killer);
     }
+    const assists: number[] = [];
     for (const [aid, dmg] of victim.damagedBy) {
-      if (aid !== killer?.id && dmg >= 40) { const a = this.player(aid); if (a) a.stats.assists++; }
+      if (aid !== killer?.id && dmg >= 40) { const a = this.player(aid); if (a) { a.stats.assists++; assists.push(aid); } }
     }
+    const dist = killer && killer !== victim ? killer.phys.pos.distTo(victim.phys.pos) : 0;
+    const air = !!killer && killer !== victim && !killer.phys.onGround;
     // queda de armas ao morrer
     const drop = victim.weapons[0] ?? victim.weapons[1];
     if (drop && victim.inDuel < 0 && !victim.isDummy) this.spawnDropped(drop, victim.phys.pos);
     victim.weapons = [null, null, null, null];
-    this.emit({ t: 'kill', killer: killer?.id ?? NOBODY, victim: victim.id, weapon: weaponLabel, head });
+    this.emit({ t: 'kill', killer: killer?.id ?? NOBODY, victim: victim.id, weapon: weaponLabel, head, weaponId, dist, air, assists });
     if (victim.inDuel >= 0) this.onDuelDeath(victim);
   }
 
@@ -918,7 +938,7 @@ export class World {
     this.spawnDropped(w, p.phys.pos.clone().addScaled(fwd, 60));
     p.weapons[p.slot] = null;
     this.switchTo(p, this.firstWeaponSlot(p));
-    this.emit({ t: 'message', text: `${WEAPONS[w.id].name} solta` });
+    this.emit({ t: 'message', text: `${wdef(w).name} solta` });
   }
 
   /** Nearest weapon pickup in reach (for the "E" prompt). */
@@ -935,20 +955,22 @@ export class World {
   private tryUsePickup(p: Player) {
     const k = this.nearestWeaponPickup(p);
     if (!k || !k.weapon) return;
-    const def = WEAPONS[k.weapon];
-    const cur = p.weapons[def.slot];
+    const base = WEAPONS[k.weapon];
+    const cur = p.weapons[base.slot];
     if (cur && cur.id === k.weapon) {
+      const def = wdef(cur);
       cur.reserve = Math.min(def.reserve * 2, cur.reserve + (k.ammo ? k.ammo.mag + k.ammo.reserve : def.mag + def.reserve));
     } else {
       if (cur) this.spawnDropped(cur, p.phys.pos);
+      // a arma entra com o build de QUEM PEGA (a munição do pente que não cabe vai para a reserva)
       const ws = p.giveWeapon(k.weapon);
-      if (k.ammo) { ws.mag = k.ammo.mag; ws.reserve = k.ammo.reserve; }
+      if (k.ammo) { const m = wdef(ws).mag; ws.mag = Math.min(m, k.ammo.mag); ws.reserve = k.ammo.reserve + Math.max(0, k.ammo.mag - m); }
       p.switchTime = 0;
-      this.switchTo(p, def.slot);
+      this.switchTo(p, base.slot);
       p.switchTime = 0.3;
     }
     this.consumePickup(k);
-    this.emit({ t: 'pickup', pid: p.id, kind: 'weapon', label: def.name });
+    this.emit({ t: 'pickup', pid: p.id, kind: 'weapon', label: base.name });
   }
 
   private consumePickup(k: PickupRuntime) {
@@ -974,7 +996,7 @@ export class World {
           p.armor = Math.min(ITEMS.maxArmor, p.armor + ITEMS.armorAmount); label = `+${ITEMS.armorAmount} COLETE`; break;
         case 'ammo': {
           let took = false;
-          for (const w of p.weapons) if (w && !WEAPONS[w.id].melee && !WEAPONS[w.id].recharge) { const d = WEAPONS[w.id]; if (w.reserve < d.reserve * 2) { w.reserve = Math.min(d.reserve * 2, w.reserve + d.mag * 2); took = true; } }
+          for (const w of p.weapons) if (w && !WEAPONS[w.id].melee && !WEAPONS[w.id].recharge) { const d = wdef(w); if (w.reserve < d.reserve * 2) { w.reserve = Math.min(d.reserve * 2, w.reserve + d.mag * 2); took = true; } }
           if (!took) continue;
           label = 'MUNIÇÃO'; break;
         }

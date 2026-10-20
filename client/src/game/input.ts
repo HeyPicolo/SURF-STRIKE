@@ -45,9 +45,17 @@ export class Input {
     try {
       const r = (this.el as HTMLElement & { requestPointerLock: (o?: unknown) => Promise<void> | void }).requestPointerLock({ unadjustedMovement: true });
       if (r && typeof (r as Promise<void>).catch === 'function') {
-        (r as Promise<void>).catch(() => { try { this.el.requestPointerLock(); } catch { /* ignore */ } });
+        (r as Promise<void>).catch(() => this.plainLock());
       }
-    } catch { try { this.el.requestPointerLock(); } catch { /* ignore */ } }
+    } catch { this.plainLock(); }
+  }
+
+  /** Pedido simples de pointer lock; uma recusa (sem gesto do usuário) não vira erro no console. */
+  private plainLock() {
+    try {
+      const r = (this.el.requestPointerLock as () => Promise<void> | void).call(this.el);
+      if (r && typeof (r as Promise<void>).catch === 'function') (r as Promise<void>).catch(() => { /* recusado */ });
+    } catch { /* ignore */ }
   }
 
   unlock() {

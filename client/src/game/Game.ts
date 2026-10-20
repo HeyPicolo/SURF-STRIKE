@@ -3,7 +3,9 @@
 //  fixo (100 Hz) → renderização interpolada + HUD + áudio.
 // =============================================================
 import { World, WorldConfig, SimEvent } from '../../../shared/sim/world';
-import { Player, hitboxes } from '../../../shared/sim/player';
+import { Player, hitboxes, wdef } from '../../../shared/sim/player';
+import { ProgressionStore, MatchXpTracker, applyMatchXp, playerBuilds, XpGain, LevelUp } from '../../../shared/sim/progression';
+import type { ProgWeaponId } from '../../../shared/config/progression';
 import { SIM_DT, PHYSICS, SPRINT } from '../../../shared/config/physics';
 import { WEAPONS, WeaponId, NADES, NadeKind, ITEMS, SLOT_NADES, reloadDuration } from '../../../shared/config/weapons';
 import { CLASSES, ClassId } from '../../../shared/config/classes';
@@ -50,6 +52,14 @@ interface Assets {
   butterfly: ButterflyParts;
 }
 
+export interface MatchXpResult {
+  gains: Partial<Record<ProgWeaponId, number>>;
+  log: XpGain[];
+  levelUps: LevelUp[];
+  before: Record<ProgWeaponId, number>;
+  after: Record<ProgWeaponId, number>;
+}
+
 export interface GameCallbacks {
   onPause: () => void;
   onMatchEnd: (w: World) => void;
@@ -84,6 +94,12 @@ export class Game {
   private tmpM = mat4(); private tmpM2 = mat4(); private tmpM3 = mat4();
   private scoreboardHeld = false;
   private lastEnded = false;
+  /** progressão das armas (rodada 12): de onde vêm os builds e para onde vai o XP */
+  progress: ProgressionStore | null = null;
+  /** XP da partida em andamento (só contra bots) */
+  xpTracker: MatchXpTracker | null = null;
+  /** resultado de XP da última partida (para a tela de resultado) */
+  lastMatchXp: MatchXpResult | null = null;
   /** mapa da partida atual (o do construtor é o do menu) */
   private activeMap: MapDef;
   // ---- Surf Skill ----
@@ -179,7 +195,10 @@ export class Game {
     this.loadAssets();
     this.activeMap = map;
     this.mapMeshes(map);
+    this.commitXp(); // partida anterior abandonada: o XP ganho até ali fica (como no Warzone)
+    if (this.progress && cfg.mode !== 'skill' && !cfg.localBuilds) cfg = { ...cfg, localBuilds: playerBuilds(this.progress.load()) };
     this.world = new World(map, cfg);
+    this.xpTracker = cfg.mode === 'bots' && this.progress ? new MatchXpTracker(this.world.localId, cfg.mode, cfg.difficulty) : null;
     this.skillMenuOpen = false; this.pendingGoto = null; this.pendingRestart = false;
     this.ghosts = null; this.ghostDiff = null; this.ghostHint = -1;
     this.apDriver = null; this.apStage = -1;
@@ -197,7 +216,20 @@ export class Game {
     this.clearLabels();
   }
 
+  /** Soma ao salvo o XP da partida (uma vez) e guarda o resultado em lastMatchXp. */
+  commitXp(): MatchXpResult | null {
+    const t = this.xpTracker;
+    if (!t || !this.progress) return null;
+    this.xpTracker = null;
+    const before = this.progress.load();
+    const { data, levelUps } = applyMatchXp(before, t.total);
+    this.progress.save(data);
+    this.lastMatchXp = { gains: { ...t.total }, log: t.log.slice(), levelUps, before: { ...before.xp }, after: { ...data.xp } };
+    return this.lastMatchXp;
+  }
+
   stop() {
+    this.commitXp();
     this.world = null;
     this.ghosts = null; this.ghostVisible = false;
     this.ghostLabel?.remove(); this.ghostLabel = null;
@@ -238,7 +270,9 @@ export class Game {
         this.buildLocalInput(first);
         first = false;
         w.step(SIM_DT);
-        this.processEvents(w.drainEvents());
+        const evs = w.drainEvents();
+        this.xpTracker?.feed(evs, w);
+        this.processEvents(evs);
         this.footsteps(SIM_DT);
         this.acc -= SIM_DT;
         steps++;
@@ -248,6 +282,7 @@ export class Game {
     this.render(dt);
     if (w.match.phase === 'matchEnd' && !this.lastEnded) {
       this.lastEnded = true;
+      this.commitXp();
       setTimeout(() => { if (this.world === w) this.cb.onMatchEnd(w); }, 2500);
     }
   }
@@ -554,7 +589,7 @@ export class Game {
     const wsView = viewer.currentWeapon();
     const scopedStatic = viewer.zoomed && !!wsView && wsView.id === 'sniper';
     // ADS: a câmera balança bem menos mirando pela alça
-    const adsK = wsView && WEAPONS[wsView.id].ads ? adsEase(viewer.adsK) : 0;
+    const adsK = wsView && wdef(wsView).ads ? adsEase(viewer.adsK) : 0;
     const bobAmt = (this.settings.viewBob && viewer.phys.onGround && !scopedStatic ? Math.min(1, hs / 250) : 0) * (1 - 0.75 * adsK);
     const bob = Math.sin(this.bobPhase) * 1.4 * bobAmt;
     const land = scopedStatic ? 0 : -viewer.phys.landImpact * 7;
@@ -566,9 +601,9 @@ export class Game {
     const ws = viewer.currentWeapon();
     let tanH = Math.tan((this.settings.fov * DEG) / 2) * (9 / 16);
     let sensMul = 1;
-    if (viewer.zoomed && ws && WEAPONS[ws.id].zoom > 0) { tanH *= WEAPONS[ws.id].zoom; sensMul = WEAPONS[ws.id].zoom; }
-    else if (ws && WEAPONS[ws.id].ads && adsK > 0) {
-      const ads = WEAPONS[ws.id].ads!;
+    if (viewer.zoomed && ws && wdef(ws).zoom > 0) { tanH *= wdef(ws).zoom; sensMul = wdef(ws).zoom; }
+    else if (ws && wdef(ws).ads && adsK > 0) {
+      const ads = wdef(ws).ads!;
       tanH *= 1 + (ads.fov - 1) * adsK; sensMul = 1 + (ads.sens - 1) * adsK;
     }
     this.input.sensMul = isMe ? sensMul : 1;
@@ -891,7 +926,7 @@ export class Game {
     const bx = Math.cos(this.bobPhase * 0.5) * 0.8 * bobA, by = Math.abs(Math.sin(this.bobPhase * 0.5)) * 0.8 * bobA;
     this.switchAnim = Math.max(0, this.switchAnim - dt * 3.5);
     let reloadK = 0;
-    if (p.reloadTime > 0 && ws) { const tot = reloadDuration(WEAPONS[ws.id]); const k = 1 - p.reloadTime / tot; reloadK = Math.sin(Math.min(1, k) * Math.PI); }
+    if (p.reloadTime > 0 && ws) { const tot = reloadDuration(wdef(ws)); const k = 1 - p.reloadTime / tot; reloadK = Math.sin(Math.min(1, k) * Math.PI); }
     const kick = this.viewKick;
     const air = !p.phys.onGround ? 1 : 0;
     // sprint tático: arma levantada; volta à posição de tiro durante o sprint-to-fire delay

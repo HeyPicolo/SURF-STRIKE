@@ -20,13 +20,14 @@ Serve para qualquer sessão (de código ou de apoio) entender o projeto sem rele
 npm install
 npm run dev            # servidor local com rebuild
 npm run build          # gera dist/ (o que a Vercel publica)
-npm test               # 183 testes unitários (node:test via tsx, ~60 s)
+npm test               # 200 testes unitários (node:test via tsx, ~70 s)
 npm run skill:metrics  # corre o percurso de referência de todos os mapas, grava skillReference.ts e imprime a tabela de métricas
 npm run skill:versions # regrava shared/maps/skillVersions.ts depois de mudar um mapa do Surf Skill
 npm run skill:layout   # confere folga entre stages, lava, brushes cruzando, trechos não vizinhos e nuvens
 npx tsc --noEmit -p tsconfig.json
-CHROME_PATH=/opt/pw-browsers/chromium node scripts/e2e.mjs   # 31 verificações no navegador (screenshots em e2e-shots/, Arsenal em e2e-shots/arsenal/)
-# ?arsenal na URL abre a tela Arsenal (revisão dos modelos)
+CHROME_PATH=/opt/pw-browsers/chromium node scripts/e2e.mjs   # 33 verificações no navegador (screenshots em e2e-shots/, Arsenal em e2e-shots/arsenal/)
+# ?arsenal na URL abre a tela Arsenal (revisão dos modelos); ?devxp mostra o painel de XP (liberar tudo, +XP, zerar)
+npx tsx scripts/xp-sim.ts 8 medium 3 hard   # XP por partida e partidas até o nível máximo
 ```
 
 ## O jogo hoje
@@ -103,6 +104,10 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 | `shared/config/physics.ts` | `PHYSICS` e `SPRINT` (sprint automático, caminhar, slide) |
 | `shared/config/weapons.ts` | armas, `DAMAGE`, `ACCURACY`, `RELOAD`, `ITEMS`, slots |
 | `shared/config/skill.ts` | regras do Surf Skill e metadados dos mapas/stages |
+| `shared/config/progression.ts`, `attachments.ts` | XP, curva de níveis, regra dos duelos; catálogo de attachments, ordem de liberação, limite de 5, teto de poder |
+| `shared/sim/loadout.ts` | WeaponDef efetivo (`effectiveDef`, base + build), validação do build, barras de atributos, prós/contras |
+| `shared/sim/progression.ts` | níveis, desbloqueios, `MatchXpTracker` (XP da partida pelos eventos), dados salvos com migração, `ProgressionStore`, builds dos bots, modo dev |
+| `client/src/game/progressStore.ts` | progressão no localStorage |
 | `shared/sim/world.ts` | núcleo da simulação (modos `bots`, `training`, `skill`) |
 | `shared/sim/skill.ts`, `records.ts` | Surf Skill e recordes |
 | `shared/maps/clouds.ts` | mapa da partida |
@@ -138,9 +143,24 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 | 9b · `4c552ce` | Sem prespeed cap, velocidade mantida entre stages, versão das regras na chave dos recordes, Próximo mapa, referência com controle de velocidade, ajustes de bhop e curvas, recalibração. |
 | 10 · `48ddb63` | Visual novo das armas, balisong, granadas, itens e luvas no estilo de blocos (paletas por arma, fitas, parafusos, trilhos, recortes), duas versões de detalhe, tela Arsenal, testes de orçamento/caixa/cobertura e e2e com screenshots. Só visual. |
 | 11a · `5dfb809` | Luneta da LONGBOW sem cliques perdidos (sprint automático engolia o clique; mira desejada guardada; alternar/segurar), bots com mira humana (reação com cauda, flick + correções, tremor, lead/recuo aprendidos, personalidade, audição), início do sacar da balisong contínuo. |
-| 11b | ADS nas armas de ferro (alça/massa/red dot do modelo no centro, FOV, tempo, sensibilidade, movimento e spread em config) e personagens no estilo de blocos (3 versões, hitbox igual, cor do time em placas). |
+| 11b · `14ec289` | ADS nas armas de ferro (alça/massa/red dot do modelo no centro, FOV, tempo, sensibilidade, movimento e spread em config) e personagens no estilo de blocos (3 versões, hitbox igual, cor do time em placas). |
+| 12a | Progressão por arma (XP só contra bots, níveis 30/20) e attachments no sim: 27 peças em 8 categorias, até 5, WeaponDef efetivo com teto de ±25% e TTK mínimo, build do jogador no WeaponState, builds dos bots pela seed, duelos com a arma base, supressor e laser na percepção dos bots, dados salvos com schema, `?devxp`. |
 
 ## Decisões tomadas (não desfazer sem pedido)
+
+- **Rodada 12a (referência: gunsmith do Warzone):**
+  - Progressão nas 5 armas de fogo (VEX-9, KESTREL, HORNET, BREAKER-12, LONGBOW). Balisong, VOLT-1 e granadas ficam de fora (não são armas de build).
+  - Curva: 500 + 60 × (n − 2) por nível (38.860 XP até o 30; 19.760 até o 20 da pistola). Calibrada com `scripts/xp-sim.ts` para ~13 partidas de um jogador bom (≈ bot Avançado, 3v3 contra Intermediário; ~12–15 conforme o nível). O dano de XP é o que valeu (`hit.dealt`, sem o excesso além da vida). A conta está no README.
+  - Vitórias de round/partida e assistências são rateadas pelo dano de cada arma no round/partida (sem dano: a arma na mão). Duelo vencido vai inteiro para a arma do duelo.
+  - O XP vai para o salvo no fim da partida e também ao sair no meio (como no Warzone). Só modo `bots`.
+  - Cada nível de 2 ao máximo libera peças em ordem fixa por arma (`UNLOCK_ORDER`); o nível de cada peça é distribuído por igual entre 2 e o máximo (às vezes duas no mesmo nível ou um nível sem peça).
+  - Teto: ±25% por atributo da base e TTK de corpo ≥ 95% da base (a cadência cai se precisar). FOV/sensibilidade das lunetas 2x/3x ficam fora do teto.
+  - LONGBOW não tem ADS: o tempo de ADS das peças vira mobilidade (metade do efeito), para cada peça continuar sendo uma troca nela.
+  - O build é de quem segura a arma: dar a arma (`giveWeapon`) usa `Player.builds`; uma arma do chão entra com o build de quem pega. A munição que não cabe no pente vai para a reserva.
+  - Duelos: `DUEL_BUILDS = 'base'` (justo; o Warzone não tem duelos, então ficou o mais próximo de "arma igual para os dois").
+  - Bots: build por seed (PRNG próprio por bot, `seed ^ id`, para não mudar o sorteio do resto da partida) e dificuldade.
+  - Supressor: os bots ouvem a 1100 u. Laser: os bots notam o portador 30% mais longe e em qualquer ângulo.
+  - Nível de conta e XP em dobro existem na config, desligados.
 
 - **Rodada 11b:**
   - ADS: `WEAPONS[id].ads`. O zoom 0,8 do KESTREL virou ADS (`zoom` = 0), com a mesma lupa e a mesma velocidade de 75% mirando.
@@ -218,6 +238,9 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 - Teste de "segmento completável" dá 90 s por segmento (os trechos do ZENITH saindo parados levam ~63 s).
 
 ## Pendências e ideias
+
+- Rodada 12b (attachments nos modelos) e 12c (menu ARSENAL/gunsmith, avisos de XP, tela de resultado com XP).
+- Calibrar jogando a rodada 12a: curva de XP (feita com bots como jogador; humanos podem fazer mais ou menos), força do tambor e do supressor, se o laser denuncia demais e os builds dos bots no GOD (5 peças de nível máximo).
 
 - Multiplayer online (a simulação já é separada do cliente; recordes e fantasmas já têm as interfaces `RecordStore` e `GhostStore` para um backend).
 - Calibrar jogando a rodada 11b: tempos e FOV do ADS, se a BREAKER-12 com ADS ficou forte demais, a leitura da cor do time de longe (versão "longe" dos personagens) e as distâncias das versões.

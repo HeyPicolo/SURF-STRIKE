@@ -6,7 +6,8 @@
 //  O bot só mira/atira em quem viu (linha de visão); o que ouve só faz ele olhar para lá.
 // =============================================================
 import { V3, DEG, yawFromDir, angleDiff, forwardFromAngles, rightFromYaw, makeRng } from '../math/vec3';
-import { BOT_SKILL, BOT_AIM, BOT_HEARING, BotDifficulty, BotSkill, BotAim } from '../config/match';
+import { BOT_SKILL, BOT_AIM, BOT_HEARING, BOT_LASER, BotDifficulty, BotSkill, BotAim } from '../config/match';
+import { wdef } from '../sim/player';
 import { WEAPONS, WeaponId, SLOT_NADES, SLOT_KNIFE, SLOT_TASER, ITEMS } from '../config/weapons';
 import type { NavPoint, BotRoute } from '../maps/types';
 import { emptyCmd } from '../physics/movement';
@@ -381,9 +382,11 @@ export class BotBrain {
       const d = qe.distTo(eye);
       // audição: passos de quem corre perto (sem precisar ver) — só faz o bot olhar para lá
       if (d < BOT_HEARING.step && q.phys.onGround && Math.hypot(q.phys.vel.x, q.phys.vel.z) > 150 && !q.walking) this.heard = { pos: q.phys.pos.clone(), time: w.time };
-      if (d > this.skill.viewDistance) continue;
+      const qw = q.currentWeapon();
+      const laser = !!qw && !!wdef(qw).fx.laser;
+      if (d > this.skill.viewDistance * (laser ? BOT_LASER.viewMul : 1)) continue;
       const to = qe.clone().sub(eye).normalize();
-      const inFov = to.x * fwd.x + to.z * fwd.z > -0.2 || q.id === p.lastAttacker;
+      const inFov = to.x * fwd.x + to.z * fwd.z > -0.2 || q.id === p.lastAttacker || (laser && BOT_LASER.anyAngle);
       if (!inFov) continue;
       const tr = w.collision.traceRay(eye, qe, undefined, 'glass');
       // só vê quem tem linha de visão (o sentido do PREDATOR, habilidade da classe, revela até 2000 u)
@@ -398,7 +401,7 @@ export class BotBrain {
       if (w.time - n.time > 0.3) break;
       const q = w.player(n.pid);
       if (!q || q.team === p.team) continue;
-      if (n.pos.distTo(p.phys.pos) < (n.kind === 'shot' ? BOT_HEARING.shot : BOT_HEARING.jump)) { this.heard = { pos: n.pos.clone(), time: n.time }; break; }
+      if (n.pos.distTo(p.phys.pos) < (n.kind === 'shot' ? (n.suppressed ? BOT_HEARING.shotSuppressed : BOT_HEARING.shot) : BOT_HEARING.jump)) { this.heard = { pos: n.pos.clone(), time: n.time }; break; }
     }
     this.hasLos = !!best;
     if (best) {
@@ -439,7 +442,7 @@ export class BotBrain {
     }
     const w = p.currentWeapon();
     if (!w) return;
-    const def = WEAPONS[w.id];
+    const def = wdef(w);
     const look = forwardFromAngles(this.lookYaw, this.lookPitch, new V3());
     if (def.recharge) {
       if (!fighting || w.mag <= 0) return;
@@ -529,7 +532,7 @@ export class BotBrain {
     const k = this.world.nearestWeaponPickup(p);
     if (!k || !k.weapon) return;
     const cur = p.weapons[WEAPONS[k.weapon].slot];
-    if (!cur || WEAPON_PRIORITY[k.weapon] > WEAPON_PRIORITY[cur.id] || (cur.id === k.weapon && cur.reserve < WEAPONS[cur.id].mag)) p.input.use = true;
+    if (!cur || WEAPON_PRIORITY[k.weapon] > WEAPON_PRIORITY[cur.id] || (cur.id === k.weapon && cur.reserve < wdef(cur).mag)) p.input.use = true;
   }
 
   private pickRoamTarget() {

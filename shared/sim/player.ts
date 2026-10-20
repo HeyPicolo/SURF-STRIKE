@@ -5,8 +5,16 @@ import { WEAPONS, WeaponId, NadeKind, SLOT_KNIFE, SLOT_NADES, ITEMS } from '../c
 import { CLASSES, ClassId } from '../config/classes';
 import type { Team } from '../maps/types';
 import { SkillInput, emptySkillInput } from './skill';
+import { Build, Builds, EffectiveDef, effectiveDef } from './loadout';
 
-export interface WeaponState { id: WeaponId; mag: number; reserve: number; /** segundos até recarregar a carga (taser) */ recharge?: number; }
+export interface WeaponState {
+  id: WeaponId; mag: number; reserve: number;
+  /** segundos até recarregar a carga (taser) */ recharge?: number;
+  /** attachments da arma (rodada 12): sempre o build de quem está com ela */
+  build?: Build;
+}
+/** WeaponDef efetivo (base + build) de uma arma na mão: combate, HUD e bots usam sempre este. */
+export const wdef = (ws: WeaponState): EffectiveDef => effectiveDef(ws.id, ws.build);
 
 export interface PlayerInput {
   cmd: MoveCmd;
@@ -131,9 +139,14 @@ export class Player {
 
   currentWeapon(): WeaponState | null { return this.slot < SLOT_NADES ? this.weapons[this.slot] : null; }
 
-  giveWeapon(id: WeaponId): WeaponState {
-    const def = WEAPONS[id];
+  /** builds do jogador por arma (o dele, salvo; os bots recebem um sorteado pela seed) */
+  builds: Builds = {};
+
+  /** Dá a arma com o build do próprio jogador (ou `build`, ex.: {} para a base nos duelos). */
+  giveWeapon(id: WeaponId, build: Build | undefined = this.builds[id]): WeaponState {
+    const def = effectiveDef(id, build);
     const ws: WeaponState = { id, mag: def.mag, reserve: def.reserve };
+    if (build && Object.keys(build).length) ws.build = { ...build };
     this.weapons[def.slot] = ws;
     return ws;
   }
@@ -172,7 +185,7 @@ export class Player {
   groundSpeedMul(): number {
     let m = 1;
     const w = this.currentWeapon();
-    if (w) m *= WEAPONS[w.id].moveSpeedMul;
+    if (w) m *= wdef(w).moveSpeedMul;
     if (this.walking) m *= SPRINT.walkSpeedMul;
     else if (this.sprinting) m *= SPRINT.speedMul;
     if (this.slideRecover > 0) m *= SPRINT.slideRecoverSpeedMul;
@@ -182,7 +195,7 @@ export class Player {
   /** Movement speed multiplier from buffs/debuffs (ground and air). */
   speedMul(): number {
     let m = 1;
-    const cw = this.currentWeapon(), ads = cw ? WEAPONS[cw.id].ads : undefined;
+    const cw = this.currentWeapon(), ads = cw ? wdef(cw).ads : undefined;
     if (ads) m *= 1 + (ads.moveMul - 1) * this.adsK;
     else if (this.zoomed) m *= 0.75;
     if (this.tired > 0) m *= CLASSES.jumper.params.tiredSpeedMul;

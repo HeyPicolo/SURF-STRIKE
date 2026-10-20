@@ -272,6 +272,87 @@ Onde o pedido deixava espaço, segui o mais próximo do Surf Skill do CS2:
 - Para caber em ±40000, a maratona desce menos por rampa (descidas × 0,3, rampas × 1,9 de comprimento) e as transições comuns caem 190 u em vez de 300. 
 - Os cabos (curva no ar) ficaram fora do ZENITH: na velocidade da maratona as viradas no ar não fecham; eles aparecem no D6, D8 e D11.
 
+## Progressão das armas e attachments (rodada 12)
+
+Inspirada no gunsmith do Warzone. Cada arma de fogo com progressão (VEX-9, KESTREL AR, HORNET, BREAKER-12 e LONGBOW; a balisong, o VOLT-1 e as granadas ficam de fora) tem o próprio nível. O nível sobe com XP ganho **usando aquela arma**, e cada nível novo libera um attachment dela. A config fica em `shared/config/progression.ts` e `shared/config/attachments.ts`; a lógica, sem DOM, em `shared/sim/progression.ts` e `shared/sim/loadout.ts`.
+
+### XP
+
+Só nas partidas contra bots (Treino e Surf Skill não dão XP), vezes o multiplicador da dificuldade: Fácil ×0,75, Intermediário ×1, Avançado ×1,25, GOD ×1,6.
+
+| Fonte | XP | Vai para |
+|---|---|---|
+| Dano | 0,5 por ponto | a arma que causou |
+| Abate | 100 | a arma do abate |
+| Headshot (no abate) | +50 | idem |
+| Longa distância | +50 | idem (distância ≥ `falloffHalf` × fração da arma: VEX 0,6 · KESTREL 0,45 · HORNET 0,8 · BREAKER 1,3 · LONGBOW 0,1) |
+| No ar ou surfando | +75 | idem |
+| Multiabate (2º / 3º+ em 4 s) | +50 / +100 | idem |
+| Assistência (≥ 40 de dano na vítima) | 40 | rateado pelas armas usadas no round, pelo dano de cada uma |
+| Round vencido | 100 | rateado pelo dano no round |
+| Partida vencida | 300 | rateado pelo dano na partida |
+| Duelo 1v1 vencido | 150 | a arma do duelo |
+
+O XP vai para o salvo no fim da partida e também ao sair no meio (como no Warzone, o XP ganho até ali fica).
+
+### Níveis
+
+XP do nível n−1 para o n = 500 + 60 × (n − 2). Máximo: nível 30 (pistola: 20).
+
+- Até o 30: 29 × 500 + 60 × (0 + 1 + … + 28) = 14.500 + 24.360 = **38.860 XP**.
+- Pistola até o 20: 19 × 500 + 60 × 171 = **19.760 XP**.
+- Medido com `npx tsx scripts/xp-sim.ts` (3v3 contra bots Intermediário, ~5,5 min por partida; o "jogador" é um bot): jogador ≈ bot Intermediário ~2.520 XP por partida → ~15,4 partidas até o máximo usando só a arma; ≈ Avançado ~2.980 → **~13,1**; ≈ GOD ~3.200 → ~12,1 (amostras de 6–8 partidas; a variação entre partidas é grande). O excesso de dano além da vida da vítima não conta XP.
+- Opcionais, desligados na config: nível de conta (soma do XP das armas, 12.000 por nível) e tokens de XP em dobro (×2 por 30 min).
+
+### Attachments
+
+8 categorias (Boca, Cano, Laser, Mira, Coronha, Empunhadura frontal, Carregador, Empunhadura traseira), no máximo **5 equipados**, um por categoria. Toda peça é uma troca: cada uma tem pelo menos um pró e um contra que valem na arma (teste). O número é o nível em que a peça libera em cada arma (— = a arma não tem):
+
+| Categoria | Peça | Prós | Contras | VEX-9 | KESTREL AR | HORNET | BREAKER-12 | LONGBOW |
+|---|---|---|---|---|---|---|---|---|
+| Boca | Compensador | +18% controle do recuo vertical | −12% controle do recuo lateral | 4 | 2 | 4 | — | — |
+| Boca | Freio de boca | +22% controle do recuo lateral; +10% recuperação do recuo | −6% controle do recuo vertical; −5% velocidade de ADS | — | 21 | — | 14 | 2 |
+| Boca | Supressor | Sem tracer e sem clarão de longe; Tiro ouvido mais perto pelos outros | −10% alcance efetivo; −5% alcance máximo; −8% velocidade de ADS | 11 | 13 | 15 | 16 | 15 |
+| Cano | Cano curto | +4% mobilidade; +12% velocidade de ADS | −18% alcance efetivo; −10% alcance máximo; −12% precisão do quadril | 8 | 11 | 14 | 6 | 14 |
+| Cano | Cano longo | +20% alcance efetivo; +10% alcance máximo; +10% precisão do quadril | −5% mobilidade; −12% velocidade de ADS | 16 | 19 | 25 | 27 | 23 |
+| Cano | Cano reforçado | +12% alcance efetivo; +8% controle do recuo vertical | −6% mobilidade; −10% velocidade de ADS | — | 26 | — | — | 28 |
+| Laser | Laser tático | +18% precisão do quadril; +15% precisão andando; +10% precisão no ar | Feixe visível para os inimigos | 2 | 10 | 2 | 2 | 12 |
+| Laser | Laser infravermelho | +14% precisão do quadril | Feixe visível para os inimigos; −2% mobilidade | — | — | — | — | 27 |
+| Laser | Laser de mira rápida | +16% velocidade de ADS | Feixe visível para os inimigos; −5% precisão mirando | 17 | 25 | 27 | 28 | — |
+| Mira | Mira de ponto | Visada limpa com ponto luminoso; +5% precisão mirando | −4% velocidade de ADS | 10 | 6 | 9 | 9 | — |
+| Mira | Mira holográfica | Retícula com anel, boa para alvos em movimento; +7% precisão mirando | −6% velocidade de ADS; −3% campo de visão mirando | 19 | 14 | 20 | 21 | — |
+| Mira | Luneta 2x | Ampliação 2x | −20% velocidade de ADS; −8% mobilidade mirando | — | 22 | — | — | — |
+| Mira | Luneta 3x | Ampliação 3x | −30% velocidade de ADS; −12% mobilidade mirando | — | 30 | — | — | — |
+| Mira | Luneta variável | Campo de visão mais aberto na luneta; +25% campo de visão na luneta | −15% precisão na luneta | — | — | — | — | 7 |
+| Mira | Luneta de alta ampliação | Mais ampliação | Campo de visão estreito; −22% campo de visão na luneta; −3% mobilidade | — | — | — | — | 30 |
+| Mira | Mira térmica | Inimigos destacados em calor na luneta; +8% campo de visão na luneta | −10% precisão na luneta; −4% mobilidade | — | — | — | — | 22 |
+| Coronha | Coronha leve | +4% mobilidade; +10% velocidade de ADS | −10% controle do recuo vertical; −10% recuperação do recuo | — | 9 | 7 | 7 | 9 |
+| Coronha | Coronha pesada | +12% controle do recuo vertical; +12% recuperação do recuo | −5% mobilidade; −8% velocidade de ADS | — | 23 | 28 | 30 | 20 |
+| Coronha | Sem coronha | +6% mobilidade; +18% velocidade de ADS | −18% controle do recuo vertical; −15% controle do recuo lateral; −12% precisão do quadril | — | — | 17 | 18 | — |
+| Empunhadura frontal | Empunhadura vertical | +12% controle do recuo vertical | −6% velocidade de ADS | — | 3 | 22 | 13 | 25 |
+| Empunhadura frontal | Empunhadura angulada | +10% controle do recuo lateral; +8% velocidade de ADS | −4% controle do recuo vertical | — | 15 | 12 | 23 | — |
+| Empunhadura frontal | Bipé | +15% controle do recuo vertical; +15% controle do recuo lateral | −6% mobilidade; −12% velocidade de ADS | — | 27 | — | — | 10 |
+| Carregador | Carregador estendido | +17% pente; +17% munição reserva | −12% velocidade de recarga; −6% velocidade de ADS | 5 | 5 | 5 | 4 | 5 |
+| Carregador | Carregador rápido | +20% velocidade de recarga | −12% pente | 13 | 17 | 18 | 20 | 17 |
+| Carregador | Tambor | +25% pente; +25% munição reserva | −25% velocidade de recarga; −5% mobilidade; −12% velocidade de ADS | 20 | 29 | 30 | — | — |
+| Empunhadura traseira | Fita de empunhadura | +6% velocidade de ADS | −4% controle do recuo vertical | 7 | 7 | 10 | 11 | 4 |
+| Empunhadura traseira | Empunhadura de borracha | +6% controle do recuo vertical; +6% controle do recuo lateral | −5% velocidade de ADS | 14 | 18 | 23 | 25 | 18 |
+
+Na LONGBOW, que não tem ADS (a luneta é instantânea), o peso de manuseio das peças (tempo de ADS) vira mobilidade, com metade do efeito.
+
+### Teto de poder e regras dos builds
+
+- **Teto:** nenhum atributo do WeaponDef efetivo sai de ±25% da base (exceto FOV e sensibilidade das lunetas 2x/3x, que são valores absolutos).
+- **TTK mínimo:** o tempo para eliminar (150 de vida, tiros no corpo) não cai abaixo de 95% do da base; se cair, a cadência é reduzida. O teste confere **todas** as combinações válidas das 5 armas.
+- **WeaponDef efetivo:** uma função pura (`effectiveDef(arma, build)`, com cache por arma + build) calcula base + build. Combate, HUD e bots usam sempre o efetivo (`wdef(ws)`). O build vai no `WeaponState`.
+- **O build é do jogador:** quem pega uma arma do chão a recebe com o **próprio** build (a munição do pente que não cabe vai para a reserva).
+- **Bots:** builds sorteados pela seed da partida e pela dificuldade (Fácil: 0–1 peça das liberadas no nível 3; Intermediário: 1–3 do nível 12; Avançado: 3–4 do nível 21; GOD: 5 do nível máximo).
+- **Duelos 1v1:** `DUEL_BUILDS` = `'base'` (padrão): os dois duelam com a arma sem attachments. Com `'own'`, cada um usa o seu.
+- **Treino** usa o build do jogador. **Surf Skill** não muda (só a faca).
+- Supressor: os bots ouvem o tiro a 1100 u (em vez de 3200). Laser: o feixe denuncia: os bots notam quem está com ele 30% mais longe e fora do campo de visão.
+- **Dados salvos:** `localStorage` (`surfstrike.progression`, schema 2, com migração do schema 1 e limpeza de peças bloqueadas), atrás da interface `ProgressionStore` (um backend no multiplayer).
+- **Modo dev:** `?devxp` na URL mostra um painel para liberar tudo, dar +5000 XP por arma e zerar (também em `window.__surf.dev`).
+
 ## Bots (rodada 11: mira humana)
 
 A mira dos bots imita uma mão com mouse (`shared/bots/aim.ts`, parâmetros em `BOT_AIM`):
@@ -318,7 +399,8 @@ Todos centralizados em `shared/config/`:
 - `pickups.ts`: pools de itens sorteados por ponto do mapa e seus pesos.
 - Longbow: `preciseRange` (900 u) faz o tiro sem zoom ir exatamente na mira quando o alvo está perto; com zoom ela fica parada (sem balanço nem recuo visual) e continua no zoom depois do tiro.
 - `classes.ts`: cooldowns, durações e números das passivas.
-- `match.ts`: tempos de round, rounds para vencer, perfis de dificuldade dos bots (`BOT_SKILL`: headshots, rajada, uso de habilidades, alcance de visão) e a mira humanizada (`BOT_AIM`), as faixas de acerto esperadas (`BOT_HITRATE`) e a audição (`BOT_HEARING`).
+- `progression.ts`: XP por fonte, multiplicador por dificuldade, nível máximo, curva, nível de conta e XP em dobro (desligados), regra dos duelos. `attachments.ts`: catálogo, ordem de liberação por arma, limite de 5 e teto de poder.
+- `match.ts`: tempos de round, rounds para vencer, perfis de dificuldade dos bots (`BOT_SKILL`: headshots, rajada, uso de habilidades, alcance de visão) e a mira humanizada (`BOT_AIM`), as faixas de acerto esperadas (`BOT_HITRATE`) e a audição (`BOT_HEARING`, com o tiro com supressor) e o laser visível (`BOT_LASER`).
 - `skill.ts`: regras do Surf Skill (faca, prespeed cap desligado, velocidade mantida entre stages, versão das regras, pulo na zona, ranking, fantasma, layout dos stages) e metadados dos 15 mapas.
 
 ## Visual das armas, faca, granadas e itens (rodada 10)
@@ -409,6 +491,7 @@ O ambiente onde o projeto foi construído não tinha acesso ao registro npm nem 
 - Partidas contra bots de 1v1 a 5v5, 4 dificuldades, rounds, duelos 1v1 no fim do tempo, placar, tela de resultado
 - Modo treino com alvos, voo, checkpoints e reinício
 - Surf Skill: 3 mapas de treino (T1 a T3) e 12 de desafio (D1 a D12, T2 a T6) nos formatos staged e linear, cronômetro em ticks, splits contra o PB, quedas para o início do stage ou para o último checkpoint, prática com saveloc, recordes, Sum of Best, ranking local e fantasma do PB
+- Progressão por arma (rodada 12a): XP só contra bots, níveis até 30 (pistola 20), 27 attachments em 8 categorias com até 5 equipados, teto de poder, builds dos bots pela seed, dados salvos com schema e modo `?devxp`. As peças ainda não aparecem nos modelos e o menu ARSENAL (gunsmith) vem nas rodadas 12b e 12c.
 - HUD, menus, configurações (sensibilidade, FOV, volumes, qualidade, efeitos, auto-bhop, velocidade, teclas), áudio sintetizado
 
 ### Pendente
@@ -420,5 +503,5 @@ O ambiente onde o projeto foi construído não tinha acesso ao registro npm nem 
 
 ## Testes
 
-- `npm test`: 183 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots e, no Surf Skill, cronômetro, zonas, prespeed, splits, quedas, reinícios, prática, recordes, versão do mapa, formato linear com checkpoints, fantasma (gravação, compressão, PB, sincronia por segmento, tamanho), regras de projeto dos desafios (inclinação, largura mínima, zonas), cada segmento de cada mapa completado pelo percurso de referência (de ponta a ponta e a partir de cada stage/checkpoint), emendas das curvas a 2400 u/s, sonda das emendas de todos os mapas (800–3000 u/s, várias alturas na face, os dois strafes), layout dos stages, nuvens fora da pista, plataformas de checkpoint atravessáveis, regras sem cap, velocidade mantida entre stages, entrada embalada e chegada a 3500 u/s em todo stage, versão das regras na chave dos recordes, ordem do Próximo mapa e o índice de dificuldade crescente; e, nos modelos, orçamento de triângulos, nenhum triângulo degenerado ou NaN, caixa envolvente de cada arma a ±15% da anterior, cobertura da tela em primeira pessoa, pivôs da balisong, pontos de referência, cores de identificação, faces voltadas para fora e as primitivas novas; na rodada 11, a luneta abrindo e fechando em qualquer situação, o perfil humano da mira dos bots (flick em sino com overshoot, sem aimlock, pior contra quem surfa), as taxas de acerto por dificuldade, a reação com distribuição, nenhum tiro sem linha de visão, o determinismo e o sacar da balisong contínuo; ADS com a visada no centro da tela, tempo de entrada/saída e multiplicadores da config; personagens com os pivôs no lugar, o volume do hitbox, o orçamento e a cor do time).
-- `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint automático, caminhar e slide pelo teclado, habilidade, eliminação e fim de round com placar; no Surf Skill, menu dos mapas, cronômetro ao sair da zona, queda de volta ao início do stage, reinício do mapa e um stage completo com split; aba Desafio, entrar no D1 e pular na base (sem limitador de velocidade), completar um segmento do D1, uma corrida curta de teste até o fim, o fantasma aparecendo na tentativa seguinte e o botão Próximo mapa carregando o mapa seguinte; no Treino, sacar cada arma (1/2/3/4), atirar, recarregar e inspecionar com os modelos novos, a balisong abrindo e fechando; a luneta da LONGBOW abrindo e fechando com o clique direito andando; o ADS de cada arma de ferro (com screenshot); e a tela Arsenal, com um screenshot de cada modelo em cada versão de detalhe em `e2e-shots/arsenal/`.
+- `npm test`: 200 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots e, no Surf Skill, cronômetro, zonas, prespeed, splits, quedas, reinícios, prática, recordes, versão do mapa, formato linear com checkpoints, fantasma (gravação, compressão, PB, sincronia por segmento, tamanho), regras de projeto dos desafios (inclinação, largura mínima, zonas), cada segmento de cada mapa completado pelo percurso de referência (de ponta a ponta e a partir de cada stage/checkpoint), emendas das curvas a 2400 u/s, sonda das emendas de todos os mapas (800–3000 u/s, várias alturas na face, os dois strafes), layout dos stages, nuvens fora da pista, plataformas de checkpoint atravessáveis, regras sem cap, velocidade mantida entre stages, entrada embalada e chegada a 3500 u/s em todo stage, versão das regras na chave dos recordes, ordem do Próximo mapa e o índice de dificuldade crescente; e, nos modelos, orçamento de triângulos, nenhum triângulo degenerado ou NaN, caixa envolvente de cada arma a ±15% da anterior, cobertura da tela em primeira pessoa, pivôs da balisong, pontos de referência, cores de identificação, faces voltadas para fora e as primitivas novas; na rodada 11, a luneta abrindo e fechando em qualquer situação, o perfil humano da mira dos bots (flick em sino com overshoot, sem aimlock, pior contra quem surfa), as taxas de acerto por dificuldade, a reação com distribuição, nenhum tiro sem linha de visão, o determinismo e o sacar da balisong contínuo; ADS com a visada no centro da tela, tempo de entrada/saída e multiplicadores da config; personagens com os pivôs no lugar, o volume do hitbox, o orçamento e a cor do time; na rodada 12, XP por fonte, curva de níveis, ordem dos desbloqueios, limite de 5, toda peça como troca, o teto de poder e o TTK mínimo em todas as combinações, o XP da partida rateado, migração e reset dos dados salvos, modo dev, builds determinísticos dos bots, arma pega do chão com o build de quem pega, regra dos duelos, build no Treino, supressor na audição dos bots).
+- `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint automático, caminhar e slide pelo teclado, habilidade, eliminação e fim de round com placar; no Surf Skill, menu dos mapas, cronômetro ao sair da zona, queda de volta ao início do stage, reinício do mapa e um stage completo com split; aba Desafio, entrar no D1 e pular na base (sem limitador de velocidade), completar um segmento do D1, uma corrida curta de teste até o fim, o fantasma aparecendo na tentativa seguinte e o botão Próximo mapa carregando o mapa seguinte; no Treino, sacar cada arma (1/2/3/4), atirar, recarregar e inspecionar com os modelos novos, a balisong abrindo e fechando; a luneta da LONGBOW abrindo e fechando com o clique direito andando; o ADS de cada arma de ferro (com screenshot); a tela Arsenal, com um screenshot de cada modelo em cada versão de detalhe em `e2e-shots/arsenal/`; e, na rodada 12, um abate contra bots dando XP à arma e o XP salvo ao sair, e o painel `?devxp`.

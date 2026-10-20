@@ -17,6 +17,9 @@ import { updateGhostSet, emptyGhostSet } from '../../shared/sim/ghost';
 import { LocalRecordStore } from './skill/localStore';
 import { IdbGhostStore } from './skill/ghostStore';
 import { Arsenal } from './ui/arsenal';
+import { LocalProgressionStore } from './game/progressStore';
+import { devXp, levelInfo } from '../../shared/sim/progression';
+import { PROGRESSION_WEAPONS, ProgWeaponId } from '../../shared/config/progression';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const settings = loadSettings();
@@ -43,6 +46,7 @@ let game: Game;
 
 // ---- Surf Skill: recordes locais (a lógica fica em shared/sim/records.ts) ----
 const records = new LocalRecordStore();
+const progress = new LocalProgressionStore();
 const ghosts = new IdbGhostStore();
 let skillMapId: string | null = null;
 /** Recordes sem construir o mapa: a versão vem de skillVersions.ts (gerado e conferido nos testes) + regras. */
@@ -134,6 +138,28 @@ function startGame(mode: 'bots' | 'training', classId: ClassId, s?: MatchSetup) 
   resume();
 }
 
+game.progress = progress;
+
+// ---- Progressão (rodada 12). ?devxp: painel para dar XP, liberar tudo e zerar ----
+const dev = {
+  grant(id: ProgWeaponId, amount: number) { progress.save(devXp.grant(progress.load(), id, amount)); },
+  unlockAll() { progress.save(devXp.unlockAll(progress.load())); },
+  reset() { progress.reset(); },
+  levels() { const d = progress.load(); return Object.fromEntries(PROGRESSION_WEAPONS.map((w) => [w, levelInfo(w, d.xp[w]).level])); },
+};
+if (new URLSearchParams(location.search).has('devxp')) {
+  const el = document.createElement('div');
+  el.id = 'devxp';
+  el.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:99;background:#000c;color:#fff;font:12px monospace;padding:6px;border:1px solid #f80;display:flex;gap:4px;flex-wrap:wrap;max-width:320px';
+  const btn = (label: string, fn: () => void) => { const b = document.createElement('button'); b.textContent = label; b.onclick = () => { fn(); info.textContent = JSON.stringify(dev.levels()); }; el.appendChild(b); };
+  const info = document.createElement('span');
+  btn('LIBERAR TUDO', () => dev.unlockAll());
+  for (const w of PROGRESSION_WEAPONS) btn(`+5k ${w}`, () => dev.grant(w, 5000));
+  btn('ZERAR', () => dev.reset());
+  el.appendChild(info); info.textContent = JSON.stringify(dev.levels());
+  document.body.appendChild(el);
+}
+
 // ---- Arsenal: revisão dos modelos (?arsenal na URL ou botão no painel do Treino) ----
 const arsenal = new Arsenal(renderer);
 function openArsenal() {
@@ -176,7 +202,7 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 // expose for automated browser tests / debugging
-(window as unknown as { __surf: unknown }).__surf = { game, input, menu, settings, records, skillRecords, arsenal, openArsenal };
+(window as unknown as { __surf: unknown }).__surf = { game, input, menu, settings, records, skillRecords, arsenal, openArsenal, progress, dev };
 
 let last = performance.now();
 function loop(now: number) {
