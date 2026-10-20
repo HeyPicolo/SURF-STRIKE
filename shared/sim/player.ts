@@ -12,6 +12,11 @@ export interface PlayerInput {
   cmd: MoveCmd;
   fire: boolean;
   alt: boolean;
+  /**
+   * Mira secundária no modo "segurar": true/false = estado desejado neste tick; null = modo
+   * "alternar" (cada borda de `alt` troca o estado desejado). Bots usam true/false.
+   */
+  aim?: boolean | null;
   reload: boolean;
   use: boolean;
   ability: boolean;
@@ -23,7 +28,7 @@ export interface PlayerInput {
 }
 
 export function emptyInput(): PlayerInput {
-  return { cmd: emptyCmd(), fire: false, alt: false, reload: false, use: false, ability: false, drop: false, slot: null, skill: emptySkillInput() };
+  return { cmd: emptyCmd(), fire: false, alt: false, aim: null, reload: false, use: false, ability: false, drop: false, slot: null, skill: emptySkillInput() };
 }
 
 export interface PlayerStats { kills: number; deaths: number; damage: number; headshots: number; assists: number; }
@@ -79,6 +84,8 @@ export class Player {
   switchTime = 0;
   reloadTime = 0;
   zoomed = false;
+  /** mira desejada (luneta/ADS): guarda o clique enquanto algo impede de mirar (recarga, troca, slide) */
+  aimWant = false;
   punchPitch = 0;
   punchYaw = 0;
   shotsFired = 0;
@@ -139,7 +146,7 @@ export class Player {
     this.slot = SLOT_KNIFE; this.lastWeaponSlot = SLOT_KNIFE;
     this.resetMovementState();
     this.nades = { he: 0, smoke: 0, impulse: 0 };
-    this.fireCooldown = 0; this.switchTime = 0; this.reloadTime = 0; this.zoomed = false;
+    this.fireCooldown = 0; this.switchTime = 0; this.reloadTime = 0; this.zoomed = false; this.aimWant = false;
     this.punchPitch = 0; this.punchYaw = 0; this.shotsFired = 0;
     this.abilityCd = 0; this.abilityActive = 0; this.tired = 0; this.speedBoost = 0;
     this.predatorStacks = 0; this.predatorStackTime = 0; this.furyUsed = false;

@@ -35,6 +35,8 @@ export interface Settings {
   autoBhop: boolean;
   showSpeed: boolean;
   viewBob: boolean;
+  /** mira secundária (luneta / ADS): 'toggle' = clique alterna; 'hold' = mira enquanto segura */
+  aimMode: 'toggle' | 'hold';
   /** Tela cheia + Keyboard Lock ao jogar: impede que Ctrl+W/Ctrl+T fechem ou troquem a aba. */
   fullscreenLock: boolean;
   keys: Record<Action, string>;
@@ -50,7 +52,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   sensitivity: 2.0, fov: 100, masterVolume: 0.7, sfxVolume: 0.9, quality: 'high', effects: true,
-  autoBhop: true, showSpeed: true, viewBob: true, fullscreenLock: true, keys: { ...DEFAULT_KEYS }, playerName: 'Jogador', skillNameSet: false, ghostShow: GHOST.defaultShow, ghostOpacity: GHOST.defaultOpacity, ghostSync: 'run',
+  autoBhop: true, showSpeed: true, viewBob: true, aimMode: 'toggle', fullscreenLock: true, keys: { ...DEFAULT_KEYS }, playerName: 'Jogador', skillNameSet: false, ghostShow: GHOST.defaultShow, ghostOpacity: GHOST.defaultOpacity, ghostSync: 'run',
 };
 
 const KEY = 'surfstrike.settings.v1';

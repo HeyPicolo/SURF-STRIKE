@@ -264,7 +264,11 @@ export class Game {
     inp.cmd.walk = i.held('walk');
     const live = i.locked || i.enabled;
     inp.fire = live && (i.mouse[0] || (first && i.consumeMouse(0)));
-    inp.alt = live && (first ? i.consumeMouse(2) : false);
+    // clique direito: a borda vai no primeiro tick (nunca se perde, mesmo apertando e soltando entre
+    // dois ticks); no modo "segurar" o estado desejado vai junto (um toque mira por pelo menos um tick)
+    const altPress = live && first && i.consumeMouse(2);
+    inp.alt = altPress;
+    inp.aim = this.settings.aimMode === 'hold' ? live && (i.mouse[2] || altPress) : null;
     if (first) {
       inp.reload = i.consume('reload');
       inp.use = i.consume('use');

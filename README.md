@@ -54,7 +54,7 @@ No menu: **Jogar contra bots** (escolha 1v1 a 5v5, dificuldade, equipe e classe)
 | W A S D | Movimento (A/D para surfar e fazer air-strafe) |
 | Mouse | Câmera e mira |
 | Clique esquerdo | Atirar / golpe de faca / disparo do taser / lançar granada |
-| Clique direito | Zoom (rifle e sniper) / estocada de faca / lançamento curto de granada |
+| Clique direito | Zoom/luneta (rifle e LONGBOW; "alternar" ou "segurar" em Configurações) / estocada de faca / lançamento curto de granada |
 | Espaço | Pular / bunny hop / cancelar slide |
 | Shift | Caminhar (sem sprint e sem som de passos) |
 | Ctrl | Agachar / slide (em movimento) / cancelar slide |
@@ -69,6 +69,8 @@ No menu: **Jogar contra bots** (escolha 1v1 a 5v5, dificuldade, equipe e classe)
 | T / V / Z / X | Treino: reiniciar posição / voar / salvar checkpoint / carregar checkpoint |
 
 Todas as teclas podem ser remapeadas em Configurações.
+
+**Mira com o botão direito (rodada 11):** antes, a luneta da LONGBOW só abria parada ou no ar: o sim ignorava o clique quando o jogador estava em sprint, e com o sprint automático quem anda está sempre em sprint. Agora o clique troca a **mira desejada**, e a mira efetiva é a desejada quando nada impede (recarga, troca de arma, slide; o sprint só impede se `SPRINT.raiseWeapon` estiver ligado). Um clique durante a recarga, a troca ou o slide fica guardado e vale quando eles acabam. Recarregar ou trocar de arma tira da mira, como no CS. O slide também tira, e um clique depois dele mira de novo. Atirar não tira da luneta. O clique chega ao sim como borda no primeiro tick, mesmo apertando e soltando entre dois ticks. Em Configurações → Mira: **Alternar** (padrão) ou **Segurar**.
 
 **Sobre o Ctrl:** no navegador, Ctrl+W fecha a aba e Ctrl+T abre outra. Por isso o jogo entra em tela cheia ao capturar o mouse e usa o Keyboard Lock do Chrome e do Edge, que entrega essas combinações ao jogo. No Firefox (ou com a opção "Tela cheia ao jogar" desligada) isso não é possível; o jogo então pede confirmação antes de fechar a aba durante uma partida. Se preferir, troque o agachar para outra tecla em Configurações.
 
@@ -253,6 +255,40 @@ Onde o pedido deixava espaço, segui o mais próximo do Surf Skill do CS2:
 - Para caber em ±40000, a maratona desce menos por rampa (descidas × 0,3, rampas × 1,9 de comprimento) e as transições comuns caem 190 u em vez de 300. 
 - Os cabos (curva no ar) ficaram fora do ZENITH: na velocidade da maratona as viradas no ar não fecham; eles aparecem no D6, D8 e D11.
 
+## Bots (rodada 11: mira humana)
+
+A mira dos bots imita uma mão com mouse (`shared/bots/aim.ts`, parâmetros em `BOT_AIM`):
+
+- **Reação** sorteada a cada encontro: log-normal, com cauda longa. É mais lenta para alvos na periferia da visão e para quem surfa rápido. Trocar de alvo soma um atraso.
+- **Flick**: movimento balístico com curva de jerk mínimo (acelera e desacelera). O ponto final erra um pouco, para mais ou para menos, proporcional à amplitude, e o tempo segue a lei de Fitts. Depois vêm as **correções**, com uma mola amortecida.
+- **Rastreamento imperfeito**: a mola segue uma estimativa atrasada do alvo. O atraso cresce com a velocidade angular, e quando o alvo muda de direção a mira ainda vai um instante para o lado antigo.
+- **Ruído e erros aprendidos**:
+  - tremor contínuo (ruído suave, sem saltos) e uma tremida da mão no instante do clique;
+  - lead e controle de recuo aprendidos, com erro, que piora em rajadas longas;
+  - nervosismo: mais erro logo depois de tomar dano.
+- **Ponto de mira** variado (corpo, ombro, cabeça), mudando devagar.
+- **Quando atira**:
+  - não atira no meio do flick; a média/longa distância espera estabilizar o 1º tiro;
+  - aperta o gatilho quando a mira está sobre o hitbox, com uma folga que diminui com a dificuldade;
+  - se perde o alvo de vista, continua mirando onde ele sumiu (pre-aim).
+- **Comportamento**:
+  - strafe em ritmo irregular, parada para atirar (counter-strafe, mais frequente nas dificuldades altas), agacha e pula às vezes;
+  - olhar ocioso: direção do movimento, ângulos prováveis, sons e conferidas nos lados;
+  - personalidade sorteada com a seed: agressivo/cauteloso, distância preferida, tendência a headshot, nervosismo.
+- **Visão e audição**: o bot só mira e atira em quem tem linha de visão (o sentido do PREDATOR é a exceção: é a habilidade da classe). Tiros, pulos e passos de quem corre por perto só fazem o bot olhar para lá.
+- **Determinismo**: cada bot tem um PRNG próprio, tirado da seed da partida. Não há `Math.random`.
+
+Bancada: `npx tsx scripts/bot-aim-bench.ts`. Um bot com o KESTREL AR atira num alvo que anda de lado (250 u/s, trocando de direção), num campo plano; são 6 seeds × 12 s.
+
+| Dificuldade | Acerto antes (400 / 1200 / 2400 u) | Acerto agora | 1º acerto antes (s) | 1º acerto agora (s) |
+|---|---|---|---|---|
+| Fácil | 15,1% / 0,9% / 0,2% | 19,9% / 6,7% / 2,0% | 1,23 / 8,42 / 10,24 | 2,21 / 2,46 / 9,46 |
+| Intermediário | 25,2% / 3,1% / 2,2% | 24,2% / 14,3% / 9,5% | 0,84 / 7,34 / 10,14 | 1,28 / 2,81 / 2,80 |
+| Avançado | 19,8% / 12,8% / 6,1% | 39,4% / 34,7% / 23,0% | 0,45 / 2,60 / 2,58 | 1,02 / 2,11 / 2,11 |
+| GOD OF SURF | 23,3% / 23,6% / 33,1% | 61,9% / 55,0% / 39,2% | 0,75 / 0,65 / 0,63 | 0,56 / 0,81 / 1,32 |
+
+Antes, os bots atiravam o tempo todo enquanto giravam a mira em velocidade constante. Por isso o acerto era baixo e fora de ordem (o Avançado acertava menos que o Intermediário de perto), e o 1º acerto vinha quase sempre no mesmo instante. Agora a ordem é Fácil < Intermediário < Avançado < GOD em todas as distâncias, o 1º acerto varia de um encontro para o outro e os bots acertam bem mais a média e longa distância.
+
 ## Parâmetros
 
 Todos centralizados em `shared/config/`:
@@ -265,7 +301,7 @@ Todos centralizados em `shared/config/`:
 - `pickups.ts`: pools de itens sorteados por ponto do mapa e seus pesos.
 - Longbow: `preciseRange` (900 u) faz o tiro sem zoom ir exatamente na mira quando o alvo está perto; com zoom ela fica parada (sem balanço nem recuo visual) e continua no zoom depois do tiro.
 - `classes.ts`: cooldowns, durações e números das passivas.
-- `match.ts`: tempos de round, rounds para vencer, perfis de dificuldade dos bots (reação, velocidade de mira, erro, headshots, uso de habilidades).
+- `match.ts`: tempos de round, rounds para vencer, perfis de dificuldade dos bots (`BOT_SKILL`: headshots, rajada, uso de habilidades, alcance de visão) e a mira humanizada (`BOT_AIM`), as faixas de acerto esperadas (`BOT_HITRATE`) e a audição (`BOT_HEARING`).
 - `skill.ts`: regras do Surf Skill (faca, prespeed cap desligado, velocidade mantida entre stages, versão das regras, pulo na zona, ranking, fantasma, layout dos stages) e metadados dos 15 mapas.
 
 ## Visual das armas, faca, granadas e itens (rodada 10)
@@ -295,6 +331,7 @@ Estilo "geometric / block-build": blocos chanfrados com silhueta clara, cilindro
 - **Geometria sem GL**: `client/src/entities/geometry.ts` só usa o `MeshBuilder`; `models.ts` cria os `GpuMesh`. Os testes chamam os construtores direto.
 - **Pontos de referência** (`WEAPON_REFS` em `style.ts`): boca de cada arma (o clarão sai 2 u à frente), eixo da luneta da LONGBOW (`scopeY` 7,8) e o punho onde a luva encaixa (z 0..3,5 · y −6,5..0,5, igual para todas as armas de fogo). As caixas envolventes ficaram dentro de ±15% das antigas, e a parte da tela coberta em primeira pessoa é igual ou menor que antes (medida nos testes).
 - **Balisong**: as três peças continuam separadas (`blade`, `safe`, `bite`), com os pinos na origem, a lâmina para −Z e os cabos para +Z. Sacar, abrir/fechar e a inspeção (F) usam a mesma animação.
+- **Sacar da balisong (rodada 11)**: a faca entra fechada na mão e o pulso recua (antecipação) e dá o impulso. O cabo "bite" se solta e dá a volta em torno da lâmina num giro contínuo, enquanto a lâmina abre. Ao travar aberta, passa um pouco do ponto e assenta. Até 0,38 s usa uma spline de Hermite/Catmull-Rom (velocidade contínua nos quadros-chave); dali em diante é o final de antes. O tempo total continua 0,55 s. A inspeção e as outras animações não mudaram (teste).
 - **Arsenal**: tela para revisar os modelos girando sobre fundo neutro. Abre pelo botão **Arsenal** no painel do Treino ou com `?arsenal` na URL. As setas trocam de modelo, **L** alterna as versões (detalhada, simplificada e de longe), e a contagem de triângulos aparece embaixo.
 
 ## Arquitetura
@@ -353,5 +390,5 @@ O ambiente onde o projeto foi construído não tinha acesso ao registro npm nem 
 
 ## Testes
 
-- `npm test`: 162 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots e, no Surf Skill, cronômetro, zonas, prespeed, splits, quedas, reinícios, prática, recordes, versão do mapa, formato linear com checkpoints, fantasma (gravação, compressão, PB, sincronia por segmento, tamanho), regras de projeto dos desafios (inclinação, largura mínima, zonas), cada segmento de cada mapa completado pelo percurso de referência (de ponta a ponta e a partir de cada stage/checkpoint), emendas das curvas a 2400 u/s, sonda das emendas de todos os mapas (800–3000 u/s, várias alturas na face, os dois strafes), layout dos stages, nuvens fora da pista, plataformas de checkpoint atravessáveis, regras sem cap, velocidade mantida entre stages, entrada embalada e chegada a 3500 u/s em todo stage, versão das regras na chave dos recordes, ordem do Próximo mapa e o índice de dificuldade crescente; e, nos modelos, orçamento de triângulos, nenhum triângulo degenerado ou NaN, caixa envolvente de cada arma a ±15% da anterior, cobertura da tela em primeira pessoa, pivôs da balisong, pontos de referência, cores de identificação, faces voltadas para fora e as primitivas novas).
-- `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint automático, caminhar e slide pelo teclado, habilidade, eliminação e fim de round com placar; no Surf Skill, menu dos mapas, cronômetro ao sair da zona, queda de volta ao início do stage, reinício do mapa e um stage completo com split; aba Desafio, entrar no D1 e pular na base (sem limitador de velocidade), completar um segmento do D1, uma corrida curta de teste até o fim, o fantasma aparecendo na tentativa seguinte e o botão Próximo mapa carregando o mapa seguinte; no Treino, sacar cada arma (1/2/3/4), atirar, recarregar e inspecionar com os modelos novos, a balisong abrindo e fechando; e a tela Arsenal, com um screenshot de cada modelo em cada versão de detalhe em `e2e-shots/arsenal/`.
+- `npm test`: 175 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots e, no Surf Skill, cronômetro, zonas, prespeed, splits, quedas, reinícios, prática, recordes, versão do mapa, formato linear com checkpoints, fantasma (gravação, compressão, PB, sincronia por segmento, tamanho), regras de projeto dos desafios (inclinação, largura mínima, zonas), cada segmento de cada mapa completado pelo percurso de referência (de ponta a ponta e a partir de cada stage/checkpoint), emendas das curvas a 2400 u/s, sonda das emendas de todos os mapas (800–3000 u/s, várias alturas na face, os dois strafes), layout dos stages, nuvens fora da pista, plataformas de checkpoint atravessáveis, regras sem cap, velocidade mantida entre stages, entrada embalada e chegada a 3500 u/s em todo stage, versão das regras na chave dos recordes, ordem do Próximo mapa e o índice de dificuldade crescente; e, nos modelos, orçamento de triângulos, nenhum triângulo degenerado ou NaN, caixa envolvente de cada arma a ±15% da anterior, cobertura da tela em primeira pessoa, pivôs da balisong, pontos de referência, cores de identificação, faces voltadas para fora e as primitivas novas; na rodada 11, a luneta abrindo e fechando em qualquer situação, o perfil humano da mira dos bots (flick em sino com overshoot, sem aimlock, pior contra quem surfa), as taxas de acerto por dificuldade, a reação com distribuição, nenhum tiro sem linha de visão, o determinismo e o sacar da balisong contínuo).
+- `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint automático, caminhar e slide pelo teclado, habilidade, eliminação e fim de round com placar; no Surf Skill, menu dos mapas, cronômetro ao sair da zona, queda de volta ao início do stage, reinício do mapa e um stage completo com split; aba Desafio, entrar no D1 e pular na base (sem limitador de velocidade), completar um segmento do D1, uma corrida curta de teste até o fim, o fantasma aparecendo na tentativa seguinte e o botão Próximo mapa carregando o mapa seguinte; no Treino, sacar cada arma (1/2/3/4), atirar, recarregar e inspecionar com os modelos novos, a balisong abrindo e fechando; a luneta da LONGBOW abrindo e fechando com o clique direito andando; e a tela Arsenal, com um screenshot de cada modelo em cada versão de detalhe em `e2e-shots/arsenal/`.

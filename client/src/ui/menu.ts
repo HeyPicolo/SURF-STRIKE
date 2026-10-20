@@ -281,6 +281,7 @@ export class Menu {
           ${check('bhop', 'Auto-bhop (segurar Espaço)', s.autoBhop)}
           ${check('speed', 'Exibir velocidade', s.showSpeed)}
           ${check('bob', 'Balanço da câmera', s.viewBob)}
+          <label class="set-row"><span>Mira (botão direito)</span><select id="aimmode"><option value="toggle">Alternar (clique)</option><option value="hold">Segurar</option></select></label>
           ${check('fslock', 'Tela cheia ao jogar (protege Ctrl+W)', s.fullscreenLock)}
           <label class="set-row"><span>Nome</span><input type="text" id="pname" maxlength="16" value="${esc(s.playerName)}"></label>
           <h4>Áudio</h4>
@@ -300,6 +301,8 @@ export class Menu {
       <div class="panel-actions"><button class="btn primary" data-back>Salvar e voltar</button></div>`);
     ($('quality') as HTMLSelectElement).value = s.quality;
     ($('gsync') as HTMLSelectElement).value = s.ghostSync;
+    ($('aimmode') as HTMLSelectElement).value = s.aimMode;
+    ($('aimmode') as HTMLSelectElement).onchange = (e) => { s.aimMode = (e.target as HTMLSelectElement).value as Settings['aimMode']; this.changed(); };
     ($('gsync') as HTMLSelectElement).onchange = (e) => { s.ghostSync = (e.target as HTMLSelectElement).value as Settings['ghostSync']; this.changed(); };
     const bindRange = (id: string, set: (v: number) => void) => {
       const el = $(id) as HTMLInputElement;

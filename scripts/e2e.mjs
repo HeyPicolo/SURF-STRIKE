@@ -328,6 +328,19 @@ const opened = bf.some((b) => Math.abs(b - Math.PI) < 0.6) && Math.abs(bf[bf.len
 const closedInInspect = bfInsp.some((c) => c < 0.25) && bfInsp.some((c) => c > 0.9);
 check('28. balisong abre ao sacar e fecha/abre na inspeção (três peças nos pinos)', opened && closedInInspect, JSON.stringify({ draw: bf, inspect: bfInsp.join(',') }));
 
+// rodada 11a: LONGBOW andando (sprint automático): clique direito abre a luneta, outro fecha
+await S(() => { const w = window.__surf.game.world, p = w.local; p.giveWeapon('sniper'); p.phys.pos.set(14200, 2, 760); p.phys.vel.set(0, 0, 0); window.__surf.input.yaw = 0; window.__surf.input.pitch = 0; });
+await page.keyboard.press('Digit1'); await waitSim(0.6);
+await page.keyboard.down('KeyW'); await waitSim(0.5);
+const sprintingBefore = await S(() => window.__surf.game.world.local.sprinting);
+await page.mouse.down({ button: 'right' }); await page.mouse.up({ button: 'right' }); await waitSim(0.2);
+const scopeOpen = await S(() => ({ zoomed: window.__surf.game.world.local.zoomed, hud: document.getElementById('scope').classList.contains('on') }));
+await page.screenshot({ path: join(shots, '18-longbow-scope.png') });
+await page.mouse.down({ button: 'right' }); await page.mouse.up({ button: 'right' }); await waitSim(0.2);
+const scopeClosed = await S(() => ({ zoomed: window.__surf.game.world.local.zoomed, hud: document.getElementById('scope').classList.contains('on') }));
+await page.keyboard.up('KeyW');
+check('30. LONGBOW andando: clique direito abre a luneta e outro fecha', sprintingBefore && scopeOpen.zoomed && scopeOpen.hud && !scopeClosed.zoomed && !scopeClosed.hud, JSON.stringify({ sprintingBefore, scopeOpen, scopeClosed }));
+
 // rodada 10: tela Arsenal com todos os modelos (detalhado e simplificado) e screenshot de cada um
 const arsDir = join(shots, 'arsenal');
 mkdirSync(arsDir, { recursive: true });

@@ -5,7 +5,7 @@
 // =============================================================
 import { V3, DEG, forwardFromAngles, rightFromYaw, makeRng } from '../math/vec3';
 import { PHYSICS, SPRINT } from '../config/physics';
-import { WEAPONS, WeaponId, NadeKind, NADES, NADE_THROW_SPEED, NADE_SELF_DAMAGE, ITEMS, GUN_IDS, SLOT_KNIFE, SLOT_TASER, SLOT_NADES, reloadDuration } from '../config/weapons';
+import { WEAPONS, WeaponId, WeaponDef, NadeKind, NADES, NADE_THROW_SPEED, NADE_SELF_DAMAGE, ITEMS, GUN_IDS, SLOT_KNIFE, SLOT_TASER, SLOT_NADES, reloadDuration } from '../config/weapons';
 import { rollPool } from '../config/pickups';
 import { CLASSES, ClassId, CLASS_IDS } from '../config/classes';
 import { MATCH, BotDifficulty, BOT_NAMES } from '../config/match';
@@ -117,7 +117,19 @@ export class World {
     }
   }
 
-  emit(e: SimEvent) { this.events.push(e); }
+  emit(e: SimEvent) {
+    this.events.push(e);
+    // sons que os bots podem ouvir (tiros, pulos, pousos): só a posição e a hora
+    if ((e.t === 'shot' && e.pellet === 0) || e.t === 'jump' || e.t === 'land') {
+      const q = this.player(e.pid);
+      if (q) {
+        this.noises.push({ pid: e.pid, pos: (e.t === 'shot' ? e.from : q.phys.pos).clone(), time: this.time, kind: e.t === 'shot' ? 'shot' : 'jump' });
+        if (this.noises.length > 64) this.noises.shift();
+      }
+    }
+  }
+  /** últimos sons do jogo (para a audição dos bots) */
+  noises: { pid: number; pos: V3; time: number; kind: 'shot' | 'jump' }[] = [];
   drainEvents(): SimEvent[] { const e = this.events; this.events = []; return e; }
 
   get local(): Player { return this.players.find((p) => p.id === this.localId)!; }
@@ -248,7 +260,7 @@ export class World {
     p.nades = { he: 0, smoke: 0, impulse: 0 };
     p.abilityActive = 0; p.tired = 0; p.speedBoost = 0; p.predatorStacks = 0;
     p.noAbilities = true;
-    p.reloadTime = 0; p.zoomed = false; p.punchPitch = 0; p.punchYaw = 0;
+    p.reloadTime = 0; p.zoomed = false; p.aimWant = false; p.punchPitch = 0; p.punchYaw = 0;
     p.resetMovementState();
     if (weapon) {
       p.weapons = [null, null, null, null];
@@ -436,7 +448,7 @@ export class World {
       p.sprinting = false;
       const target = Math.min(Math.max(hs, SPRINT.slideStartSpeed), hs + SPRINT.slideMaxBoost);
       st.vel.x *= target / hs; st.vel.z *= target / hs;
-      p.zoomed = false;
+      p.zoomed = false; p.aimWant = false; // o slide tira da mira; um clique depois dele mira de novo
       this.emit({ t: 'slide', pid: p.id, phase: 'start' });
     }
 
@@ -450,7 +462,7 @@ export class World {
       && (SPRINT.raiseWeapon ? !p.input.fire && cmd.forward > 0 : true);
     const staminaOk = !SPRINT.useStamina || (!p.staminaLocked && p.stamina > 0);
     const canSprint = wantsSprint && staminaOk && !st.ducked && (st.onGround || p.sprinting);
-    if (canSprint && !p.sprinting && SPRINT.raiseWeapon) p.zoomed = false;
+    if (canSprint && !p.sprinting && SPRINT.raiseWeapon) { p.zoomed = false; p.aimWant = false; }
     p.sprinting = canSprint;
     if (p.sprinting) {
       if (SPRINT.useStamina) {
@@ -538,8 +550,7 @@ export class World {
       else if (inp.fire) this.melee(p, false);
       return;
     }
-    // zoom
-    if (this.edge(p, 'alt') && def.zoom > 0 && p.reloadTime <= 0 && !p.sprinting) p.zoomed = !p.zoomed;
+    this.updateAim(p, def);
     // reload
     if (p.reloadTime > 0) {
       p.reloadTime -= dt;
@@ -559,6 +570,22 @@ export class World {
     }
   }
 
+  /**
+   * Luneta (e ADS): o clique direito troca a mira DESEJADA (modo alternar) ou o input diz o estado
+   * (modo segurar / bots). A mira efetiva é a desejada quando nada impede: recarga, troca de arma,
+   * slide (e o sprint só se a arma levantar no sprint, SPRINT.raiseWeapon). Assim nenhum clique se
+   * perde: o que chega durante um impedimento fica guardado. Antes, o sprint automático engolia o
+   * clique de quem andava (rodada 11).
+   */
+  private updateAim(p: Player, def: WeaponDef) {
+    if (!(def.zoom > 0)) { p.zoomed = false; p.aimWant = false; return; }
+    const inp = p.input;
+    if (inp.aim === true || inp.aim === false) p.aimWant = inp.aim;
+    else if (this.edge(p, 'alt')) p.aimWant = !p.aimWant;
+    const blocked = p.reloadTime > 0 || p.switchTime > 0 || p.slideTime > 0 || (SPRINT.raiseWeapon && p.sprinting);
+    p.zoomed = p.aimWant && !blocked;
+  }
+
   taserReady(p: Player) { const t = p.weapons[SLOT_TASER]; return !!t && t.mag > 0; }
 
   /** Best weapon slot available: primary, then pistol, then knife. */
@@ -576,7 +603,7 @@ export class World {
     p.slot = slot;
     p.switchTime = 0.35;
     p.reloadTime = 0;
-    p.zoomed = false;
+    p.zoomed = false; p.aimWant = false;
     p.shotsFired = 0;
     if (slot === SLOT_NADES && p.nades[p.nadeSel] <= 0) this.cycleNade(p);
     this.emit({ t: 'switch', pid: p.id });
@@ -584,7 +611,7 @@ export class World {
 
   private startReload(p: Player, w: WeaponState) {
     p.reloadTime = reloadDuration(WEAPONS[w.id]);
-    p.zoomed = false;
+    p.zoomed = false; p.aimWant = false; // um clique durante a recarga fica guardado e vale ao terminar
     this.emit({ t: 'reload', pid: p.id, weapon: w.id });
   }
 

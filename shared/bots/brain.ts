@@ -1,74 +1,150 @@
 // =============================================================
 //  BotBrain — IA que gera PlayerInput como um jogador humano:
 //  olhar (yaw/pitch) + teclas. Usa a mesma física e as mesmas armas.
+//  Rodada 11: mira humanizada (HumanAim: reação com cauda, flick + correções com mola, tremor,
+//  lead e recuo aprendidos), personalidade por bot, strafe irregular, olhar ocioso e audição.
+//  O bot só mira/atira em quem viu (linha de visão); o que ouve só faz ele olhar para lá.
 // =============================================================
-import { V3, DEG, yawFromDir, angleDiff, forwardFromAngles, rightFromYaw } from '../math/vec3';
-import { BOT_SKILL, BotDifficulty, BotSkill } from '../config/match';
+import { V3, DEG, yawFromDir, angleDiff, forwardFromAngles, rightFromYaw, makeRng } from '../math/vec3';
+import { BOT_SKILL, BOT_AIM, BOT_HEARING, BotDifficulty, BotSkill, BotAim } from '../config/match';
 import { WEAPONS, WeaponId, SLOT_NADES, SLOT_KNIFE, SLOT_TASER, ITEMS } from '../config/weapons';
 import type { NavPoint, BotRoute } from '../maps/types';
 import { emptyCmd } from '../physics/movement';
 import { steerToward } from './steer';
-import type { Player } from '../sim/player';
+import { HumanAim, SmoothNoise, gauss } from './aim';
+import { Player, hitboxes } from '../sim/player';
 import type { World } from '../sim/world';
 
 type Mode = 'route' | 'roam' | 'idle';
 
 const WEAPON_PRIORITY: Record<WeaponId, number> = { rifle: 5, sniper: 4, smg: 3, shotgun: 2, pistol: 1, knife: 0, taser: 0 };
 
+/** Jeito de jogar de cada bot (sorteado com a seed). */
+export interface BotPersonality {
+  /** 0 = cauteloso, 1 = agressivo */
+  aggression: number;
+  /** distância preferida para lutar (u) */
+  prefDist: number;
+  /** multiplicador da tendência a mirar na cabeça */
+  headMul: number;
+  /** multiplicador do erro sob dano */
+  nervousMul: number;
+  /** duração média de cada trecho de strafe (s) */
+  strafeMean: number;
+  /** chance de agachar numa troca de tiros e de pular de vez em quando */
+  crouchChance: number;
+  jumpChance: number;
+  /** chance de parar para atirar (counter-strafe) a média/longa distância */
+  stopChance: number;
+}
+
 export class BotBrain {
   skill: BotSkill;
+  aimCfg: BotAim;
+  aim: HumanAim;
+  persona: BotPersonality;
   mode: Mode = 'idle';
   route: BotRoute | null = null;
   routeIdx = 0;
   roamTarget: NavPoint | null = null;
   target: Player | null = null;
-  seenTime = 0;          // how long the current target has been visible
-  lostTime = 0;
-  aimErrYaw = 0; aimErrPitch = 0; aimErrTimer = 0;
-  aimHead = false;
-  strafeDir = 1; strafeTimer = 0;
+  seenTime = 0;          // tempo vendo o alvo atual
+  lostTime = 0;          // tempo desde que perdeu o alvo de vista
+  /** o alvo atual está visível agora (linha de visão) */
+  hasLos = false;
+  /** onde o alvo foi visto pela última vez (e com que velocidade) */
+  lastSeen = new V3(); lastSeenVel = new V3();
+  /** tempo de reação que falta para começar a mirar no alvo atual */
+  reactLeft = 0;
+  /** já começou a mirar (flick feito) no alvo atual */
+  engaged = false;
+  /** tempo para estabilizar antes do 1º tiro neste encontro (média/longa) */
+  stableNeed = 0;
+  /** reações sorteadas (para os testes) */
+  reactions: number[] = [];
+  strafeDir = 1; strafeTimer = 0; strafeStop = 0;
+  /** parado para atirar (counter-strafe) por este tempo; e se a próxima rajada vai ser parada */
+  holdStill = 0; counterNext = false;
+  crouching = false; crouchTimer = 0;
   burstLeft = 0; burstPause = 0;
   thinkTimer = 0;
   stuckTimer = 0; lastPos = new V3();
   noEnemyTime = 0;
-  lookYaw = 0; lookPitch = 0;
+  /** olhar ocioso: para onde olhar e por quanto tempo */
+  idleYaw = 0; idlePitch = 0; idleTimer = 0;
+  heard: { pos: V3; time: number } | null = null;
+  private aimH = 0.62; private aimHGoal = 0.62; private aimSide = 0; private aimSideGoal = 0; private aimPointTimer = 0;
+  private hurt = 0; private lastHp = 0;
+  private leadN: SmoothNoise; private recoilN: SmoothNoise;
+  private time = 0;
   private steerCmd = emptyCmd();
   private tmp = new V3(); private tmp2 = new V3();
+  /** PRNG da partida (rotas e escolhas de mapa) e PRNG próprio do bot (mira, personalidade) */
   private rand: () => number;
+  private r: () => number;
 
   constructor(public world: World, public p: Player, difficulty: BotDifficulty, public dummy = false) {
     this.skill = BOT_SKILL[difficulty];
+    this.aimCfg = BOT_AIM[difficulty];
     this.rand = world.rng;
+    this.r = makeRng(Math.floor(world.rng() * 2147483646) + 1);
+    this.aim = new HumanAim(this.aimCfg, this.r);
+    this.leadN = new SmoothNoise(this.r); this.recoilN = new SmoothNoise(this.r);
+    const r = this.r;
+    const aggression = r();
+    this.persona = {
+      aggression,
+      prefDist: 500 + (1 - aggression) * 1100 + r() * 300,
+      headMul: 0.7 + r() * 0.6,
+      nervousMul: 0.5 + r(),
+      strafeMean: 0.3 + r() * 0.5,
+      crouchChance: 0.1 + r() * 0.3,
+      jumpChance: 0.05 + r() * 0.2 * aggression,
+      stopChance: 0.3 + r() * 0.5,
+    };
+    this.lastHp = p.hp;
   }
+
+  get lookYaw() { return this.aim.outYaw; }
+  get lookPitch() { return this.aim.outPitch; }
+  resetLook(yaw: number, pitch: number) { this.aim.reset(yaw, pitch); this.idleYaw = yaw; this.idlePitch = pitch; }
 
   onRoundStart() {
     const routes = this.world.map.routes[this.p.team];
     this.route = routes[Math.floor(this.rand() * routes.length)];
     this.routeIdx = 0;
     this.mode = 'route';
-    this.target = null;
-    this.lookYaw = this.p.yaw; this.lookPitch = 0;
+    this.target = null; this.engaged = false;
+    this.resetLook(this.p.yaw, 0);
     this.roamTarget = null;
     this.noEnemyTime = 0;
+    this.heard = null;
   }
 
   think(dt: number) {
     const p = this.p, w = this.world, inp = p.input;
-    inp.fire = false; inp.alt = false; inp.reload = false; inp.use = false; inp.ability = false; inp.drop = false; inp.slot = null;
+    inp.fire = false; inp.alt = false; inp.aim = null; inp.reload = false; inp.use = false; inp.ability = false; inp.drop = false; inp.slot = null;
     if (!p.alive) return;
 
     if (this.dummy) { this.thinkDummy(dt); return; }
     if (p.frozen) { inp.cmd.forward = 0; inp.cmd.side = 0; inp.cmd.yaw = p.yaw; return; }
+    this.time += dt;
+    // susto: tomar dano deixa a mira pior por um tempo (nervosismo)
+    if (p.hp < this.lastHp) this.hurt = Math.min(1.5, this.hurt + (this.lastHp - p.hp) / 60);
+    this.lastHp = p.hp;
+    this.hurt = Math.max(0, this.hurt - dt * 0.6);
 
-    // ---------- perception (10 Hz) ----------
+    // ---------- percepção (10 Hz) ----------
     this.thinkTimer -= dt;
     if (this.thinkTimer <= 0) {
       this.thinkTimer = 0.1;
       this.perceive();
     }
-    if (this.target && (!this.target.alive || this.target.inDuel !== p.inDuel)) this.target = null;
+    if (this.target && (!this.target.alive || this.target.inDuel !== p.inDuel)) { this.target = null; this.engaged = false; }
+    if (this.target && this.reactLeft > 0) this.reactLeft -= dt;
+    const reacted = !!this.target && this.reactLeft <= 0;
 
-    // ---------- movement ----------
+    // ---------- movimento ----------
     const steer = this.steerCmd;
     let moveGoal: NavPoint | null = null, prev: V3 | null = null;
     if (p.inDuel >= 0 && this.target) {
@@ -98,75 +174,174 @@ export class BotBrain {
       }
     } else { steer.forward = 0; steer.side = 0; steer.yaw = p.yaw; steer.jump = false; }
 
-    // engage: strafe on the ground while fighting
-    const fighting = !!this.target && this.seenTime > this.skill.reaction;
-    // sem arma de fogo (só faca/taser): luta corpo a corpo
+    const fighting = reacted && this.hasLos;
     const knifeOnly = w.firstWeaponSlot(p) === SLOT_KNIFE;
-    if (fighting && p.phys.onGround) {
-      this.strafeTimer -= dt;
-      if (this.strafeTimer <= 0) { this.strafeDir = this.rand() < 0.5 ? -1 : 1; this.strafeTimer = 0.35 + this.rand() * 0.7; }
-      const toT = this.tmp.copy(this.target!.phys.pos).sub(p.phys.pos);
+    let crouch = false;
+    if (reacted && p.phys.onGround) {
+      const toT = this.tmp.copy(this.hasLos ? this.target!.phys.pos : this.lastSeen).sub(p.phys.pos);
       const dist = toT.hLen();
-      const ty = yawFromDir(toT.x, toT.z);
-      steer.yaw = ty;
+      steer.yaw = yawFromDir(toT.x, toT.z);
       if (knifeOnly) {
         // só com a faca: corre direto para o inimigo e só para de correr perto dele
         steer.forward = dist > 45 ? 1 : 0;
         steer.side = dist > 200 ? this.strafeDir * 0.35 : 0;
+        this.nextStrafe(dt);
       } else {
-        steer.forward = dist > 1400 ? 1 : dist < 300 ? -0.6 : 0;
-        steer.side = this.strafeDir;
-        if (this.skill.abilityUse > 0.6 && this.rand() < 0.004) steer.jump = true;
+        const pd = this.persona.prefDist;
+        steer.forward = dist > pd * 1.5 ? 1 : dist < pd * 0.45 ? -0.7 : (this.persona.aggression > 0.6 && dist > pd ? 0.5 : 0);
+        this.nextStrafe(dt);
+        steer.side = this.strafeStop > 0 ? 0 : this.strafeDir;
+        // counter-strafe: para de andar para atirar (rajada) e para estabilizar o 1º tiro a média/longa distância
+        if (this.holdStill > 0) { this.holdStill -= dt; steer.side = 0; if (steer.forward > 0) steer.forward = 0; }
+        else if (fighting && dist > 600 && this.aim.sinceFlick < this.stableNeed + 0.15 && this.counterNext) steer.side = 0;
+        // agacha às vezes no meio da troca de tiros (curta/média)
+        this.crouchTimer -= dt;
+        if (this.crouchTimer <= 0) { this.crouching = fighting && dist < 1200 && this.r() < this.persona.crouchChance; this.crouchTimer = 0.6 + this.r() * 1.4; }
+        crouch = this.crouching;
+        if (fighting && this.r() < this.persona.jumpChance * dt) steer.jump = true;
       }
     }
 
-    // ---------- look / aim ----------
-    let wantYaw = steer.yaw, wantPitch = 0;
-    if (this.target && this.seenTime > this.skill.reaction * 0.5) {
-      const aim = this.aimPoint(this.target);
-      const eye = p.eyePos(this.tmp2);
-      const d = aim.sub(eye);
-      wantYaw = yawFromDir(d.x, d.z) + this.aimErrYaw * DEG;
-      wantPitch = Math.atan2(d.y, Math.hypot(d.x, d.z)) + this.aimErrPitch * DEG;
-      // recoil control (better bots compensate more)
-      const rc = Math.min(1, this.skill.aimSpeed / 600);
-      wantPitch -= p.punchPitch * DEG * rc;
-      wantYaw -= p.punchYaw * DEG * rc;
-      this.aimErrTimer -= dt;
-      if (this.aimErrTimer <= 0) {
-        this.aimErrTimer = 0.35 + this.rand() * 0.3;
-        const e = this.skill.aimError * Math.max(0.35, 1 - this.seenTime * 0.4);
-        this.aimErrYaw = (this.rand() * 2 - 1) * e;
-        this.aimErrPitch = (this.rand() * 2 - 1) * e * 0.6;
-        this.aimHead = this.rand() < this.skill.headshotBias;
-      }
-      const maxTurn = this.skill.aimSpeed * DEG * dt;
-      this.lookYaw += clampAbs(angleDiff(this.lookYaw, wantYaw), maxTurn);
-      this.lookPitch += clampAbs(wantPitch - this.lookPitch, maxTurn);
-    } else {
-      // natural look: follow movement direction smoothly
-      const maxTurn = 540 * DEG * dt;
-      this.lookYaw += clampAbs(angleDiff(this.lookYaw, wantYaw), maxTurn);
-      this.lookPitch += clampAbs(-this.lookPitch * 0.5, maxTurn);
-    }
+    // ---------- olhar / mira ----------
+    this.updateLook(dt, steer.yaw);
 
-    // convert steering wish (relative to steer.yaw) into keys relative to the actual look yaw
+    // converte o desejo de movimento (relativo a steer.yaw) em teclas relativas ao olhar
+    const ly = this.lookYaw;
     const sf = forwardFromAngles(steer.yaw, 0, this.tmp), sr = rightFromYaw(steer.yaw, this.tmp2);
     const wx = sf.x * steer.forward + sr.x * steer.side, wz = sf.z * steer.forward + sr.z * steer.side;
-    const lf = forwardFromAngles(this.lookYaw, 0, new V3()), lr = rightFromYaw(this.lookYaw, new V3());
+    const lf = forwardFromAngles(ly, 0, new V3()), lr = rightFromYaw(ly, new V3());
     let fwd = wx * lf.x + wz * lf.z, side = wx * lr.x + wz * lr.z;
     const m = Math.max(Math.abs(fwd), Math.abs(side));
     if (m > 0.01) { fwd /= m; side /= m; }
     inp.cmd.forward = fwd; inp.cmd.side = side;
-    inp.cmd.yaw = this.lookYaw; inp.cmd.pitch = this.lookPitch;
-    inp.cmd.jump = steer.jump; inp.cmd.crouch = false;
+    inp.cmd.yaw = ly; inp.cmd.pitch = this.lookPitch;
+    inp.cmd.jump = steer.jump; inp.cmd.crouch = crouch;
     inp.cmd.walk = false; // bots never walk (the sprint is automatic)
 
-    // ---------- weapons ----------
+    // ---------- armas ----------
     this.handleWeapons(dt, fighting);
+    // a mão tremer no instante do clique (o tiro sai um pouco fora de onde o bot "via")
+    if (inp.fire && !p.prevInput.fire || (inp.fire && p.fireCooldown <= 0)) {
+      const j = this.aimCfg.clickJitter * DEG;
+      inp.cmd.yaw += gauss(this.r) * j; inp.cmd.pitch += gauss(this.r) * j * 0.7;
+    }
     this.handleAbility(fighting);
     this.handlePickups();
     this.checkStuck(dt);
+  }
+
+  /** Trechos de strafe com duração irregular, paradas curtas e trocas de lado nem sempre alternadas. */
+  private nextStrafe(dt: number) {
+    this.strafeTimer -= dt;
+    if (this.strafeStop > 0) this.strafeStop -= dt;
+    if (this.strafeTimer <= 0) {
+      const r = this.r;
+      this.strafeTimer = this.persona.strafeMean * Math.exp(gauss(r) * 0.45);
+      if (r() < 0.22) this.strafeStop = 0.12 + r() * 0.3;
+      if (r() < 0.75) this.strafeDir = -this.strafeDir as 1 | -1;
+    }
+  }
+
+  /** Velocidade angular aproximada do alvo vista daqui (rad/s), com o erro de leitura do bot. */
+  private angVel(t: Player): { yaw: number; pitch: number } {
+    const to = t.phys.pos.clone().sub(this.p.phys.pos);
+    const d = Math.max(50, to.hLen());
+    const rt = rightFromYaw(yawFromDir(to.x, to.z), new V3());
+    const lateral = t.phys.vel.x * rt.x + t.phys.vel.z * rt.z;
+    const k = 1 + this.aimCfg.leadError * gauss(this.r) * 0.5;
+    return { yaw: (-lateral / d) * k, pitch: (t.phys.vel.y / d) * k * 0.5 };
+  }
+
+  /** Ângulos para mirar num ponto a partir do olho. */
+  private anglesTo(pt: V3): { yaw: number; pitch: number; dist: number } {
+    const eye = this.p.eyePos(this.tmp2);
+    const d = pt.clone().sub(eye);
+    return { yaw: yawFromDir(d.x, d.z), pitch: Math.atan2(d.y, Math.hypot(d.x, d.z)), dist: d.len() };
+  }
+
+  private updateLook(dt: number, moveYaw: number) {
+    const p = this.p, c = this.aimCfg, t = this.target;
+    if (t && this.reactLeft > 0 && this.hasLos) {
+      // viu e ainda está reagindo: a mão fica onde estava (sem continuar o olhar ocioso)
+      this.aim.update(dt, null, { noiseMul: 1 });
+      return;
+    }
+    if (t && this.reactLeft <= 0) {
+      // ponto de mira: corpo/ombro/cabeça mudando devagar; lead e recuo aprendidos (com erro)
+      this.aimPointTimer -= dt;
+      if (this.aimPointTimer <= 0) {
+        this.aimPointTimer = 0.9 + this.r() * 1.6;
+        const head = this.r() < Math.min(0.95, this.skill.headshotBias * this.persona.headMul);
+        this.aimHGoal = head ? 0.9 : 0.5 + this.r() * 0.2;
+        this.aimSideGoal = head ? 0 : (this.r() * 2 - 1) * 6;
+      }
+      const k = 1 - Math.exp(-dt * 3);
+      this.aimH += (this.aimHGoal - this.aimH) * k; this.aimSide += (this.aimSideGoal - this.aimSide) * k;
+      let pt: V3;
+      if (this.hasLos) {
+        // lead aprendido: compensa o próprio atraso de rastreamento, com erro proporcional à dificuldade
+        const lead = c.trackLag * 0.5 * (1 + c.leadError * this.leadN.at(this.time * 0.6) * 1.5);
+        pt = t.phys.pos.clone().addScaled(t.phys.vel, lead);
+        pt.y += t.phys.maxs.y * this.aimH;
+        const rt = rightFromYaw(this.lookYaw, new V3());
+        pt.addScaled(rt, this.aimSide);
+      } else {
+        // perdeu de vista: continua mirando onde ele sumiu (um pouco adiante) por um instante
+        pt = this.lastSeen.clone().addScaled(this.lastSeenVel, Math.min(this.lostTime, c.preAim) * 0.5);
+        pt.y += t.phys.maxs.y * this.aimH;
+      }
+      const a = this.anglesTo(pt);
+      // controle de recuo aprendido: compensa parte do soco, com erro que cresce na rajada
+      const rc = c.recoilControl * (1 + c.recoilError * (this.recoilN.at(this.time * 0.8) + Math.min(1, p.shotsFired / 12) * 0.8));
+      a.pitch -= p.punchPitch * DEG * rc;
+      a.yaw -= p.punchYaw * DEG * rc;
+      if (!this.engaged) {
+        this.engaged = true;
+        this.aim.forgetTarget();
+        this.aim.startFlick(a.yaw, a.pitch, Math.atan2(18, a.dist), this.angVel(t).yaw, this.angVel(t).pitch);
+      } else if (this.aim.phase !== 'flick') {
+        const err = Math.hypot(angleDiff(this.aim.yaw, a.yaw), a.pitch - this.aim.pitch) / DEG;
+        if (err > 20) { const [vy, vp] = this.aim.targetVel; this.aim.startFlick(a.yaw, a.pitch, Math.atan2(18, a.dist), vy, vp); } // o alvo "pulou": novo flick
+      }
+      this.aim.update(dt, a, { noiseMul: 1 + c.nervous * this.persona.nervousMul * this.hurt });
+      return;
+    }
+    // olhar ocioso: direção do movimento na maior parte do tempo, ângulos prováveis, sons e conferidas
+    this.idleTimer -= dt;
+    const flying = !p.phys.onGround || p.phys.surfing;
+    if (this.idleTimer <= 0) {
+      const r = this.r;
+      this.idleTimer = 0.6 + r() * 1.6;
+      const heard = this.heard && this.world.time - this.heard.time < 2.5 ? this.heard : null;
+      const roll = r();
+      if (heard && roll < 0.8) {
+        const a = this.anglesTo(heard.pos.clone().add(new V3(0, 40, 0)));
+        this.idleYaw = a.yaw; this.idlePitch = a.pitch;
+      } else if (flying || roll < 0.5) {
+        this.idleYaw = moveYaw + (r() * 2 - 1) * 0.15; this.idlePitch = -0.05 + (r() * 2 - 1) * 0.08;
+      } else if (roll < 0.8) {
+        // um ângulo provável: um ponto de combate ou entrada de rampa à frente
+        const nodes = this.world.map.combatNodes;
+        let best: V3 | null = null, bs = -Infinity;
+        for (let i = 0; i < 6 && nodes.length; i++) {
+          const n = nodes[Math.floor(r() * nodes.length)];
+          const d = n.clone().sub(p.phys.pos), dist = d.hLen();
+          if (dist < 300 || dist > 4000) continue;
+          const off = Math.abs(angleDiff(moveYaw, yawFromDir(d.x, d.z)));
+          const sc = -off - dist / 8000;
+          if (off < 1.9 && sc > bs) { bs = sc; best = n; }
+        }
+        if (best) { const a = this.anglesTo(best.clone().add(new V3(0, 50, 0))); this.idleYaw = a.yaw; this.idlePitch = a.pitch; }
+        else { this.idleYaw = moveYaw; this.idlePitch = 0; }
+      } else {
+        // confere o lado
+        this.idleYaw = moveYaw + (r() < 0.5 ? -1 : 1) * (1.0 + r() * 0.9); this.idlePitch = (r() * 2 - 1) * 0.1;
+        this.idleTimer = 0.4 + r() * 0.5;
+      }
+    }
+    // no ar / surfando, a direção do movimento manda (mantém o surf estável)
+    if (flying && Math.abs(angleDiff(this.idleYaw, moveYaw)) > 0.5) this.idleYaw = moveYaw;
+    this.aim.update(dt, { yaw: this.aim.yaw + angleDiff(this.aim.yaw, this.idleYaw), pitch: this.idlePitch }, { stiffMul: flying ? 0.6 : 0.3, lagMul: 0.5 });
   }
 
   private thinkDummy(dt: number) {
@@ -179,46 +354,74 @@ export class BotBrain {
     inp.cmd.jump = false;
   }
 
+  /** Reação a um alvo novo: log-normal (cauda longa), mais lenta na periferia e contra quem surfa. */
+  private sampleReaction(q: Player, switching: boolean): number {
+    const c = this.aimCfg, p = this.p;
+    const to = q.phys.pos.clone().sub(p.phys.pos);
+    const off = Math.abs(angleDiff(this.lookYaw, yawFromDir(to.x, to.z))) / DEG;
+    const qs = Math.hypot(q.phys.vel.x, q.phys.vel.z);
+    let t = c.reactionMedian * Math.exp(gauss(this.r) * c.reactionSigma);
+    t *= 1 + c.reactionPeriph * Math.min(1, off / 90);
+    t *= 1 + c.reactionSpeed * Math.min(1, qs / 1500);
+    if (switching) t += c.switchDelay;
+    this.reactions.push(t);
+    if (this.reactions.length > 50) this.reactions.shift();
+    return t;
+  }
+
   private perceive() {
     const p = this.p, w = this.world;
     const eye = p.eyePos(new V3());
-    const fwd = forwardFromAngles(p.yaw, 0, new V3());
+    const fwd = forwardFromAngles(this.lookYaw, 0, new V3());
     let best: Player | null = null, bestD = Infinity;
     const predatorSense = p.classId === 'predator' && p.abilityActive > 0;
     for (const q of w.players) {
       if (!q.alive || q.team === p.team || q.inDuel !== p.inDuel) continue;
       const qe = q.eyePos(new V3()); qe.y -= 10;
       const d = qe.distTo(eye);
+      // audição: passos de quem corre perto (sem precisar ver) — só faz o bot olhar para lá
+      if (d < BOT_HEARING.step && q.phys.onGround && Math.hypot(q.phys.vel.x, q.phys.vel.z) > 150 && !q.walking) this.heard = { pos: q.phys.pos.clone(), time: w.time };
       if (d > this.skill.viewDistance) continue;
       const to = qe.clone().sub(eye).normalize();
       const inFov = to.x * fwd.x + to.z * fwd.z > -0.2 || q.id === p.lastAttacker;
       if (!inFov) continue;
       const tr = w.collision.traceRay(eye, qe, undefined, 'glass');
+      // só vê quem tem linha de visão (o sentido do PREDATOR, habilidade da classe, revela até 2000 u)
       if (tr.fraction < 1) { if (!(predatorSense && d < 2000)) continue; }
       else if (w.smokeBlocks(eye, qe)) continue;
       const score = d * (q === this.target ? 0.7 : 1);
       if (score < bestD) { bestD = score; best = q; }
     }
+    // tiros e pulos ouvidos
+    for (let i = w.noises.length - 1; i >= 0; i--) {
+      const n = w.noises[i];
+      if (w.time - n.time > 0.3) break;
+      const q = w.player(n.pid);
+      if (!q || q.team === p.team) continue;
+      if (n.pos.distTo(p.phys.pos) < (n.kind === 'shot' ? BOT_HEARING.shot : BOT_HEARING.jump)) { this.heard = { pos: n.pos.clone(), time: n.time }; break; }
+    }
+    this.hasLos = !!best;
     if (best) {
-      if (best !== this.target) { this.seenTime = 0; this.target = best; }
-      else this.seenTime += 0.1;
+      if (best !== this.target) {
+        const switching = !!this.target && this.engaged;
+        this.target = best; this.seenTime = 0; this.engaged = false;
+        this.reactLeft = this.sampleReaction(best, switching);
+        const d = best.phys.pos.distTo(p.phys.pos);
+        const [a, b] = this.aimCfg.stabilize;
+        this.stableNeed = d > 600 ? a + (b - a) * this.r() : 0;
+        this.counterNext = this.r() < this.aimCfg.counterStrafe;
+      } else if (this.lostTime > 0.6 && this.engaged) {
+        // reapareceu depois de um tempo sumido: reage de novo (mais rápido: já sabia que ele estava ali)
+        this.reactLeft = this.sampleReaction(best, false) * 0.5; this.engaged = false;
+      } else this.seenTime += 0.1;
+      this.lastSeen.copy(best.phys.pos); this.lastSeenVel.copy(best.phys.vel);
       this.lostTime = 0;
       this.noEnemyTime = 0;
     } else {
       this.lostTime += 0.1;
       this.noEnemyTime += 0.1;
-      if (this.lostTime > 1.2) { this.target = null; this.seenTime = 0; }
-      else if (this.target) this.seenTime = Math.max(0, this.seenTime - 0.1);
+      if (this.lostTime > 1.2) { this.target = null; this.seenTime = 0; this.engaged = false; }
     }
-  }
-
-  private aimPoint(t: Player): V3 {
-    const base = t.phys.pos.clone();
-    // lead slightly with target velocity (bots predict like players do)
-    const lead = this.skill.aimSpeed > 400 ? 0.06 : 0.02;
-    base.addScaled(t.phys.vel, lead);
-    base.y += this.aimHead ? t.phys.maxs.y - 8 : t.phys.maxs.y * 0.6;
-    return base;
   }
 
   private handleWeapons(dt: number, fighting: boolean) {
@@ -237,13 +440,13 @@ export class BotBrain {
     const w = p.currentWeapon();
     if (!w) return;
     const def = WEAPONS[w.id];
+    const look = forwardFromAngles(this.lookYaw, this.lookPitch, new V3());
     if (def.recharge) {
       if (!fighting || w.mag <= 0) return;
       const t = this.target!;
       const to = t.eyePos(new V3()).sub(p.eyePos(new V3()));
       const d = to.len();
-      const look = forwardFromAngles(this.lookYaw, this.lookPitch, new V3());
-      if (d < def.range - 15 && look.dot(to.normalize()) > 0.97 && p.switchTime <= 0) inp.fire = !p.prevInput.fire;
+      if (d < def.range - 15 && look.dot(to.normalize()) > 0.97 && p.switchTime <= 0 && this.aim.phase !== 'flick') inp.fire = !p.prevInput.fire;
       return;
     }
     if (def.melee) {
@@ -251,42 +454,52 @@ export class BotBrain {
       const t = this.target!;
       const d = t.phys.pos.distTo(p.phys.pos);
       const to = t.eyePos(new V3()).sub(p.eyePos(new V3())).normalize();
-      const look = forwardFromAngles(this.lookYaw, this.lookPitch, new V3());
       if (d < def.melee.range + 20 && look.dot(to) > 0.85) {
-        if (this.rand() < 0.25 * this.skill.abilityUse) inp.alt = !p.prevInput.alt; // heavy stab
+        if (this.r() < 0.25 * this.skill.abilityUse) inp.alt = !p.prevInput.alt; // heavy stab
         else inp.fire = true;
       }
       return;
     }
     if (!fighting) {
       if (w.mag < def.mag * 0.4 && w.reserve > 0 && p.reloadTime <= 0) inp.reload = true;
-      if (p.zoomed) inp.alt = true;
+      if (def.zoom > 0) inp.aim = false;
       this.burstLeft = 0;
       return;
     }
     if (w.mag === 0 && w.reserve > 0) { inp.reload = true; return; }
     const t = this.target!;
     const eye = p.eyePos(new V3());
-    const aim = this.aimPoint(t).sub(eye);
-    const dist = aim.len();
-    const lookDir = forwardFromAngles(this.lookYaw, this.lookPitch, new V3());
-    const angErr = Math.acos(Math.max(-1, Math.min(1, lookDir.dot(aim.normalize())))) / DEG;
-    const tolerance = Math.max(1.2, Math.atan2(16, dist) / DEG * 1.6) + this.skill.aimError * 0.4;
-    // sniper: scope when the target is far
-    if (def.zoom > 0 && def.id === 'sniper' && !p.zoomed && dist > 700 && p.fireCooldown <= 0) inp.alt = true;
+    // a mira está "em cima" dele? raio do olho contra a caixa do alvo, com folga por dificuldade
+    // (quem é pior aperta o gatilho com a mira só perto do alvo)
+    const dist = t.phys.pos.distTo(p.phys.pos);
+    const margin = this.aimCfg.fireMargin + dist * Math.tan(this.aimCfg.fireAngle * DEG);
+    hitboxes(t, HB_HEAD, HB_BODY);
+    const onBox = (m: number) => rayHitsBox(eye, look, ZERO, HB_BODY.min, HB_BODY.max, m) || rayHitsBox(eye, look, ZERO, HB_HEAD.min, HB_HEAD.max, m);
+    const onTarget = onBox(margin), nearTarget = onBox(Math.max(margin, 0) * 2 + 10);
+    // LONGBOW: luneta a média/longa distância (estado desejado; o sim respeita recarga/troca)
+    if (def.zoom > 0) inp.aim = dist > 700;
     // grenade opportunity
-    if (p.nades.he > 0 && dist > 400 && dist < 1100 && this.rand() < 0.003 * this.skill.abilityUse) { inp.slot = SLOT_NADES; return; }
+    if (p.nades.he > 0 && dist > 400 && dist < 1100 && this.r() < 0.003 * this.skill.abilityUse) { inp.slot = SLOT_NADES; return; }
+    // não atira no meio do flick; a média/longa distância espera a mira estabilizar
+    if (this.aim.phase === 'flick') return;
+    if (dist > 600 && this.aim.sinceFlick < this.stableNeed && p.shotsFired === 0) return;
+    if (def.zoom > 0 && def.id === 'sniper' && dist > 700 && !p.zoomed) return;
     if (this.burstPause > 0) { this.burstPause -= dt; return; }
-    if (angErr < tolerance && p.fireCooldown <= 0) {
+    if (onTarget && p.fireCooldown <= 0) {
       if (def.auto) {
         inp.fire = true;
-        if (p.prevInput.fire === false) this.burstLeft = this.skill.burst;
+        if (p.prevInput.fire === false) {
+          this.burstLeft = Math.max(2, Math.round(this.skill.burst * (0.6 + this.r() * 0.8) * (dist > 1500 ? 0.4 : dist > 800 ? 0.7 : 1)));
+          if (this.counterNext) this.holdStill = this.burstLeft * fireIntervalOf(def) + 0.1;
+          this.counterNext = this.r() < this.aimCfg.counterStrafe;
+        }
         this.burstLeft--;
-        if (this.burstLeft <= 0) this.burstPause = 0.15 + this.rand() * 0.25;
+        if (this.burstLeft <= 0) this.burstPause = 0.12 + this.r() * 0.3 + (dist > 1200 ? 0.15 : 0);
       } else {
         inp.fire = !p.prevInput.fire;
+        if (inp.fire) { if (this.counterNext) this.holdStill = 0.25; this.counterNext = this.r() < this.aimCfg.counterStrafe; }
       }
-    } else if (def.auto && p.prevInput.fire && angErr < tolerance * 2) inp.fire = true;
+    } else if (def.auto && p.prevInput.fire && nearTarget && this.burstLeft > 0) { inp.fire = true; this.burstLeft--; }
   }
 
   private handleAbility(fighting: boolean) {
@@ -370,4 +583,22 @@ export class BotBrain {
   }
 }
 
-function clampAbs(v: number, m: number) { return v > m ? m : v < -m ? -m : v; }
+const HB_HEAD = { min: new V3(), max: new V3() }, HB_BODY = { min: new V3(), max: new V3() }, ZERO = new V3();
+
+function fireIntervalOf(def: { rpm: number }): number { return 60 / def.rpm; }
+
+/** O raio (origem o, direção d unitária) passa pela caixa pos+mins..pos+maxs aumentada de `m`? */
+export function rayHitsBox(o: V3, d: V3, pos: V3, mins: V3, maxs: V3, m: number): boolean {
+  let t0 = 0, t1 = 1e9;
+  const lo = [pos.x + mins.x - m, pos.y + mins.y - m, pos.z + mins.z - m], hi = [pos.x + maxs.x + m, pos.y + maxs.y + m, pos.z + maxs.z + m];
+  const oo = [o.x, o.y, o.z], dd = [d.x, d.y, d.z];
+  for (let k = 0; k < 3; k++) {
+    if (Math.abs(dd[k]) < 1e-9) { if (oo[k] < lo[k] || oo[k] > hi[k]) return false; continue; }
+    let a = (lo[k] - oo[k]) / dd[k], b = (hi[k] - oo[k]) / dd[k];
+    if (a > b) { const t = a; a = b; b = t; }
+    t0 = Math.max(t0, a); t1 = Math.min(t1, b);
+    if (t0 > t1) return false;
+  }
+  return true;
+}
+

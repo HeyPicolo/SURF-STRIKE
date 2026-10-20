@@ -1,5 +1,6 @@
 // Animações da arma em primeira pessoa (puramente visuais, só no cliente).
-// Cada animação é uma lista de quadros-chave interpolados com suavização.
+// Cada animação é uma lista de quadros-chave interpolados com suavização (smoothstep por trecho);
+// o começo do sacar da balisong usa uma spline com velocidade contínua.
 
 export interface ViewPose {
   /** deslocamento da arma (unidades da câmera) */
@@ -38,12 +39,40 @@ function sample(tr: { t: number; p: ViewPose }[], t: number): ViewPose {
   return tr[tr.length - 1].p;
 }
 
-// Sacar a borboleta: sobe fechada, o cabo "bite" se solta e a lâmina dá a volta até abrir.
-const BF_DRAW = track([
-  [0.0, { oy: -7, oz: 2, roll: -1.3, blade: PI, bite: 0 }],
-  [0.16, { oy: -2, oz: 1, roll: -0.6, blade: PI, bite: PI * 0.9 }],
+/**
+ * Spline de Hermite com tangentes de Catmull-Rom (tempos não uniformes): a velocidade é contínua
+ * nos quadros-chave (não para e recomeça como o smoothstep por segmento). A velocidade é zero só no
+ * primeiro e no último quadro (easing no começo e no fim do trecho inteiro).
+ */
+function sampleSpline(tr: { t: number; p: ViewPose }[], t: number): ViewPose {
+  const n = tr.length;
+  if (t <= tr[0].t) return { ...tr[0].p };
+  if (t >= tr[n - 1].t) return { ...tr[n - 1].p };
+  let i = 1;
+  while (t > tr[i].t) i++;
+  const a = tr[i - 1], b = tr[i], h = b.t - a.t, u = (t - a.t) / h;
+  const h00 = 2 * u ** 3 - 3 * u ** 2 + 1, h10 = u ** 3 - 2 * u ** 2 + u, h01 = -2 * u ** 3 + 3 * u ** 2, h11 = u ** 3 - u ** 2;
+  const tan = (j: number, key: keyof ViewPose) => (j === 0 || j === n - 1 ? 0 : (tr[j + 1].p[key] - tr[j - 1].p[key]) / (tr[j + 1].t - tr[j - 1].t));
+  const out = { ...a.p };
+  for (const key of Object.keys(out) as (keyof ViewPose)[]) out[key] = h00 * a.p[key] + h10 * h * tan(i - 1, key) + h01 * b.p[key] + h11 * h * tan(i, key);
+  return out;
+}
+
+// Sacar a borboleta (rodada 11): a faca entra fechada na mão, o pulso recua (antecipação) e dá o
+// impulso, o cabo "bite" se solta e dá a volta em torno da lâmina num giro contínuo enquanto a
+// lâmina abre meia volta; passa um pouco do ponto ao travar aberta e assenta. Até 0,38 s usa a
+// spline acima; dali em diante é o final de antes, sem mudança (assentar e voltar à posição).
+const BF_DRAW_OPEN = track([
+  [0.0, { oy: -4.5, oz: 1.5, roll: -0.9, blade: PI, bite: 0 }],          // fechada, entrando
+  [0.07, { oy: -2.8, oz: 1.2, roll: -1.05, blade: PI - 0.1, bite: -0.25 }], // antecipação: pulso recua
+  [0.16, { oy: -1.3, oz: 0.7, roll: -0.5, blade: PI + 0.4, bite: PI * 0.85 }], // impulso: o bite se solta
+  [0.26, { oy: -0.65, oz: 0.2, roll: -0.22, blade: PI * 1.75, bite: PI * 1.75 }],
+  [0.33, { oy: -0.45, oz: 0, roll: -0.12, blade: TAU + 0.14, bite: TAU + 0.1 }], // passa do ponto ao travar
+  [0.38, { oy: -0.5, oz: 0, roll: -0.15, blade: TAU, bite: TAU }],       // aberta (igual ao quadro de antes)
+]);
+const BF_DRAW_SETTLE = track([
   [0.38, { oy: -0.5, oz: 0, roll: -0.15, blade: TAU, bite: TAU }],
-  [0.55, { oy: 0, roll: 0, blade: TAU, bite: TAU }],
+  [0.55, { oy: 0, oz: 0, roll: 0, blade: TAU, bite: TAU }],
 ]);
 export const BF_DRAW_TIME = 0.55;
 
@@ -83,7 +112,7 @@ const NADE_INSPECT = track([
 ]);
 export const NADE_INSPECT_TIME = 1.4;
 
-export function butterflyDraw(t: number): ViewPose { return sample(BF_DRAW, t); }
+export function butterflyDraw(t: number): ViewPose { return t < 0.38 ? sampleSpline(BF_DRAW_OPEN, t) : sample(BF_DRAW_SETTLE, t); }
 export function butterflyInspect(t: number): ViewPose { return sample(BF_INSPECT, t); }
 export function gunInspect(t: number): ViewPose { return sample(GUN_INSPECT, t); }
 export function nadeInspect(t: number): ViewPose { return sample(NADE_INSPECT, t); }
