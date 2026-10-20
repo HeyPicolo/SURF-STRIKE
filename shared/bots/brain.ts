@@ -462,7 +462,7 @@ export class BotBrain {
     }
     if (!fighting) {
       if (w.mag < def.mag * 0.4 && w.reserve > 0 && p.reloadTime <= 0) inp.reload = true;
-      if (def.zoom > 0) inp.aim = false;
+      if (def.zoom > 0 || def.ads) inp.aim = false;
       this.burstLeft = 0;
       return;
     }
@@ -478,6 +478,8 @@ export class BotBrain {
     const onTarget = onBox(margin), nearTarget = onBox(Math.max(margin, 0) * 2 + 10);
     // LONGBOW: luneta a média/longa distância (estado desejado; o sim respeita recarga/troca)
     if (def.zoom > 0) inp.aim = dist > 700;
+    // ADS a média/longa distância (o sim respeita o tempo de entrada da arma)
+    if (def.ads) inp.aim = dist > 700;
     // grenade opportunity
     if (p.nades.he > 0 && dist > 400 && dist < 1100 && this.r() < 0.003 * this.skill.abilityUse) { inp.slot = SLOT_NADES; return; }
     // não atira no meio do flick; a média/longa distância espera a mira estabilizar

@@ -86,6 +86,8 @@ export class Player {
   zoomed = false;
   /** mira desejada (luneta/ADS): guarda o clique enquanto algo impede de mirar (recarga, troca, slide) */
   aimWant = false;
+  /** progresso do ADS (0 = quadril, 1 = mirando pela alça), anda no tempo da arma */
+  adsK = 0;
   punchPitch = 0;
   punchYaw = 0;
   shotsFired = 0;
@@ -146,7 +148,7 @@ export class Player {
     this.slot = SLOT_KNIFE; this.lastWeaponSlot = SLOT_KNIFE;
     this.resetMovementState();
     this.nades = { he: 0, smoke: 0, impulse: 0 };
-    this.fireCooldown = 0; this.switchTime = 0; this.reloadTime = 0; this.zoomed = false; this.aimWant = false;
+    this.fireCooldown = 0; this.switchTime = 0; this.reloadTime = 0; this.zoomed = false; this.aimWant = false; this.adsK = 0;
     this.punchPitch = 0; this.punchYaw = 0; this.shotsFired = 0;
     this.abilityCd = 0; this.abilityActive = 0; this.tired = 0; this.speedBoost = 0;
     this.predatorStacks = 0; this.predatorStackTime = 0; this.furyUsed = false;
@@ -180,7 +182,9 @@ export class Player {
   /** Movement speed multiplier from buffs/debuffs (ground and air). */
   speedMul(): number {
     let m = 1;
-    if (this.zoomed) m *= 0.75;
+    const cw = this.currentWeapon(), ads = cw ? WEAPONS[cw.id].ads : undefined;
+    if (ads) m *= 1 + (ads.moveMul - 1) * this.adsK;
+    else if (this.zoomed) m *= 0.75;
     if (this.tired > 0) m *= CLASSES.jumper.params.tiredSpeedMul;
     if (this.speedBoost > 0) m *= 1.2;
     if (this.predatorStacks > 0) m *= 1 + this.predatorStacks * CLASSES.predator.params.stackSpeed;

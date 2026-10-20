@@ -54,7 +54,7 @@ No menu: **Jogar contra bots** (escolha 1v1 a 5v5, dificuldade, equipe e classe)
 | W A S D | Movimento (A/D para surfar e fazer air-strafe) |
 | Mouse | Câmera e mira |
 | Clique esquerdo | Atirar / golpe de faca / disparo do taser / lançar granada |
-| Clique direito | Zoom/luneta (rifle e LONGBOW; "alternar" ou "segurar" em Configurações) / estocada de faca / lançamento curto de granada |
+| Clique direito | Mirar pela alça (ADS: VEX-9, KESTREL AR, HORNET, BREAKER-12) / luneta (LONGBOW) — "alternar" ou "segurar" em Configurações / estocada de faca / lançamento curto de granada |
 | Espaço | Pular / bunny hop / cancelar slide |
 | Shift | Caminhar (sem sprint e sem som de passos) |
 | Ctrl | Agachar / slide (em movimento) / cancelar slide |
@@ -69,6 +69,23 @@ No menu: **Jogar contra bots** (escolha 1v1 a 5v5, dificuldade, equipe e classe)
 | T / V / Z / X | Treino: reiniciar posição / voar / salvar checkpoint / carregar checkpoint |
 
 Todas as teclas podem ser remapeadas em Configurações.
+
+**Mirar pela alça (ADS, rodada 11b):** o clique direito traz a arma para o centro da tela, e você mira pelos aparelhos de pontaria do próprio modelo:
+- **Aparelhos de cada arma:** alça de abertura e massa no KESTREL, ponto vermelho no HORNET, ghost ring e massa de bolinha na BREAKER-12, alça de entalhe e massa na VEX-9.
+- **Durante a mira:** a mira de quadril some, e o balanço, o sway e o recuo visual ficam bem menores. A LONGBOW continua com a luneta de tela cheia.
+- **Sem ADS:** faca, taser e granadas (o direito continua sendo estocada ou lançamento curto).
+- **Bots:** usam ADS a média e longa distância, respeitando o tempo de entrada.
+- **Valores** (`WEAPONS[id].ads`):
+
+  | Arma | FOV | Entrada/saída | Sensibilidade | Movimento | Spread |
+  |---|---|---|---|---|---|
+  | VEX-9 | 0,90 | 0,15 s | 0,90 | 0,90 | 0,75 |
+  | KESTREL AR | 0,80 | 0,22 s | 0,80 | 0,75 | 0,70 |
+  | HORNET | 0,88 | 0,18 s | 0,88 | 0,85 | 0,80 |
+  | BREAKER-12 | 0,90 | 0,20 s | 0,90 | 0,85 | 0,85 |
+
+  O KESTREL já tinha zoom 0,8 e andava a 75% mirando; isso continua igual, só que agora como ADS. O spread mirando é modesto: no máximo 30% menor, e a BREAKER-12 só perde 15% (continua sendo arma de perto). Nenhum outro número das armas mudou.
+- **Linha de visada** (`WEAPON_REFS[id].sight` em `client/src/entities/style.ts`): a altura da linha (igual na alça e na massa) e a distância do olho. `client/src/game/adsPose.ts` calcula a posição do viewmodel. Um teste confere que a alça e a massa projetam a menos de 2 px do centro da tela em 16:9, e que pela alça se vê a massa.
 
 **Mira com o botão direito (rodada 11):** antes, a luneta da LONGBOW só abria parada ou no ar: o sim ignorava o clique quando o jogador estava em sprint, e com o sprint automático quem anda está sempre em sprint. Agora o clique troca a **mira desejada**, e a mira efetiva é a desejada quando nada impede (recarga, troca de arma, slide; o sprint só impede se `SPRINT.raiseWeapon` estiver ligado). Um clique durante a recarga, a troca ou o slide fica guardado e vale quando eles acabam. Recarregar ou trocar de arma tira da mira, como no CS. O slide também tira, e um clique depois dele mira de novo. Atirar não tira da luneta. O clique chega ao sim como borda no primeiro tick, mesmo apertando e soltando entre dois ticks. Em Configurações → Mira: **Alternar** (padrão) ou **Segurar**.
 
@@ -332,6 +349,19 @@ Estilo "geometric / block-build": blocos chanfrados com silhueta clara, cilindro
 - **Pontos de referência** (`WEAPON_REFS` em `style.ts`): boca de cada arma (o clarão sai 2 u à frente), eixo da luneta da LONGBOW (`scopeY` 7,8) e o punho onde a luva encaixa (z 0..3,5 · y −6,5..0,5, igual para todas as armas de fogo). As caixas envolventes ficaram dentro de ±15% das antigas, e a parte da tela coberta em primeira pessoa é igual ou menor que antes (medida nos testes).
 - **Balisong**: as três peças continuam separadas (`blade`, `safe`, `bite`), com os pinos na origem, a lâmina para −Z e os cabos para +Z. Sacar, abrir/fechar e a inspeção (F) usam a mesma animação.
 - **Sacar da balisong (rodada 11)**: a faca entra fechada na mão e o pulso recua (antecipação) e dá o impulso. O cabo "bite" se solta e dá a volta em torno da lâmina num giro contínuo, enquanto a lâmina abre. Ao travar aberta, passa um pouco do ponto e assenta. Até 0,38 s usa uma spline de Hermite/Catmull-Rom (velocidade contínua nos quadros-chave); dali em diante é o final de antes. O tempo total continua 0,55 s. A inspeção e as outras animações não mudaram (teste).
+- **Personagens (rodada 11b)** (`client/src/entities/characters.ts`): no mesmo estilo de blocos.
+  - **Equipamento:** capacete com viseira e protetores de ouvido, ombreiras, colete com placas e bolsos, cinto com compartimentos, joelheiras, botas com sola e tira, luvas iguais às do viewmodel.
+  - **Cor do time** em placas grandes: frente, costas e laterais do colete, capacete, topo das ombreiras, braçadeira e faixa na canela. O uniforme é cinza fosco.
+  - **Classes** (a cor da classe vira o destaque, também no emblema do peito e na faixa da viseira):
+    - RUNNER: aletas nas costas e nas panturrilhas, e faixa no capacete;
+    - BERSERKER: ombreiras pesadas e crista;
+    - PREDATOR: espinhos na coluna, visor de caçador com duas fendas e antenas;
+    - JUMPER: núcleo giroscópico nas costas e anel acima do capacete.
+  - **Peças e pivôs:** os mesmos de antes (pernas no quadril y 32, torso no quadril, cabeça no pescoço y 57, braços no ombro y 54), então as animações e o xray do PREDATOR continuam iguais.
+  - **Hitbox:** não mudou. O corpo e a cabeça ocupam o volume dele (corpo ±14 até y 55, cabeça ±9 de 55 a 73). Um teste confere a caixa do modelo contra o hitbox.
+  - **Versões de detalhe:** perto (até 400 u, ~2100–2300 triângulos), média (até 1400 u, ~700) e longe (~280). Com 10 jogadores na tela, o FPS ficou igual ao de antes no renderizador por software dos testes.
+  - **Na mão:** a arma em terceira pessoa usa a versão simplificada (ou a de longe).
+  - **Arsenal:** os 8 personagens (4 classes × 2 times) estão lá, nas 3 versões.
 - **Arsenal**: tela para revisar os modelos girando sobre fundo neutro. Abre pelo botão **Arsenal** no painel do Treino ou com `?arsenal` na URL. As setas trocam de modelo, **L** alterna as versões (detalhada, simplificada e de longe), e a contagem de triângulos aparece embaixo.
 
 ## Arquitetura
@@ -390,5 +420,5 @@ O ambiente onde o projeto foi construído não tinha acesso ao registro npm nem 
 
 ## Testes
 
-- `npm test`: 175 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots e, no Surf Skill, cronômetro, zonas, prespeed, splits, quedas, reinícios, prática, recordes, versão do mapa, formato linear com checkpoints, fantasma (gravação, compressão, PB, sincronia por segmento, tamanho), regras de projeto dos desafios (inclinação, largura mínima, zonas), cada segmento de cada mapa completado pelo percurso de referência (de ponta a ponta e a partir de cada stage/checkpoint), emendas das curvas a 2400 u/s, sonda das emendas de todos os mapas (800–3000 u/s, várias alturas na face, os dois strafes), layout dos stages, nuvens fora da pista, plataformas de checkpoint atravessáveis, regras sem cap, velocidade mantida entre stages, entrada embalada e chegada a 3500 u/s em todo stage, versão das regras na chave dos recordes, ordem do Próximo mapa e o índice de dificuldade crescente; e, nos modelos, orçamento de triângulos, nenhum triângulo degenerado ou NaN, caixa envolvente de cada arma a ±15% da anterior, cobertura da tela em primeira pessoa, pivôs da balisong, pontos de referência, cores de identificação, faces voltadas para fora e as primitivas novas; na rodada 11, a luneta abrindo e fechando em qualquer situação, o perfil humano da mira dos bots (flick em sino com overshoot, sem aimlock, pior contra quem surfa), as taxas de acerto por dificuldade, a reação com distribuição, nenhum tiro sem linha de visão, o determinismo e o sacar da balisong contínuo).
-- `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint automático, caminhar e slide pelo teclado, habilidade, eliminação e fim de round com placar; no Surf Skill, menu dos mapas, cronômetro ao sair da zona, queda de volta ao início do stage, reinício do mapa e um stage completo com split; aba Desafio, entrar no D1 e pular na base (sem limitador de velocidade), completar um segmento do D1, uma corrida curta de teste até o fim, o fantasma aparecendo na tentativa seguinte e o botão Próximo mapa carregando o mapa seguinte; no Treino, sacar cada arma (1/2/3/4), atirar, recarregar e inspecionar com os modelos novos, a balisong abrindo e fechando; a luneta da LONGBOW abrindo e fechando com o clique direito andando; e a tela Arsenal, com um screenshot de cada modelo em cada versão de detalhe em `e2e-shots/arsenal/`.
+- `npm test`: 183 testes (física, mapa, dano, spread, cooldowns, estados, coleta, sprint, slide, faca, taser, Longbow, teleportes, queda para a base, spawns aleatórios, partida completa de bots e, no Surf Skill, cronômetro, zonas, prespeed, splits, quedas, reinícios, prática, recordes, versão do mapa, formato linear com checkpoints, fantasma (gravação, compressão, PB, sincronia por segmento, tamanho), regras de projeto dos desafios (inclinação, largura mínima, zonas), cada segmento de cada mapa completado pelo percurso de referência (de ponta a ponta e a partir de cada stage/checkpoint), emendas das curvas a 2400 u/s, sonda das emendas de todos os mapas (800–3000 u/s, várias alturas na face, os dois strafes), layout dos stages, nuvens fora da pista, plataformas de checkpoint atravessáveis, regras sem cap, velocidade mantida entre stages, entrada embalada e chegada a 3500 u/s em todo stage, versão das regras na chave dos recordes, ordem do Próximo mapa e o índice de dificuldade crescente; e, nos modelos, orçamento de triângulos, nenhum triângulo degenerado ou NaN, caixa envolvente de cada arma a ±15% da anterior, cobertura da tela em primeira pessoa, pivôs da balisong, pontos de referência, cores de identificação, faces voltadas para fora e as primitivas novas; na rodada 11, a luneta abrindo e fechando em qualquer situação, o perfil humano da mira dos bots (flick em sino com overshoot, sem aimlock, pior contra quem surfa), as taxas de acerto por dificuldade, a reação com distribuição, nenhum tiro sem linha de visão, o determinismo e o sacar da balisong contínuo; ADS com a visada no centro da tela, tempo de entrada/saída e multiplicadores da config; personagens com os pivôs no lugar, o volume do hitbox, o orçamento e a cor do time).
+- `npm run test:e2e`: abre o jogo no Chromium e verifica menu, entrada na arena, controle, surf com ganho de velocidade, coleta de arma, dano, recarga e troca, sprint automático, caminhar e slide pelo teclado, habilidade, eliminação e fim de round com placar; no Surf Skill, menu dos mapas, cronômetro ao sair da zona, queda de volta ao início do stage, reinício do mapa e um stage completo com split; aba Desafio, entrar no D1 e pular na base (sem limitador de velocidade), completar um segmento do D1, uma corrida curta de teste até o fim, o fantasma aparecendo na tentativa seguinte e o botão Próximo mapa carregando o mapa seguinte; no Treino, sacar cada arma (1/2/3/4), atirar, recarregar e inspecionar com os modelos novos, a balisong abrindo e fechando; a luneta da LONGBOW abrindo e fechando com o clique direito andando; o ADS de cada arma de ferro (com screenshot); e a tela Arsenal, com um screenshot de cada modelo em cada versão de detalhe em `e2e-shots/arsenal/`.

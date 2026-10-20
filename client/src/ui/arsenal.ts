@@ -7,6 +7,7 @@ import type { Renderer, GpuMesh } from '../render/Renderer';
 import { trs, child, mat4 } from '../render/glm';
 import { MODEL_LIST, Lod, ModelEntry } from '../entities/geometry';
 import { TRI_BUDGET, LOD_FAR_DIST } from '../entities/style';
+import { CHAR_BUDGET } from '../entities/characters';
 
 const BG = 0x8d939c;
 
@@ -90,18 +91,18 @@ export class Arsenal {
 
   info() {
     const e = this.entry, c = this.current();
-    return { idx: this.idx, count: MODEL_LIST.length, id: e.id, name: e.name, kind: e.kind, lod: this.curLod(), lods: e.lods, tris: c.tris, budget: TRI_BUDGET[e.kind === 'item' && this.curLod() !== 'far' ? 'world' : this.curLod()] };
+    return { idx: this.idx, count: MODEL_LIST.length, id: e.id, name: e.name, kind: e.kind, lod: this.curLod(), lods: e.lods, tris: c.tris, budget: e.kind === 'character' ? CHAR_BUDGET[this.curLod() === 'far' ? 'far' : this.curLod() === 'world' ? 'mid' : 'near'] : TRI_BUDGET[e.kind === 'item' && this.curLod() !== 'far' ? 'world' : this.curLod()] };
   }
 
   private updateInfo() {
     if (!this.el) return;
     const e = this.entry, c = this.current();
     const inf = this.info(), lod = inf.lod;
-    const where = { view: 'primeira pessoa', world: 'chão / terceira pessoa', far: `a mais de ${LOD_FAR_DIST} u` }[lod];
+    const where = e.kind === 'character' ? (lod === 'far' ? 'de longe' : lod === 'world' ? 'média distância' : 'perto') : { view: 'primeira pessoa', world: 'chão / terceira pessoa', far: `a mais de ${LOD_FAR_DIST} u` }[lod];
     this.el.querySelector('#ars-name')!.textContent = `${this.idx + 1}/${MODEL_LIST.length} · ${e.name}`;
     this.el.querySelector('#ars-meta')!.textContent = `${c.tris} triângulos (orçamento ${inf.budget}) · ${where}`;
     const lb = this.el.querySelector<HTMLButtonElement>('#ars-lod')!;
-    const label = { view: 'Detalhado', world: e.kind === 'item' ? 'Completo' : 'Simplificado', far: 'Longe' }[lod];
+    const label = { view: e.kind === 'character' ? 'Perto' : 'Detalhado', world: e.kind === 'item' ? 'Completo' : e.kind === 'character' ? 'Média' : 'Simplificado', far: 'Longe' }[lod];
     lb.innerHTML = e.lods.length > 1 ? `${label} <span class="kbd">L</span>` : 'Versão única';
     lb.disabled = e.lods.length < 2;
   }
@@ -115,7 +116,7 @@ export class Arsenal {
     const yaw = this.fixedYaw ?? this.time * 0.6;
     const e = this.entry;
     // armas: vistas de lado (frente para a esquerda), com leve inclinação
-    const base = trs(mat4(), 0, 0, 0, yaw + (e.kind === 'weapon' || e.kind === 'knife' || e.kind === 'glove' ? Math.PI / 2 : 0), 0, 0);
+    const base = trs(mat4(), 0, 0, 0, yaw + (e.kind === 'weapon' || e.kind === 'knife' || e.kind === 'glove' ? Math.PI / 2 : e.kind === 'character' ? Math.PI : 0), 0, 0);
     const m = child(mat4(), base, -c.center[0], -c.center[1], -c.center[2]);
     this.r.drawMesh(c.mesh, m, { cull: true });
   }

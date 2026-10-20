@@ -22,6 +22,8 @@ export interface MeleeDef {
   hitPadding: number;
 }
 
+export interface AdsDef { fov: number; time: number; sens: number; moveMul: number; spreadMul: number }
+
 export interface WeaponDef {
   id: WeaponId;
   name: string;
@@ -55,6 +57,11 @@ export interface WeaponDef {
   zoom: number;
   /** spread com zoom (sniper) */
   zoomSpread?: number;
+  /**
+   * Mirar pela alça (ADS, rodada 11b): FOV (multiplicador), tempo de entrada/saída (s),
+   * sensibilidade e velocidade de movimento (multiplicadores) e spread (multiplicador) com a mira toda.
+   */
+  ads?: AdsDef;
   color: number;
   /** presente apenas em armas brancas */
   melee?: MeleeDef;
@@ -101,25 +108,30 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     damage: 26, headMult: 2.8, pellets: 1, auto: false, rpm: 380, mag: 12, reserve: 48, reloadTime: 1.4,
     spread: 0.35, airSpread: 0.7, moveSpread: 0.4, kick: 1.4, kickSide: 0.5, recover: 9,
     falloffHalf: 2200, range: 6000, moveSpeedMul: 1.0, zoom: 0, color: 0x6c7a94,
+    ads: { fov: 0.9, time: 0.15, sens: 0.9, moveMul: 0.9, spreadMul: 0.75 },
   },
   rifle: {
     id: 'rifle', name: 'KESTREL AR', category: 'Rifle de assalto', slot: 0,
     damage: 31, headMult: 4.0, pellets: 1, auto: true, rpm: 600, mag: 30, reserve: 90, reloadTime: 2.2,
     // mais precisa: metade do spread anterior e recuo menor
     spread: 0.09, airSpread: 0.45, moveSpread: 0.3, kick: 0.45, kickSide: 0.2, recover: 8,
-    falloffHalf: 5000, range: 9000, moveSpeedMul: 0.92, zoom: 0.8, color: 0x3a4255,
+    falloffHalf: 5000, range: 9000, moveSpeedMul: 0.92, zoom: 0, color: 0x3a4255,
+    // o zoom de 0,8 virou o FOV do ADS (mesma lupa, mesma velocidade de 75% mirando)
+    ads: { fov: 0.8, time: 0.22, sens: 0.8, moveMul: 0.75, spreadMul: 0.7 },
   },
   smg: {
     id: 'smg', name: 'HORNET', category: 'SMG', slot: 0,
     damage: 21, headMult: 2.5, pellets: 1, auto: true, rpm: 860, mag: 32, reserve: 128, reloadTime: 1.9,
     spread: 0.55, airSpread: 0.45, moveSpread: 0.25, kick: 0.36, kickSide: 0.28, recover: 9,
     falloffHalf: 1700, range: 5000, moveSpeedMul: 1.0, zoom: 0, color: 0x2f3442,
+    ads: { fov: 0.88, time: 0.18, sens: 0.88, moveMul: 0.85, spreadMul: 0.8 },
   },
   shotgun: {
     id: 'shotgun', name: 'BREAKER-12', category: 'Shotgun', slot: 0,
     damage: 14, headMult: 1.6, pellets: 9, auto: false, rpm: 72, mag: 6, reserve: 24, reloadTime: 2.4,
     spread: 4.2, airSpread: 0.6, moveSpread: 0.4, kick: 3.6, kickSide: 0.8, recover: 12,
     falloffHalf: 520, range: 2400, moveSpeedMul: 0.95, zoom: 0, color: 0x55392a,
+    ads: { fov: 0.9, time: 0.2, sens: 0.9, moveMul: 0.85, spreadMul: 0.85 },
   },
   sniper: {
     id: 'sniper', name: 'LONGBOW', category: 'Sniper', slot: 0,

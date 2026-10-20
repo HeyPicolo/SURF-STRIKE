@@ -80,13 +80,17 @@ export const LOD_FAR_DIST = 1100;
  * Pontos de referência de cada arma (coordenadas do modelo: frente = −Z, origem no punho).
  * `muzzle`: centro da boca (o clarão do tiro sai 2 u à frente); `scopeY`: eixo da luneta.
  * A mão (luva) encaixa no punho em z 0..3,5 · y −6,5..0,5, igual para todas as armas de fogo.
+ * `sight` (rodada 11b): linha de visada do ADS — altura da linha (y), alça (rearZ) e massa/ponto
+ * (frontZ) no modelo, e a distância da alça até o olho na posição de mira (dist, unidades da câmera).
  */
-export const WEAPON_REFS: Record<Exclude<WeaponId, 'knife'>, { muzzle: { y: number; z: number }; scopeY?: number }> = {
+export interface SightRef { y: number; rearZ: number; frontZ: number; dist: number }
+
+export const WEAPON_REFS: Record<Exclude<WeaponId, 'knife'>, { muzzle: { y: number; z: number }; scopeY?: number; sight?: SightRef }> = {
   sniper: { muzzle: { y: 2.0, z: -44 }, scopeY: 7.8 },
-  rifle: { muzzle: { y: 2.0, z: -34 } },
-  smg: { muzzle: { y: 2.0, z: -21 } },
-  shotgun: { muzzle: { y: 3.0, z: -38 } },
-  pistol: { muzzle: { y: 2.5, z: -16 } },
+  rifle: { muzzle: { y: 2.0, z: -34 }, sight: { y: 5.6, rearZ: 3.2, frontZ: -23.5, dist: 7 } },
+  smg: { muzzle: { y: 2.0, z: -21 }, sight: { y: 6.05, rearZ: -1.4, frontZ: -4.3, dist: 8 } },
+  shotgun: { muzzle: { y: 3.0, z: -38 }, sight: { y: 4.65, rearZ: 3.2, frontZ: -36, dist: 8 } },
+  pistol: { muzzle: { y: 2.5, z: -16 }, sight: { y: 4.85, rearZ: 1.9, frontZ: -13.35, dist: 13 } },
   taser: { muzzle: { y: 2.2, z: -13.6 } },
 };
 

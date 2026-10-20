@@ -14,6 +14,8 @@ import { trs, child, mat4, multiply, Mat4 } from '../render/glm';
 import { buildWorldMesh } from '../maps/worldMesh';
 import { buildCharacter, buildWeapon, buildPickup, buildGrenade, buildCube, buildButterflyParts, buildGloves, ButterflyParts, GloveMeshes, CharacterMeshes, TEAM_COLORS, PICKUP_COLORS } from '../entities/models';
 import { WEAPON_REFS, LOD_FAR_DIST } from '../entities/style';
+import { CHAR_LOD_DIST, CharLod } from '../entities/characters';
+import { adsPose, adsEase, VM_SCALE } from './adsPose';
 import { ViewPose, REST, butterflyDraw, butterflyInspect, gunInspect, nadeInspect, BF_DRAW_TIME, BF_INSPECT_TIME, GUN_INSPECT_TIME, NADE_INSPECT_TIME } from './viewAnims';
 import { Effects } from './effects';
 import { Input } from './input';
@@ -166,10 +168,10 @@ export class Game {
     return m;
   }
 
-  private charMeshes(team: Team, cls: ClassId): CharacterMeshes {
-    const key = team + cls;
+  private charMeshes(team: Team, cls: ClassId, lod: CharLod = 'near'): CharacterMeshes {
+    const key = team + cls + ':' + lod;
     let c = this.assets!.chars.get(key);
-    if (!c) { c = buildCharacter(this.r, team, cls); this.assets!.chars.set(key, c); }
+    if (!c) { c = buildCharacter(this.r, team, cls, lod); this.assets!.chars.set(key, c); }
     return c;
   }
 
@@ -551,7 +553,9 @@ export class Game {
     // com a Longbow no zoom a mira fica parada: sem balanço, sem pouso e sem recuo visual
     const wsView = viewer.currentWeapon();
     const scopedStatic = viewer.zoomed && !!wsView && wsView.id === 'sniper';
-    const bobAmt = this.settings.viewBob && viewer.phys.onGround && !scopedStatic ? Math.min(1, hs / 250) : 0;
+    // ADS: a câmera balança bem menos mirando pela alça
+    const adsK = wsView && WEAPONS[wsView.id].ads ? adsEase(viewer.adsK) : 0;
+    const bobAmt = (this.settings.viewBob && viewer.phys.onGround && !scopedStatic ? Math.min(1, hs / 250) : 0) * (1 - 0.75 * adsK);
     const bob = Math.sin(this.bobPhase) * 1.4 * bobAmt;
     const land = scopedStatic ? 0 : -viewer.phys.landImpact * 7;
     this.viewKick = Math.max(0, this.viewKick - dt * 6);
@@ -563,12 +567,16 @@ export class Game {
     let tanH = Math.tan((this.settings.fov * DEG) / 2) * (9 / 16);
     let sensMul = 1;
     if (viewer.zoomed && ws && WEAPONS[ws.id].zoom > 0) { tanH *= WEAPONS[ws.id].zoom; sensMul = WEAPONS[ws.id].zoom; }
+    else if (ws && WEAPONS[ws.id].ads && adsK > 0) {
+      const ads = WEAPONS[ws.id].ads!;
+      tanH *= 1 + (ads.fov - 1) * adsK; sensMul = 1 + (ads.sens - 1) * adsK;
+    }
     this.input.sensMul = isMe ? sensMul : 1;
     // sprint/slide: leve abertura de FOV e inclinação da câmera no slide (sem afetar a mira)
     const kickGoal = viewer.slideTime > 0 ? 1 : viewer.sprinting ? 0.25 : 0;
     this.fovKick += (kickGoal - this.fovKick) * Math.min(1, dt * 8);
     this.slideRoll += ((viewer.slideTime > 0 ? 0.045 : 0) - this.slideRoll) * Math.min(1, dt * 10);
-    if (!viewer.zoomed) tanH *= 1 + this.fovKick * 0.06;
+    if (!viewer.zoomed) tanH *= 1 + this.fovKick * 0.06 * (1 - adsK);
     const fovY = 2 * Math.atan(tanH);
     r.beginFrame({ x: vpos.x, y: vpos.y + this.eyeSmooth + bob + land, z: vpos.z, yaw: camYaw, pitch: camPitch, roll: this.settings.viewBob ? this.slideRoll : 0, fovY }, this.time);
 
@@ -798,7 +806,8 @@ export class Game {
   }
 
   private drawCharacter(p: Player, pos: V3, dt: number, xr?: { xray: boolean; tint: number; alpha: number }) {
-    const r = this.r, cm = this.charMeshes(p.team, p.classId);
+    const camD = Math.hypot(pos.x - this.r.cam.x, pos.y - this.r.cam.y, pos.z - this.r.cam.z);
+    const r = this.r, cm = this.charMeshes(p.team, p.classId, camD < CHAR_LOD_DIST.near ? 'near' : camD < CHAR_LOD_DIST.mid ? 'mid' : 'far');
     const hs = Math.hypot(p.phys.vel.x, p.phys.vel.z);
     let ph = this.animPhase.get(p.id) ?? 0;
     if (p.phys.onGround && dt > 0) ph += dt * hs * 0.045;
@@ -812,7 +821,7 @@ export class Game {
       const n = p.phys.surfNormal; const rgt = rightFromYaw(p.yaw);
       roll = -(n.x * rgt.x + n.z * rgt.z) * 0.35;
     }
-    const opts = xr ? { xray: xr.xray, tint: xr.tint, tintMix: 1, emissive: 1, alpha: xr.alpha } : (p.classId === 'berserker' && p.abilityActive > 0 ? { emissive: 0.25, tint: 0xff9f1c, tintMix: 0.25 } : undefined);
+    const opts = xr ? { xray: xr.xray, tint: xr.tint, tintMix: 1, emissive: 1, alpha: xr.alpha, cull: true } : (p.classId === 'berserker' && p.abilityActive > 0 ? { emissive: 0.25, tint: 0xff9f1c, tintMix: 0.25, cull: true } : { cull: true });
     const root = trs(this.tmpM, pos.x, pos.y, pos.z, p.yaw, 0, roll);
     const hip = 32 - duck * 0.7;
     // legs
@@ -913,7 +922,15 @@ export class Game {
     // animação de sacar / inspecionar (tecla F)
     const pose = this.viewPose(p, isKnife);
     x += pose.ox; y += pose.oy; z += pose.oz; yawO += pose.yaw; pitchO += pose.pitch; rollO += pose.roll;
-    const m = trs(this.tmpM, x, y, z, yawO, pitchO, rollO, isKnife ? 0.95 : 0.72);
+    // ADS: leva a linha de visada do modelo para o centro da tela; balanço, sway e recuo visual bem menores
+    const adsT = ws && !isKnife ? adsPose(ws.id) : null;
+    if (adsT && p.adsK > 0) {
+      const k = adsEase(p.adsK);
+      const ax = adsT.x + this.swayX * 0.08 + bx * 0.08, ay = adsT.y - this.swayY * 0.08 - by * 0.08, az = adsT.z + kick * 0.8;
+      x += (ax - x) * k; y += (ay - y) * k; z += (az - z) * k;
+      yawO += (this.swayX * 0.002 - yawO) * k; pitchO += (kick * 0.025 - pitchO) * k; rollO += (0 - rollO) * k;
+    }
+    const m = trs(this.tmpM, x, y, z, yawO, pitchO, rollO, isKnife ? 0.95 : VM_SCALE);
     if (p.slot === SLOT_NADES) {
       const nk = p.nadeSel;
       r.drawMesh(this.assets!.nadesView.get(nk)!, trs(this.tmpM2, x, y + 2, z - 4, this.time + pose.roll, pose.pitch, 0, 1.4), { cull: true });

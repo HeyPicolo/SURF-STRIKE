@@ -156,6 +156,9 @@ export class Hud {
     this.set('scope', 'class', scoped ? 'on' : '');
     // correndo (arma levantada) a mira some; volta quando a arma abaixa
     this.set('crosshair', 'style', scoped || p.weaponRaised ? 'none' : 'block', 'display');
+    // ADS: a mira de quadril some enquanto a arma vem para a frente do olho
+    const adsK = ws && WEAPONS[ws.id].ads ? p.adsK : 0;
+    this.set('crosshair', 'style', String(Math.max(0, 1 - adsK * 1.6).toFixed(2)), 'opacity');
     const air = !p.phys.onGround ? 4 : 0;
     const gap = Math.min(14, p.punchPitch * 1.2 + air + (p.zoomed ? 0 : 0));
     this.set('crosshair', 'style', `${gap.toFixed(0)}px`, '--gap');

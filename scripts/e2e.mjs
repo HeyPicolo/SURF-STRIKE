@@ -341,6 +341,22 @@ const scopeClosed = await S(() => ({ zoomed: window.__surf.game.world.local.zoom
 await page.keyboard.up('KeyW');
 check('30. LONGBOW andando: clique direito abre a luneta e outro fecha', sprintingBefore && scopeOpen.zoomed && scopeOpen.hud && !scopeClosed.zoomed && !scopeClosed.hud, JSON.stringify({ sprintingBefore, scopeOpen, scopeClosed }));
 
+// rodada 11b: mirar pela alça (ADS) com cada arma de ferro; a mira de quadril some
+await S(() => { const w = window.__surf.game.world, p = w.local; p.giveWeapon('pistol'); p.phys.pos.set(0, 2, 5450); p.phys.vel.set(0, 0, 0); window.__surf.input.yaw = Math.PI; window.__surf.input.pitch = -0.04; });
+const adsRes = [];
+for (const [id, key] of [['rifle', 'Digit1'], ['smg', 'Digit1'], ['shotgun', 'Digit1'], ['pistol', 'Digit2']]) {
+  if (key === 'Digit1') await S((id) => window.__surf.game.world.local.giveWeapon(id), id);
+  await page.keyboard.press(key === 'Digit1' ? 'Digit2' : 'Digit1'); await waitSim(0.5);
+  await page.keyboard.press(key); await waitSim(0.7);
+  await page.mouse.down({ button: 'right' }); await page.mouse.up({ button: 'right' }); await waitSim(0.5);
+  const st = await S(() => { const p = window.__surf.game.world.local; return { id: p.currentWeapon()?.id, zoomed: p.zoomed, adsK: p.adsK, cross: +getComputedStyle(document.getElementById('crosshair')).opacity }; });
+  await page.screenshot({ path: join(shots, `19-ads-${id}.png`) });
+  await page.mouse.down({ button: 'right' }); await page.mouse.up({ button: 'right' }); await waitSim(0.5);
+  const off = await S(() => window.__surf.game.world.local.adsK);
+  adsRes.push({ ...st, off });
+}
+check('31. ADS: clique direito traz a alça de cada arma ao centro (KESTREL, HORNET, BREAKER-12, VEX-9)', adsRes.every((r) => r.zoomed && r.adsK === 1 && r.cross < 0.2 && r.off === 0), JSON.stringify(adsRes));
+
 // rodada 10: tela Arsenal com todos os modelos (detalhado e simplificado) e screenshot de cada um
 const arsDir = join(shots, 'arsenal');
 mkdirSync(arsDir, { recursive: true });
@@ -361,7 +377,7 @@ await S(() => { window.__surf.arsenal.fixedYaw = null; });
 await page.keyboard.press('Escape'); await wait(300);
 const backToMenu = await page.isVisible('#main-nav') && !(await S(() => window.__surf.arsenal.active));
 const overBudget = arsInfo.filter((x) => x.tris > x.budget);
-check('29. Arsenal mostra todos os modelos (setas, versões de detalhe, triângulos) e volta ao menu', arsVisible && arsInfo.length >= 40 && overBudget.length === 0 && arrowIdx === 0 && backToMenu, `modelos=${arsList.length} capturas=${arsInfo.length} acima=${overBudget.length} seta=${arrowIdx} menu=${backToMenu}`);
+check('29. Arsenal mostra todos os modelos (setas, versões de detalhe, triângulos) e volta ao menu', arsVisible && arsInfo.length >= 56 && overBudget.length === 0 && arrowIdx === 0 && backToMenu, `modelos=${arsList.length} capturas=${arsInfo.length} acima=${overBudget.length} seta=${arrowIdx} menu=${backToMenu}`);
 
 const fps = await S(() => new Promise((res) => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 2000) requestAnimationFrame(f); else res(n / 2); }; requestAnimationFrame(f); }));
 console.log(`fps (software renderer): ${fps}`);

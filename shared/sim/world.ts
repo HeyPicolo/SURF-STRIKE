@@ -260,7 +260,7 @@ export class World {
     p.nades = { he: 0, smoke: 0, impulse: 0 };
     p.abilityActive = 0; p.tired = 0; p.speedBoost = 0; p.predatorStacks = 0;
     p.noAbilities = true;
-    p.reloadTime = 0; p.zoomed = false; p.aimWant = false; p.punchPitch = 0; p.punchYaw = 0;
+    p.reloadTime = 0; p.zoomed = false; p.aimWant = false; p.adsK = 0; p.punchPitch = 0; p.punchYaw = 0;
     p.resetMovementState();
     if (weapon) {
       p.weapons = [null, null, null, null];
@@ -550,7 +550,7 @@ export class World {
       else if (inp.fire) this.melee(p, false);
       return;
     }
-    this.updateAim(p, def);
+    this.updateAim(p, def, dt);
     // reload
     if (p.reloadTime > 0) {
       p.reloadTime -= dt;
@@ -577,13 +577,16 @@ export class World {
    * perde: o que chega durante um impedimento fica guardado. Antes, o sprint automático engolia o
    * clique de quem andava (rodada 11).
    */
-  private updateAim(p: Player, def: WeaponDef) {
-    if (!(def.zoom > 0)) { p.zoomed = false; p.aimWant = false; return; }
+  private updateAim(p: Player, def: WeaponDef, dt: number) {
+    if (!(def.zoom > 0) && !def.ads) { p.zoomed = false; p.aimWant = false; p.adsK = 0; return; }
     const inp = p.input;
     if (inp.aim === true || inp.aim === false) p.aimWant = inp.aim;
     else if (this.edge(p, 'alt')) p.aimWant = !p.aimWant;
     const blocked = p.reloadTime > 0 || p.switchTime > 0 || p.slideTime > 0 || (SPRINT.raiseWeapon && p.sprinting);
     p.zoomed = p.aimWant && !blocked;
+    // ADS: entra e sai no tempo da arma; a luneta da LONGBOW é instantânea (como antes)
+    if (def.ads) p.adsK = Math.max(0, Math.min(1, p.adsK + (p.zoomed ? 1 : -1) * dt / def.ads.time));
+    else p.adsK = p.zoomed ? 1 : 0;
   }
 
   taserReady(p: Player) { const t = p.weapons[SLOT_TASER]; return !!t && t.mag > 0; }
@@ -603,7 +606,7 @@ export class World {
     p.slot = slot;
     p.switchTime = 0.35;
     p.reloadTime = 0;
-    p.zoomed = false; p.aimWant = false;
+    p.zoomed = false; p.aimWant = false; p.adsK = 0;
     p.shotsFired = 0;
     if (slot === SLOT_NADES && p.nades[p.nadeSel] <= 0) this.cycleNade(p);
     this.emit({ t: 'switch', pid: p.id });
@@ -626,7 +629,7 @@ export class World {
     const rateMul = 1 + (p.classId === 'predator' ? p.predatorStacks * CLASSES.predator.params.stackFireRate : 0);
     p.fireCooldown = fireInterval(def, rateMul);
     p.lastShotTime = this.time;
-    const spread = computeSpread(def, { onGround: p.phys.onGround, hSpeed: Math.hypot(p.phys.vel.x, p.phys.vel.z), ducked: p.phys.ducked, zoomed: p.zoomed });
+    const spread = computeSpread(def, { onGround: p.phys.onGround, hSpeed: Math.hypot(p.phys.vel.x, p.phys.vel.z), ducked: p.phys.ducked, zoomed: p.zoomed, ads: p.adsK });
     const aimYaw = p.yaw + p.punchYaw * DEG;
     const aimPitch = p.pitch + p.punchPitch * DEG;
     forwardFromAngles(aimYaw, aimPitch, this.fwd);

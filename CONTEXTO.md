@@ -3,7 +3,7 @@
 Registro vivo das decisões, do estado atual e das pendências. **Atualizado a cada rodada de mudanças, no mesmo commit.**
 Serve para qualquer sessão (de código ou de apoio) entender o projeto sem reler o histórico inteiro.
 
-- **Última rodada:** 11a (de 11a/11b) · 20/10/2026 · 10 = `48ddb63`
+- **Última rodada:** 11b (fecha a rodada 11) · 20/10/2026 · 11a = `5dfb809`
 - **No ar:** https://surf-strike.vercel.app (deploy automático da Vercel a cada push na `main`)
 - **Repositório:** github.com/HeyPicolo/SURF-STRIKE
 
@@ -20,12 +20,12 @@ Serve para qualquer sessão (de código ou de apoio) entender o projeto sem rele
 npm install
 npm run dev            # servidor local com rebuild
 npm run build          # gera dist/ (o que a Vercel publica)
-npm test               # 175 testes unitários (node:test via tsx, ~60 s)
+npm test               # 183 testes unitários (node:test via tsx, ~60 s)
 npm run skill:metrics  # corre o percurso de referência de todos os mapas, grava skillReference.ts e imprime a tabela de métricas
 npm run skill:versions # regrava shared/maps/skillVersions.ts depois de mudar um mapa do Surf Skill
 npm run skill:layout   # confere folga entre stages, lava, brushes cruzando, trechos não vizinhos e nuvens
 npx tsc --noEmit -p tsconfig.json
-CHROME_PATH=/opt/pw-browsers/chromium node scripts/e2e.mjs   # 30 verificações no navegador (screenshots em e2e-shots/, Arsenal em e2e-shots/arsenal/)
+CHROME_PATH=/opt/pw-browsers/chromium node scripts/e2e.mjs   # 31 verificações no navegador (screenshots em e2e-shots/, Arsenal em e2e-shots/arsenal/)
 # ?arsenal na URL abre a tela Arsenal (revisão dos modelos)
 ```
 
@@ -112,6 +112,8 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 | `client/src/entities/style.ts` | guia de estilo das armas/itens: paletas, `STYLE` (espessuras), `TRI_BUDGET`, `WEAPON_REFS` (boca, luneta), `PICKUP_COLORS` |
 | `client/src/entities/geometry.ts` | geometria das armas, balisong, granadas, itens e luvas (sem GL, 2 versões: `view`/`world`); `MODEL_LIST` |
 | `client/src/render/mesh.ts` | `MeshBuilder` e as primitivas do estilo de blocos |
+| `client/src/entities/characters.ts` | personagens no estilo de blocos (3 versões: perto/média/longe), pivôs e paleta do time |
+| `client/src/game/adsPose.ts` | posição do viewmodel no ADS (linha de visada no centro) |
 | `client/src/ui/arsenal.ts` | tela Arsenal (`?arsenal` ou botão no painel do Treino) |
 | `client/src/ui/menu.ts`, `hud.ts` | menus (inclui seleção de mapa e tela de fim do Surf Skill) e HUD |
 | `client/src/maps/worldMesh.ts` | malha do mapa, paredes das zonas, número do stage |
@@ -135,10 +137,24 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 | 9a · `d1eb0fa` | Layout automático dos stages pelo envelope, lava menor, nuvens fora da pista, emendas em meia-esquadria sem ramp bug, plataformas de checkpoint atravessáveis, `skill:layout`. |
 | 9b · `4c552ce` | Sem prespeed cap, velocidade mantida entre stages, versão das regras na chave dos recordes, Próximo mapa, referência com controle de velocidade, ajustes de bhop e curvas, recalibração. |
 | 10 · `48ddb63` | Visual novo das armas, balisong, granadas, itens e luvas no estilo de blocos (paletas por arma, fitas, parafusos, trilhos, recortes), duas versões de detalhe, tela Arsenal, testes de orçamento/caixa/cobertura e e2e com screenshots. Só visual. |
-| 11a | Luneta da LONGBOW sem cliques perdidos (sprint automático engolia o clique; mira desejada guardada; alternar/segurar), bots com mira humana (reação com cauda, flick + correções, tremor, lead/recuo aprendidos, personalidade, audição), início do sacar da balisong contínuo. |
+| 11a · `5dfb809` | Luneta da LONGBOW sem cliques perdidos (sprint automático engolia o clique; mira desejada guardada; alternar/segurar), bots com mira humana (reação com cauda, flick + correções, tremor, lead/recuo aprendidos, personalidade, audição), início do sacar da balisong contínuo. |
+| 11b | ADS nas armas de ferro (alça/massa/red dot do modelo no centro, FOV, tempo, sensibilidade, movimento e spread em config) e personagens no estilo de blocos (3 versões, hitbox igual, cor do time em placas). |
 
 ## Decisões tomadas (não desfazer sem pedido)
 
+- **Rodada 11b:**
+  - ADS: `WEAPONS[id].ads`. O zoom 0,8 do KESTREL virou ADS (`zoom` = 0), com a mesma lupa e a mesma velocidade de 75% mirando.
+  - `Player.adsK` anda no tempo da arma (linear no sim, suavizado no cliente). A luneta da LONGBOW continua instantânea.
+  - O spread do ADS é multiplicado pelo progresso (`adsK`). Os bots usam ADS a mais de 700 u.
+  - Linha de visada dos modelos horizontal (mesma altura na alça e na massa), sem rotação no ADS. Mudanças nos modelos para isso:
+    - KESTREL: massa mais baixa (5,6) e alça vazada;
+    - BREAKER-12: ghost ring;
+    - VEX-9: massa da altura das orelhas da alça;
+    - HORNET: ganhou um red dot. O ponto é o segundo emissivo da arma; interpretado como o retículo, não como LED.
+  - Personagens:
+    - 3 versões por distância (perto < 400 u, média < 1400 u, longe);
+    - desenhados com descarte de faces de trás;
+    - a fita do pulso usa a cor escura do time (a luva azul do viewmodel confundiria o time vermelho).
 - **Rodada 11a:**
   - Luneta:
     - o clique troca a mira *desejada* (`Player.aimWant`); a mira efetiva só fica bloqueada por recarga, troca, slide e sprint com `SPRINT.raiseWeapon`;
@@ -204,7 +220,7 @@ Bases ligadas por rampas (rotas A, B1, B2, C), rampa central reta (ápice 1150),
 ## Pendências e ideias
 
 - Multiplayer online (a simulação já é separada do cliente; recordes e fantasmas já têm as interfaces `RecordStore` e `GhostStore` para um backend).
-- **Rodada 11b (próxima):** mirar pela alça (ADS) nas armas de ferro e personagens no estilo de blocos.
+- Calibrar jogando a rodada 11b: tempos e FOV do ADS, se a BREAKER-12 com ADS ficou forte demais, a leitura da cor do time de longe (versão "longe" dos personagens) e as distâncias das versões.
 - Calibrar jogando a rodada 11a: letalidade do Avançado e do GOD (acertam bem mais de longe que antes), tempo de reação do Fácil (1º acerto ~2 s de perto) e se o olhar ocioso atrapalha a leitura de quem está sendo observado.
 - Ajustar olhando o jogo (rodada 10): contraste das cores escuras de id (KESTREL, HORNET) em mapas claros, tamanho dos recortes hexagonais da LONGBOW, luvas (hoje grafite com fita azul para todas as armas) e se vale estender o estilo aos personagens.
 - Calibrar jogando a rodada 9: como fica chegar embalado em cada stage (principalmente bhop e curvas logo depois da entrada), se a extensão de 1800 u das chegadas é o bastante, e os tempos de referência que caíram abaixo da faixa (D8 2:28, D11 3:22).

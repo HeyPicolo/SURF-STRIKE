@@ -44,7 +44,7 @@ export function weaponHitDamage(def: WeaponDef, dist: number, head: boolean): nu
   return def.damage * mul * falloff(def, dist) * (head ? def.headMult : 1);
 }
 
-export interface SpreadState { onGround: boolean; hSpeed: number; ducked: boolean; zoomed: boolean; }
+export interface SpreadState { onGround: boolean; hSpeed: number; ducked: boolean; zoomed: boolean; /** progresso do ADS (0..1) */ ads?: number; }
 
 /** Spread (graus). Baixo no ar de propósito: o surf depende de mira, não de sorte. */
 export function computeSpread(def: WeaponDef, s: SpreadState): number {
@@ -52,6 +52,7 @@ export function computeSpread(def: WeaponDef, s: SpreadState): number {
   if (!s.onGround) spread += def.airSpread;
   else if (s.hSpeed > 130) spread += def.moveSpread * Math.min(1, s.hSpeed / 250);
   if (s.ducked && s.onGround) spread *= 0.8;
+  if (def.ads && s.ads) spread *= 1 + (def.ads.spreadMul - 1) * Math.min(1, s.ads);
   return spread * ACCURACY.spreadMul;
 }
 

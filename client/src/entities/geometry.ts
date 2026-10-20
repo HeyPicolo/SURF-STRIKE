@@ -6,8 +6,11 @@
 // =============================================================
 import { MeshBuilder, P2 } from '../render/mesh';
 import type { WeaponId, NadeKind } from '../../../shared/config/weapons';
-import type { PickupKind } from '../../../shared/maps/types';
-import { PALETTES, Palette, STYLE, NADE_STYLE, GLOVE, PICKUP_COLORS, ITEM_STYLE, shade } from './style';
+import type { PickupKind, Team } from '../../../shared/maps/types';
+import type { ClassId } from '../../../shared/config/classes';
+import { CLASSES } from '../../../shared/config/classes';
+import { characterAssembled } from './characters';
+import { PALETTES, Palette, STYLE, NADE_STYLE, GLOVE, PICKUP_COLORS, ITEM_STYLE, WEAPON_REFS, shade } from './style';
 
 export type Lod = 'view' | 'world' | 'far';
 
@@ -150,15 +153,16 @@ function rifle(m: MeshBuilder, hi: boolean) {
     insetsX(m, 0.762, [[2, -32.5]], MeshBuilder.rect(1.6, 0.3), P.hole);
     m.inset([0, 2, -34], '-z', MeshBuilder.hex(0.32, 1), P.hole);
   }
-  // massa e alça de mira rebatíveis (de pé)
+  // massa e alça de mira rebatíveis (de pé): a ponta da massa fica no centro do furo da alça (ADS)
+  const SY = WEAPON_REFS.rifle.sight!.y;
   m.chamferBox(-0.7, 4.3, -24.2, 0.7, 4.9, -22.6, P.metal, 0.15);
-  m.prism('x', [[-23.9, 4.9], [-23.1, 4.9], [-23.3, 6.5], [-23.7, 6.5]], -0.22, 0.22, P.metal);
+  m.prism('x', [[-23.9, 4.9], [-23.1, 4.9], [-23.38, SY], [-23.62, SY]], -0.18, 0.18, P.metal);
+  for (const s of [-1, 1]) m.box(s > 0 ? 0.42 : -0.64, 4.9, -23.9, s > 0 ? 0.64 : -0.42, SY + 0.3, -23.1, P.metal);
   m.chamferBox(-0.75, 4.3, 1.8, 0.75, 4.9, 3.8, P.metal, 0.15);
-  m.chamferBox(-0.65, 4.9, 2.6, 0.65, 6.0, 3.2, P.metal, 0.12);
-  if (hi) {
-    for (const s of [-1, 1]) m.box(s > 0 ? 0.4 : -0.62, 4.9, -23.9, s > 0 ? 0.62 : -0.4, 6.1, -23.1, P.metal);
-    m.inset([0, 5.55, 2.6], '-z', MeshBuilder.hex(0.2, 1), P.hole);
-  }
+  // alça de abertura: moldura vazada (dá para ver a massa pelo furo)
+  m.box(-0.65, 4.9, 2.6, 0.65, SY - 0.25, 3.2, P.metal);
+  m.box(-0.65, SY + 0.25, 2.6, 0.65, SY + 0.6, 3.2, P.metal);
+  for (const s of [-1, 1]) m.box(s > 0 ? 0.22 : -0.65, SY - 0.25, 2.6, s > 0 ? 0.65 : -0.22, SY + 0.25, 3.2, P.metal);
   // alavanca de manejo, assistente e janela de ejeção
   m.chamferBox(-1.9, 3.0, 5.6, 1.9, 3.55, 6.6, P.metal, 0.15);
   if (hi) {
@@ -196,6 +200,13 @@ function smg(m: MeshBuilder, hi: boolean) {
   m.chamferBox(-1.8, -1, -12, 1.8, 4.0, 4, P.dark, 0.4);
   m.chamferBox(-1.55, 4.0, -11.2, 1.55, 4.5, 3.2, P.body, 0.2);
   m.rail(0, 4.5, -9.5, 0.5, 1.4, P.metal, '+y', { teeth: hi, pitch: STYLE.railPitch });
+  // mira de ponto vermelho (red dot) sobre o trilho: moldura vazada e o ponto no centro (ADS)
+  const RD = WEAPON_REFS.smg.sight!;
+  m.chamferBox(-0.75, 5.16, RD.frontZ - 0.3, 0.75, 5.5, RD.rearZ, P.dark, 0.12);
+  for (const s of [-1, 1]) m.box(s > 0 ? 0.55 : -0.78, 5.5, RD.frontZ - 0.3, s > 0 ? 0.78 : -0.55, RD.y + 0.75, RD.frontZ + 0.5, P.dark);
+  m.box(-0.78, RD.y + 0.55, RD.frontZ - 0.3, 0.78, RD.y + 0.8, RD.frontZ + 0.5, P.dark);
+  for (const s of [-1, 1]) m.box(s > 0 ? 0.55 : -0.78, 5.5, RD.rearZ - 0.4, s > 0 ? 0.78 : -0.55, RD.y + 0.6, RD.rearZ, P.dark);
+  m.box(-0.06, RD.y - 0.06, RD.frontZ - 0.02, 0.06, RD.y + 0.06, RD.frontZ + 0.02, 0xff3b30, 1);
   // capa do cano com respiros
   m.chamferBox(-1.0, 0.85, -17.4, 1.0, 3.15, -12, P.body, 0.4);
   if (hi) insetsX(m, 1.0, [[2.0, -16.4], [2.0, -14.9], [2.0, -13.4]], MeshBuilder.hex(0.36), P.hole, lip);
@@ -246,8 +257,12 @@ function shotgun(m: MeshBuilder, hi: boolean) {
   m.tube('z', [0, 3, 0], 1.18, -36.6, -37.6, P.metal, S);
   if (hi) m.inset([0, 3, -37.6], '-z', MeshBuilder.hex(0.6, 1), P.hole);
   m.box(-0.32, 3.9, -36.4, 0.32, 4.3, -12, P.metal);
-  m.tube('y', [0, 0, -36.0], 0.24, 4.3, 4.65, P.bolt, 6);
-  m.chamferBox(-0.7, 4.1, 1.5, 0.7, 4.8, 3.2, P.metal, 0.15);
+  m.tube('y', [0, 0, -36.0], 0.22, 4.3, WEAPON_REFS.shotgun.sight!.y, P.bolt, 6);
+  // alça "ghost ring": anel vazado alinhado com a massa (ADS)
+  const GY = WEAPON_REFS.shotgun.sight!.y;
+  m.chamferBox(-0.7, 4.1, 1.5, 0.7, 4.35, 3.2, P.metal, 0.08);
+  m.box(-0.6, GY + 0.3, 2.4, 0.6, GY + 0.55, 3.2, P.metal);
+  for (const s of [-1, 1]) m.box(s > 0 ? 0.2 : -0.6, 4.35, 2.4, s > 0 ? 0.6 : -0.2, GY + 0.3, 3.2, P.metal);
   m.tapeTube('z', [0, 3, 0], 1.0, -30.4, -28.4, P.accent, hi ? 2 : 1, S);
   // tubo do carregador e abraçadeira
   m.tube('z', [0, 0.95, 0], 0.8, -12, -33.4, P.metal, S, { caps: 'none' });
@@ -294,10 +309,10 @@ function pistol(m: MeshBuilder, hi: boolean) {
   m.tube('z', [0, 2.5, 0], 0.6, -14.4, -14.9, P.metal, 8);
   if (hi) m.inset([0, 2.5, -14.9], '-z', MeshBuilder.hex(0.3, 1), P.hole);
   // miras de ferro
-  m.chamferBox(-0.28, 4.0, -13.8, 0.28, 4.65, -12.9, P.dark, 0.1);
+  m.chamferBox(-0.26, 4.0, -13.8, 0.26, WEAPON_REFS.pistol.sight!.y, -12.9, P.dark, 0.08);
   m.chamferBox(-0.85, 4.0, 0.6, 0.85, 4.4, 1.9, P.dark, 0.1);
   for (const s of [-1, 1]) m.box(s > 0 ? 0.3 : -0.85, 4.4, 0.6, s > 0 ? 0.85 : -0.3, 4.85, 1.9, P.dark);
-  if (hi) m.inset([0, 4.35, -12.9], '+z', MeshBuilder.hex(0.11, 1), ITEM_STYLE.white);
+  if (hi) m.inset([0, WEAPON_REFS.pistol.sight!.y - 0.2, -12.9], '+z', MeshBuilder.hex(0.11, 1), ITEM_STYLE.white);
   // armação com base de trilho
   m.chamferBox(-1.32, -0.5, -12.8, 1.32, 1.2, 1.8, P.dark, 0.3);
   m.rail(0, -0.5, -12.2, -6.2, 1.4, P.metal, '-y', { teeth: hi, pitch: 1.1 });
@@ -690,7 +705,7 @@ export function knifeGloveGeometry(): MeshBuilder {
 }
 
 /** Lista de modelos para a tela Arsenal e os testes. */
-export interface ModelEntry { id: string; name: string; kind: 'weapon' | 'knife' | 'nade' | 'item' | 'glove'; build: (lod: Lod) => MeshBuilder; /** versões disponíveis (a primeira é a principal) */ lods: Lod[] }
+export interface ModelEntry { id: string; name: string; kind: 'weapon' | 'knife' | 'nade' | 'item' | 'glove' | 'character'; build: (lod: Lod) => MeshBuilder; /** versões disponíveis (a primeira é a principal) */ lods: Lod[] }
 
 const WEAPON_ORDER: WeaponId[] = ['sniper', 'rifle', 'smg', 'shotgun', 'pistol', 'taser', 'knife'];
 const WEAPON_NAMES: Record<WeaponId, string> = { sniper: 'LONGBOW', rifle: 'KESTREL AR', smg: 'HORNET', shotgun: 'BREAKER-12', pistol: 'VEX-9', taser: 'VOLT-1', knife: 'BALISONG' };
@@ -702,4 +717,8 @@ export const MODEL_LIST: ModelEntry[] = [
   ...(['ammo', 'medkit', 'armor', 'shield', 'speed'] as PickupKind[]).map((k): ModelEntry => ({ id: k, name: { ammo: 'Munição', medkit: 'Kit médico', armor: 'Colete', shield: 'Escudo', speed: 'Velocidade' }[k as 'ammo'], kind: 'item', build: (lod) => pickupGeometry(k, lod), lods: ['world', 'far'] })),
   { id: 'glove_gun', name: 'Luva (armas de fogo)', kind: 'glove', build: () => gunGloveGeometry(), lods: ['view'] },
   { id: 'glove_knife', name: 'Luva (balisong)', kind: 'glove', build: () => knifeGloveGeometry(), lods: ['view'] },
+  ...(['runner', 'berserker', 'predator', 'jumper'] as ClassId[]).flatMap((cls) => (['blue', 'red'] as Team[]).map((team): ModelEntry => ({
+    id: `char_${cls}_${team}`, name: `${CLASSES[cls].name} · ${team === 'blue' ? 'Azul' : 'Vermelho'}`, kind: 'character',
+    build: (lod) => characterAssembled(team, cls, lod === 'far' ? 'far' : lod === 'world' ? 'mid' : 'near'), lods: ['view', 'world', 'far'],
+  }))),
 ];
